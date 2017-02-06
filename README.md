@@ -9,18 +9,18 @@ Comprehensive YAML 1.2 processor implemented in Rust
 
 # Contents
 
- 1. [Goals of the project](#goals-of-the-project)
- 2. [Some more words about it](#some-extra-words-about-it)
- 2.1. [Complete support of YAML 1.2 specification](#complete-support-of-yaml-1.2-specification)
- 2.2. [Multithreading](#multithreading)
- 2.3. [Performance](#performance)
- 2.4. [Text encoding agnostic implementation](#text-encoding-agnostic-implementation)
- 2.5. [Thorough documentation coverage](#thorough-documentation-coverage)
- 3. [Examples](#examples)
- 3.1. [Basic reader example](#basic-reader-example)
- 3.2. [Basic writer example](#basic-writer-example)
- 3.3. [The format description](#the-format-description)
- 4. License
+ 1. [Goals of the project](#goals-of-the-project)  
+ 2. [Some more words about it](#some-extra-words-about-it)  
+ 2.1. [Complete support of YAML 1.2 specification](#complete-support-of-yaml-12-specification)  
+ 2.2. [Multithreading](#multithreading)  
+ 2.3. [Performance](#performance)  
+ 2.4. [Text encoding agnostic implementation](#text-encoding-agnostic-implementation)  
+ 2.5. [Thorough documentation coverage](#thorough-documentation-coverage)  
+ 3. [Examples](#examples)  
+ 3.1. [Basic reader example](#basic-reader-example)  
+ 3.2. [Basic writer example](#basic-writer-example)  
+ 3.3. [The format description](#the-format-description)  
+ 4. [License](#license)  
 
 
 # Goals of the project
