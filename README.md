@@ -4,12 +4,11 @@ Comprehensive YAML 1.2 processor implemented in Rust
 ------
 
 [![Current Version on crates.io](https://img.shields.io/crates/v/yamlette.svg)](https://crates.io/crates/yamlette/) [![MIT / Apache2 License](https://img.shields.io/badge/license-MIT%20/%20Apache2-blue.svg)]() [![Build Status](https://travis-ci.org/dnsl48/yamlette.svg?branch=master)](https://travis-ci.org/dnsl48/yamlette) [![Documentation](https://docs.rs/yamlette/badge.svg)](https://docs.rs/yamlette/)
-
-License: `Double: MIT / Apache License, Version 2.0`
 ------
 
 
-# Contents of the readme
+# Contents
+
  1. [Goals of the project](#goals-of-the-project)
  2. [Some more words about it](#some-extra-words-about-it)
  2.1. [Complete support of YAML 1.2 specification](#complete-support-of-yaml-1.2-specification)
@@ -22,6 +21,7 @@ License: `Double: MIT / Apache License, Version 2.0`
  3.2. [Basic writer example](#basic-writer-example)
  3.3. [The format description](#the-format-description)
  4. License
+
 
 # Goals of the project
 
@@ -385,3 +385,5 @@ fn main () {
 ```
 
 # License
+
+License: `Double: MIT / Apache License, Version 2.0`
