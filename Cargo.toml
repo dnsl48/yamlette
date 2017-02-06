@@ -5,7 +5,7 @@ authors = ["dnsl48 <dnsl48@gmail.com>"]
 
 description = "Comprehensive and user friendly YAML 1.2 processor"
 keywords = ["parser", "yaml", "json", "serialization"]
-categories = ["configuration", "encoding", "parser-implementations"]
+categories = ["config", "encoding", "parser-implementations"]
 
 license = "MIT/Apache-2.0"
 
