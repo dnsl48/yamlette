@@ -16,7 +16,6 @@ use std::thread::{ self, JoinHandle };
 
 
 
-#[derive (Debug)]
 pub struct Sage {
     conv: (JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>)
 }
