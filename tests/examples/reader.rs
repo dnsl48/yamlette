@@ -16,9 +16,12 @@
 macro_rules! read {
     ($src:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new ($src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         receiver
     }}
@@ -28,10 +31,13 @@ macro_rules! read {
 macro_rules! read_with_error {
     ($src:expr, $err_desc:expr, $err_pos:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
         reader
-            .read (SliceReader::new ($src.as_bytes ()))
+            .read (
+                SliceReader::new ($src.as_bytes ()),
+                &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            )
             .and_then (|_| { assert! (false, format! ("Must be an error in here; {}: {}", $err_pos, $err_desc)); Ok ( () ) })
             .or_else (|err| {
                 assert_eq! ($err_desc, err.description);
@@ -47,9 +53,12 @@ macro_rules! read_with_error {
 macro_rules! read_bytes {
     ($src:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new ($src)).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         receiver
     }}
@@ -489,7 +498,7 @@ mod stable {
 
     use self::skimmer::reader::SliceReader;
 
-    use self::yamlette::txt::get_charset_utf8;
+    use self::yamlette::txt::{ Twine, get_charset_utf8 };
 
     use self::yamlette::reader::BlockType;
     use self::yamlette::reader::NodeKind;

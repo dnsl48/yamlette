@@ -18,7 +18,7 @@ use std::ops::BitOr;
 use std::ops::BitXor;
 
 
-use std::sync::mpsc::Sender;
+// use std::sync::mpsc::Sender;
 
 
 
@@ -212,41 +212,50 @@ pub struct Reader {
     cursor: usize,
     position: usize,
     tokenizer: Tokenizer,
-    yielt: Sender<Block>
+    // yielt: Sender<Block>
 }
 
 
 
 impl Reader {
-    pub fn new (tokenizer: Tokenizer, yielt: Sender<Block>) -> Reader {
+    pub fn new (tokenizer: Tokenizer /*, yielt: Sender<Block> */) -> Reader {
         Reader {
             index: 0,
             line: 0,
             cursor: 0,
             position: 0,
             tokenizer: tokenizer,
-            yielt: yielt
+            // yielt: yielt
         }
     }
 
-/*
-    pub fn set_another_stream (&mut self, reader: R) {
-        self.index = 0;
-        self.line = 0;
-        self.cursor = 0;
-        self.position = 0;
 
-        mem::replace (&mut self.reader, reader);
+    fn yield_block (&mut self, block: Block, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
+        // if let Err (_) = self.yielt.send (block) { return Err (ReadError::new ("Cannot yield a block")) };
+
+        if let Err (error) = callback (block) {
+            Err (ReadError::new (error))
+        } else {
+            Ok ( () )
+        }
     }
-*/
 
 
-    pub fn read<R: Read> (&mut self, mut reader: R) -> Result<(), ReadError> {
+    /*
+    fn yield_block (&mut self, block: Block) -> Result<(), ReadError> {
+        if let Err (_) = self.yielt.send (block) { return Err (ReadError::new ("Cannot yield a block")) };
+
+        Ok ( () )
+    }
+    */
+
+
+    pub fn read<R: Read> (&mut self, mut reader: R, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
         let ctx = Context::zero ();
 
         let mut cur_idx = self.index;
-        let result = self.read_layer (&mut reader, &ctx, 0, 0, &mut cur_idx, 0, &mut None, &mut None);
-        self.yield_stream_end ().ok ();
+        let result = self.read_layer (&mut reader, callback, &ctx, 0, 0, &mut cur_idx, 0, &mut None, &mut None);
+        self.yield_stream_end (callback).ok ();
         result
     }
 
@@ -277,51 +286,45 @@ impl Reader {
     }
 
 
-    fn yield_block (&mut self, block: Block) -> Result<(), ReadError> {
-        if let Err (_) = self.yielt.send (block) { return Err (ReadError::new ("Cannot yield a block")) };
-
-        Ok ( () )
+    fn yield_stream_end (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
+        self.yield_block (Block::new (Id { level: 0, parent: 0, index: 0 }, BlockType::StreamEnd), callback)
     }
 
 
-    fn yield_stream_end (&mut self) -> Result<(), ReadError> {
-        self.yield_block (Block::new (Id { level: 0, parent: 0, index: 0 }, BlockType::StreamEnd))
-    }
-
-
-    fn yield_null (&mut self, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn yield_null (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
             anchor: None,
             tag: None,
             content: NodeKind::Null
-        })))
+        })), callback)
     }
 
 
-    fn yield_error (&mut self, id: Id, message: Twine) -> Result<(), ReadError> {
+    fn yield_error (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
         let pos = self.position;
-        self.yield_block (Block::new (id, BlockType::Error (message.clone (), pos))) ?;
+        self.yield_block (Block::new (id, BlockType::Error (message.clone (), pos)), callback) ?;
 
         Err (ReadError::new (message).pos (pos))
     }
 
 
-    fn yield_warning (&mut self, id: Id, message: Twine) -> Result<(), ReadError> {
+    fn yield_warning (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
         let pos = self.position;
-        self.yield_block (Block::new (id, BlockType::Warning (message.clone (), pos)))
+        self.yield_block (Block::new (id, BlockType::Warning (message.clone (), pos)), callback)
     }
 
 
-    fn read_layer_propagated<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, anchor: &mut Option<Chunk>, tag: &mut Option<Chunk>) -> Result<(), ReadError> {
+    fn read_layer_propagated<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, anchor: &mut Option<Chunk>, tag: &mut Option<Chunk>) -> Result<(), ReadError> {
         let mut cur_idx = self.index;
-        self.read_layer (reader, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
+        self.read_layer (reader, callback, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
     }
 
 
     fn read_layer_expected<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         level: usize,
         parent_idx: usize,
@@ -329,13 +332,14 @@ impl Reader {
         anchor: &mut Option<Chunk>,
         tag: &mut Option<Chunk>
     ) -> Result<(), ReadError> {
-        self.read_layer (reader, ctx, level, parent_idx, cur_idx, 3, anchor, tag)
+        self.read_layer (reader, callback, ctx, level, parent_idx, cur_idx, 3, anchor, tag)
     }
 
 
     fn read_layer<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         level: usize,
         parent_idx: usize,
@@ -370,14 +374,14 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
 
                         Token::DirectiveYaml if is (state, YAML_PASSED) => {
                             if document_issued {
-                                try! (self.emit_doc_border (level, parent_idx, Token::DocumentEnd));
+                                try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
                                 self.index = 0; // reset the counter!
                                 off (&mut state, DIRS_PASSED | NODE_PASSED);
                                 continue;
@@ -385,6 +389,7 @@ impl Reader {
 
                             let idx = self.get_idx ();
                             return self.yield_error (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from ("The YAML directive must only be given at most once per document")
                             );
@@ -393,14 +398,14 @@ impl Reader {
 
                         Token::DirectiveYaml if not (state, YAML_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_directive_yaml (reader, level, parent_idx));
+                            try! (self.read_directive_yaml (reader, callback, level, parent_idx));
                             on (&mut state, YAML_PASSED);
                         }
 
 
                         Token::DirectiveTag if not (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_directive_tag (reader, level, parent_idx));
+                            try! (self.read_directive_tag (reader, callback, level, parent_idx));
                         }
 
 
@@ -409,6 +414,7 @@ impl Reader {
                             let line = self.line;
 
                             try! (self.yield_warning (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from (format! ("Unknown directive at the line {}", line))
                             ));
@@ -419,7 +425,7 @@ impl Reader {
 
                         Token::DocumentStart if not (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (level, parent_idx, token));
+                            try! (self.emit_doc_border (callback, level, parent_idx, token));
                             document_issued = true;
                             on (&mut state, DIRS_PASSED | INDENT_PASSED);
                             prev_indent = self.cursor;
@@ -430,11 +436,11 @@ impl Reader {
                         Token::DocumentStart if not (state, INDENT_PASSED) => {
                             if indent > 0 { break 'top; }
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (level, parent_idx, Token::DocumentEnd));
+                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
                             document_issued = true;
 
                             self.index = 0; // reset the counter!
-                            try! (self.emit_doc_border (level, parent_idx, Token::DocumentStart));
+                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
                             prev_indent = self.cursor;
                             *cur_idx = self.index;
                         }
@@ -454,7 +460,7 @@ impl Reader {
 
 
                         _ if not (state, DIRS_PASSED) => {
-                            try! (self.emit_doc_border (level, parent_idx, Token::DocumentStart));
+                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
                             document_issued = true;
                             on (&mut state, DIRS_PASSED);
                             *cur_idx = self.index;
@@ -463,7 +469,7 @@ impl Reader {
 
                         Token::DocumentEnd if is (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (level, parent_idx, token));
+                            try! (self.emit_doc_border (callback, level, parent_idx, token));
                             self.index = 0; // reset the counter!
                             document_issued = true;
                             state = 0;
@@ -544,9 +550,9 @@ impl Reader {
                                 anchor: anchor.take (),
                                 tag: tag.take (),
                                 content: NodeKind::Sequence
-                            }))));
+                            })), callback));
 
-                            try! (self.read_seq_block (reader, &ctx, level + 1, idx, Some ( (token, len, chars) )));
+                            try! (self.read_seq_block (reader, callback, &ctx, level + 1, idx, Some ( (token, len, chars) )));
 
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -564,9 +570,9 @@ impl Reader {
                                     anchor.take (),
                                     tag.take ()
                                 )
-                            )));
+                            ), callback));
 
-                            try! (self.read_map_block_implicit (reader, &ctx, level + 1, idx, prev_indent, None));
+                            try! (self.read_map_block_implicit (reader, callback, &ctx, level + 1, idx, prev_indent, None));
 
                             *cur_idx = self.index;
 
@@ -585,9 +591,9 @@ impl Reader {
                                     tag: tag.take (),
                                     content: NodeKind::Mapping
                                 })
-                            )));
+                            ), callback));
 
-                            try! (self.read_map_block_explicit (reader, &ctx, level + 1, idx, Some ( (token, len, chars) )));
+                            try! (self.read_map_block_explicit (reader, callback, &ctx, level + 1, idx, Some ( (token, len, chars) )));
 
                             *cur_idx = self.index;
 
@@ -600,6 +606,7 @@ impl Reader {
 
                             try! (self.read_node (
                                 reader,
+                                callback,
                                 &ctx,
                                 indent,
                                 level,
@@ -616,18 +623,18 @@ impl Reader {
 
                         _ => {
                             let idx = self.get_idx ();
-                            return self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0001"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0001"))
                         }
                     }
                     break;
                 }
             } else {
                 if level == 0 && parent_idx == 0 && self.index > 0 && is (state, DIRS_PASSED) {
-                    try! (self.emit_doc_border (level, parent_idx, Token::DocumentEnd));
+                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
                     self.index = 0;
                 } else if !propagated && !document_issued {
-                    try! (self.emit_doc_border (level, parent_idx, Token::DocumentStart));
-                    try! (self.emit_doc_border (level, parent_idx, Token::DocumentEnd));
+                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
+                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
                     self.index = 0;
                 }
 
@@ -642,6 +649,7 @@ impl Reader {
     fn read_scalar_block_literal<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         _ctx: &Context,
         level: usize,
         parent_idx: usize,
@@ -671,7 +679,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -691,7 +699,7 @@ impl Reader {
                                 try! (self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
                                     BlockType::Literal (chunk)
-                                )));
+                                ), callback));
                             }
 
                             lazy_tail = Some ( (self.consume (reader, len, chars), chars) );
@@ -750,7 +758,7 @@ impl Reader {
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Literal (chunk)
-                            )));
+                            ), callback));
                             off (&mut state, HUNGRY | KEEPER);
 
                             continue;
@@ -765,7 +773,7 @@ impl Reader {
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Literal (chunk)
-                            )));
+                            ), callback));
                             off (&mut state, HUNGRY | KEEPER);
                             continue;
                         }
@@ -788,7 +796,7 @@ impl Reader {
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Literal (chunk)
-                            )));
+                            ), callback));
 
                             off (&mut state, HUNGRY | KEEPER);
 
@@ -844,7 +852,7 @@ impl Reader {
                                 try! (self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
                                     BlockType::Literal (chunk)
-                                )));
+                                ), callback));
                             }
 
 
@@ -884,14 +892,14 @@ impl Reader {
                 try! (self.yield_block (Block::new (
                     Id { level: level, parent: parent_idx, index: idx },
                     BlockType::Literal (lazy_nl.take ().unwrap ())
-                )));
+                ), callback));
 
                 if is (state, CHOMP_KEEP) && lazy_tail.is_some () {
                     let idx = self.get_idx ();
                     try! (self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
                         BlockType::Literal (lazy_tail.take ().unwrap ().0)
-                    )));
+                    ), callback));
                 }
             } else if lazy_tail.is_some () {
                 let (_, chars) = lazy_tail.take ().unwrap ();
@@ -907,7 +915,7 @@ impl Reader {
                     try! (self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
                         BlockType::Literal (chunk)
-                    )));
+                    ), callback));
                 }
             }
         }
@@ -919,6 +927,7 @@ impl Reader {
     fn read_scalar_block<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         level: usize,
         parent_idx: usize,
@@ -955,7 +964,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -984,7 +993,7 @@ impl Reader {
                                 anchor: None,
                                 tag: None,
                                 content: NodeKind::LiteralBlockOpen
-                            }))));
+                            })), callback));
 
                             on (&mut state, HEAD_PASSED);
                         }
@@ -1040,11 +1049,12 @@ impl Reader {
 
                         _ if not (state, HEAD_PASSED) => {
                             let idx = self.get_idx ();
-                            return self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0002"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0002"))
                         }
 
                         _ if not (state, FOLDED) => return self.read_scalar_block_literal (
                             reader,
+                            callback,
                             &ctx,
                             level + 1,
                             idx,
@@ -1070,11 +1080,12 @@ impl Reader {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::LiteralBlockClose
-                            })))
+                            })), callback)
                         }),
 
                         _ => return self.read_scalar_block_literal (
                             reader,
+                            callback,
                             &ctx,
                             level + 1,
                             idx,
@@ -1100,7 +1111,7 @@ impl Reader {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::LiteralBlockClose
-                            })))
+                            })), callback)
                         })
                     }
                     break;
@@ -1112,7 +1123,7 @@ impl Reader {
     }
 
 
-    fn read_seq_block<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_seq_block<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::SequenceBlock, self.cursor, level);
 
         const INDENT_PASSED: u8 = 1; // Indentation has been passed for the line
@@ -1132,7 +1143,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -1187,7 +1198,7 @@ impl Reader {
                         }
 
                         Token::Dash if is (state, INDENT_PASSED) => {
-                            try! (self.read_seq_block_item (reader, &ctx, level, parent_idx, &mut prev_indent, Some ( (token, len, chars) )));
+                            try! (self.read_seq_block_item (reader, callback, &ctx, level, parent_idx, &mut prev_indent, Some ( (token, len, chars) )));
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                             on (&mut state, NODE_READ);
                         }
@@ -1201,9 +1212,9 @@ impl Reader {
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::BlockMap (Id { level: level, parent: parent_idx, index: cur_idx }, None, None)
-                            )));
+                            ), callback));
 
-                            try! (self.read_map_block_implicit (reader, &ctx, level + 1, idx, prev_indent, None));
+                            try! (self.read_map_block_implicit (reader, callback, &ctx, level + 1, idx, prev_indent, None));
 
                             off (&mut state, NODE_READ);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
@@ -1224,6 +1235,7 @@ impl Reader {
     fn read_seq_flow<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         idx: usize,
         level: usize,
@@ -1252,7 +1264,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level + 1, idx, len));
+                            try! (self.check_bom (reader, callback, level + 1, idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -1273,7 +1285,7 @@ impl Reader {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::Sequence
-                            }))));
+                            })), callback));
 
                             break 'top;
                         }
@@ -1291,7 +1303,7 @@ impl Reader {
 
 
                         Token::Comma if is (state, MAP_KEY_PASSED) => {
-                            try! (self.yield_null (level + 2, cur_idx));
+                            try! (self.yield_null (callback, level + 2, cur_idx));
                             off (&mut state, MAP_KEY_PASSED | NODE_PASSED);
                         }
 
@@ -1314,11 +1326,11 @@ impl Reader {
                                     tag: None,
                                     content: NodeKind::Mapping
                                 })
-                            )));
+                            ), callback));
 
                             cur_idx = new_idx;
                             let mut cur_idx_tmp = cur_idx;
-                            try! (self.read_node_flow (reader, &ctx, indent, level + 2, new_idx, &mut cur_idx_tmp, None, &mut None, &mut None));
+                            try! (self.read_node_flow (reader, callback, &ctx, indent, level + 2, new_idx, &mut cur_idx_tmp, None, &mut None, &mut None));
 
                             on (&mut state, MAP_KEY_PASSED);
                         }
@@ -1336,16 +1348,16 @@ impl Reader {
                                     None,
                                     None
                                 )
-                            )));
+                            ), callback));
 
                             cur_idx = new_idx;
-                            try! (self.read_node_flow (reader, &ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
+                            try! (self.read_node_flow (reader, callback, &ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
                         }
 
 
                         Token::Colon if is (state, MAP_KEY_PASSED) && not (state, COLON_IS_RAW) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_node_flow (reader, &ctx, indent, level + 2, cur_idx, &mut cur_idx, None, &mut None, &mut None));
+                            try! (self.read_node_flow (reader, callback, &ctx, indent, level + 2, cur_idx, &mut cur_idx, None, &mut None, &mut None));
                             off (&mut state, MAP_KEY_PASSED | COLON_IS_RAW);
                             on (&mut state, NODE_PASSED);
                         }
@@ -1368,10 +1380,10 @@ impl Reader {
                                     tag: None,
                                     content: NodeKind::Mapping
                                 })
-                            )));
+                            ), callback));
 
-                            try! (self.yield_null (level + 2, new_idx));
-                            try! (self.read_node_flow (reader, &ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
+                            try! (self.yield_null (callback, level + 2, new_idx));
+                            try! (self.read_node_flow (reader, callback, &ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
 
                             cur_idx = new_idx;
 
@@ -1381,7 +1393,7 @@ impl Reader {
 
                         _ => {
                             let indent = self.cursor;
-                            try! (self.read_node_flow (reader, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            try! (self.read_node_flow (reader, callback, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                             on (&mut state, NODE_PASSED);
                             off (&mut state, COLON_IS_RAW);
                         }
@@ -1395,16 +1407,16 @@ impl Reader {
     }
 
 
-    fn read_map_block_explicit<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
-        self.read_map_block (reader, ctx, level, parent_idx, 1, accel, None)
+    fn read_map_block_explicit<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+        self.read_map_block (reader, callback, ctx, level, parent_idx, 1, accel, None)
     }
 
-    fn read_map_block_implicit<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
-        self.read_map_block (reader, ctx, level, parent_idx, 15, accel, Some (indent))
+    fn read_map_block_implicit<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+        self.read_map_block (reader, callback, ctx, level, parent_idx, 15, accel, Some (indent))
     }
 
 
-    fn read_map_block<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
+    fn read_map_block<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::MappingBlock, if indent.is_some () { *indent.as_ref ().unwrap () } else { self.cursor }, level);
         const INDENT_PASSED: u8 = 1;
         const QST_PASSED: u8 = 2;
@@ -1428,7 +1440,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -1460,14 +1472,14 @@ impl Reader {
 
                             } else if chars > indent {
                                 self.skip (reader, len, chars);
-                                try! (self.read_layer_propagated (reader, &ctx, level, parent_idx, &mut None, &mut None));
+                                try! (self.read_layer_propagated (reader, callback, &ctx, level, parent_idx, &mut None, &mut None));
                                 if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                 if is (state, SEP_PASSED) { off (&mut state, SEP_PASSED); }
 
                             } else {
                                 self.skip (reader, len, chars);
                                 if is (state, SEP_PASSED) {
-                                    try! (self.yield_null (level, parent_idx));
+                                    try! (self.yield_null (callback, level, parent_idx));
                                     off (&mut state, VAL_PASSED);
                                 }
                                 on (&mut state, INDENT_PASSED);
@@ -1501,11 +1513,11 @@ impl Reader {
                                                     None,
                                                     None
                                                 )
-                                            )));
+                                            ), callback));
 
                                             let mut cur_idx = self.index;
 
-                                            try! (self.read_node_mblockval (reader, &ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
+                                            try! (self.read_node_mblockval (reader, callback, &ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
                                             off (&mut state, VAL_PASSED | QST_EXPLICIT);
                                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                             break;
@@ -1522,7 +1534,7 @@ impl Reader {
                         Token::Dash if is (state, SEP_PASSED) && self.cursor >= indent => {
                             let indent = self.cursor;
                             let mut cur_idx = self.index;
-                            try! (self.read_node_mblockval (reader, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            try! (self.read_node_mblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                             off (&mut state, VAL_PASSED);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -1533,7 +1545,7 @@ impl Reader {
 
                             } else {
                                 if is (state, SEP_PASSED)  || is (state, QST_PASSED) {
-                                    try! (self.yield_null (level, parent_idx));
+                                    try! (self.yield_null (callback, level, parent_idx));
                                     off (&mut state, VAL_PASSED);
                                 }
                                 on (&mut state, INDENT_PASSED);
@@ -1551,7 +1563,7 @@ impl Reader {
                         }
 
                         Token::Question if not (state, SEP_PASSED) => {
-                            try! (self.yield_null (level, parent_idx));
+                            try! (self.yield_null (callback, level, parent_idx));
                             self.skip (reader, len, chars);
                             qst_explicit_line = self.line;
                             off (&mut state, VAL_PASSED);
@@ -1562,7 +1574,7 @@ impl Reader {
                             let indent = self.cursor;
                             let mut cur_idx = self.index;
                             last_key_idx = cur_idx + 1;
-                            try! (self.read_node_mblockval (reader, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            try! (self.read_node_mblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                             on (&mut state, KEY_PASSED);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -1573,7 +1585,7 @@ impl Reader {
                             let lid = self.line;
                             last_val_idx = cur_idx + 1;
 
-                            try! (self.read_node_mblockval (reader, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            try! (self.read_node_mblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                             off (&mut state, VAL_PASSED);
                             if self.tokenizer.cset.colon.read (reader).is_some () { on (&mut state, QST_PASSED); }
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
@@ -1598,11 +1610,11 @@ impl Reader {
                                                     None,
                                                     None
                                                 )
-                                            )));
+                                            ), callback));
 
                                             let mut cur_idx = self.index;
 
-                                            try! (self.read_node_mblockval (reader, &ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
+                                            try! (self.read_node_mblockval (reader, callback, &ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
                                             off (&mut state, VAL_PASSED | QST_EXPLICIT);
                                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                         }
@@ -1614,7 +1626,7 @@ impl Reader {
 
                         _ => {
                             let idx = self.get_idx ();
-                            return self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0003"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0003"))
                         }
                     }
 
@@ -1630,6 +1642,7 @@ impl Reader {
     fn read_map_flow<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         idx: usize,
         level: usize,
@@ -1657,7 +1670,7 @@ impl Reader {
                     Token::BOM16BE |
                     Token::BOM16LE |
                     Token::BOM8 => {
-                        try! (self.check_bom (reader, level + 1, idx, len));
+                        try! (self.check_bom (reader, callback, level + 1, idx, len));
                         self.skip (reader, len, chars);
                     }
 
@@ -1665,11 +1678,11 @@ impl Reader {
                         self.skip (reader, len, chars);
 
                         if is (state, QST_PASSED) && not (state, KEY_PASSED) {
-                            try! (self.yield_null (level + 1, idx));
+                            try! (self.yield_null (callback, level + 1, idx));
                         }
 
                         if is (state, QST_PASSED) && not (state, VAL_PASSED) {
-                            try! (self.yield_null (level + 1, idx));
+                            try! (self.yield_null (callback, level + 1, idx));
                         }
 
                         let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
@@ -1685,7 +1698,7 @@ impl Reader {
                             anchor: anchor,
                             tag: tag,
                             content: NodeKind::Mapping
-                        }))));
+                        })), callback));
 
                         break;
                     }
@@ -1716,13 +1729,13 @@ impl Reader {
 
                     Token::Comma if is (state, KEY_PASSED) /*&& not (state, SEP_PASSED)*/ => {
                         self.skip (reader, len, chars);
-                        try! (self.yield_null (level + 1, idx));
+                        try! (self.yield_null (callback, level + 1, idx));
                         off (&mut state, VAL_PASSED);
                     }
 
                     Token::Colon if not (state, KEY_PASSED) && not (state, SEP_PASSED) => {
                         self.skip (reader, len, chars);
-                        try! (self.yield_null (level + 1, idx));
+                        try! (self.yield_null (callback, level + 1, idx));
                         on (&mut state, KEY_PASSED);
                         on (&mut state, SEP_PASSED);
                     }
@@ -1730,14 +1743,14 @@ impl Reader {
                     _ if not (state, KEY_PASSED) => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_flow (reader, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                        try! (self.read_node_flow (reader, callback, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                         on (&mut state, KEY_PASSED);
                     }
 
                     _ if is (state, SEP_PASSED) && not (state, VAL_PASSED) => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_flow (reader, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                        try! (self.read_node_flow (reader, callback, &ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                         on (&mut state, VAL_PASSED);
                     }
 
@@ -1751,11 +1764,11 @@ impl Reader {
 
 
 
-    fn read_directive_yaml<R: Read> (&mut self, reader: &mut R, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_yaml<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         self.tokenizer.get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
-                self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %YAML directive")).unwrap_err ()
+                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %YAML directive")).unwrap_err ()
             })
             .and_then (|(token, len, chars)| {
                 match token {
@@ -1764,30 +1777,30 @@ impl Reader {
                         self.tokenizer.get_token (reader)
                             .ok_or_else (|| {
                                 let idx = self.get_idx ();
-                                self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Cannot read the version part of the %YAML directive")).unwrap_err ()
+                                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Cannot read the version part of the %YAML directive")).unwrap_err ()
                             })
                     }
                     _ => {
                         let idx = self.get_idx ();
-                        Err (self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Any %YAML directive should be followed by some space characters")).unwrap_err ())
+                        Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Any %YAML directive should be followed by some space characters")).unwrap_err ())
                     }
                 }
             }).and_then (|(_, len, chars)| {
                 let chunk = self.consume (reader, len, chars);
 
-                self.check_yaml_version (level, parent_idx, &chunk)
+                self.check_yaml_version (callback, level, parent_idx, &chunk)
                     .and_then (|ver| {
                         let idx = self.get_idx ();
                         self.yield_block (Block::new (
                             Id { level: level, parent: parent_idx, index: idx },
                             BlockType::DirectiveYaml (ver)
-                        ))
+                        ), callback)
                     })
             })
     }
 
 
-    fn check_bom<R: Read> (&mut self, reader: &mut R, level: usize, parent_idx: usize, len: usize) -> Result<(), ReadError> {
+    fn check_bom<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, len: usize) -> Result<(), ReadError> {
         let is_my_bom = {
             let bom = reader.slice (len).unwrap ();
             self.tokenizer.cset.encoding.check_bom (bom)
@@ -1796,6 +1809,7 @@ impl Reader {
         if !is_my_bom {
             let idx = self.get_idx ();
             return self.yield_error (
+                callback,
                 Id { level: level, parent: parent_idx, index: idx },
                 Twine::from ("Found a BOM of another encoding")
             )
@@ -1805,7 +1819,7 @@ impl Reader {
     }
 
 
-    fn check_yaml_version (&mut self, level: usize, parent_idx: usize, chunk: &Chunk) -> Result<(u8, u8), ReadError> {
+    fn check_yaml_version (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, chunk: &Chunk) -> Result<(u8, u8), ReadError> {
         let chunk_slice = &chunk[..];
 
         if self.tokenizer.directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
@@ -1813,12 +1827,13 @@ impl Reader {
         self.tokenizer.cset.extract_dec (chunk_slice)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
-                self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
+                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
             })
             .and_then (|(digit_first, digit_first_len)| {
                 if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
                     let idx = self.get_idx ();
                     return Err (self.yield_error (
+                        callback,
                         Id { level: level, parent: parent_idx, index: idx },
                         Twine::from ("%YAML major version is not supported")
                     ).unwrap_err ())
@@ -1827,12 +1842,13 @@ impl Reader {
                 self.tokenizer.cset.extract_dec_at (chunk_slice, digit_first_len + self.tokenizer.cset.full_stop.len ())
                     .ok_or_else (|| {
                         let idx = self.get_idx ();
-                        self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
+                        self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
                     })
                     .and_then (|(digit_second, digit_second_len)| {
                         if chunk.len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
                             let idx = self.get_idx ();
                             try! (self.yield_warning (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from ("%YAML minor version is not fully supported")
                             ));
@@ -1841,7 +1857,7 @@ impl Reader {
                         } else {
                             if digit_second == 1 {
                                 let idx = self.get_idx ();
-                                try! (self.yield_warning (Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! (
+                                try! (self.yield_warning (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! (
                                     "{}. {}.",
                                     "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
                                     "This means that non-ASCII line-breaks are considered to be non-break characters"
@@ -1849,6 +1865,7 @@ impl Reader {
                             } else {
                                 let idx = self.get_idx ();
                                 return Err (self.yield_error (
+                                    callback,
                                     Id { level: level, parent: parent_idx, index: idx },
                                     Twine::from ("%YAML minor version is not supported")
                                 ).unwrap_err ())
@@ -1861,11 +1878,11 @@ impl Reader {
     }
 
 
-    fn read_directive_tag<R: Read> (&mut self, reader: &mut R, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_tag<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         self.tokenizer.get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
-                self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %TAG directive")).unwrap_err ()
+                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %TAG directive")).unwrap_err ()
             })
             .and_then (|(token, len, chars)| {
                 match token {
@@ -1875,6 +1892,7 @@ impl Reader {
                             .ok_or_else (|| {
                                 let idx = self.get_idx ();
                                 self.yield_error (
+                                    callback,
                                     Id { level: level, parent: parent_idx, index: idx },
                                     Twine::from ("Cannot read the handle part of a %TAG directive")
                                 ).unwrap_err ()
@@ -1883,6 +1901,7 @@ impl Reader {
                     _ => {
                         let idx = self.get_idx ();
                         Err (self.yield_error (
+                            callback,
                             Id { level: level, parent: parent_idx, index: idx },
                             Twine::from ("%TAG directive should be followed by some space characters")
                         ).unwrap_err ())
@@ -1895,6 +1914,7 @@ impl Reader {
                     _ => {
                         let idx = self.get_idx ();
                         return Err (self.yield_error (
+                            callback,
                             Id { level: level, parent: parent_idx, index: idx },
                             Twine::from ("Handle part of a tag must have the format of a tag handle")
                         ).unwrap_err ())
@@ -1909,6 +1929,7 @@ impl Reader {
                     .ok_or_else (|| {
                         let idx = self.get_idx ();
                         self.yield_error (
+                            callback,
                             Id { level: level, parent: parent_idx, index: idx },
                             Twine::from ("Cannot read the prefix part of a %TAG directive")
                         ).unwrap_err ()
@@ -1918,6 +1939,7 @@ impl Reader {
                             _ => {
                                 let idx = self.get_idx ();
                                 return Err (self.yield_error (
+                                    callback,
                                     Id { level: level, parent: parent_idx, index: idx },
                                     Twine::from ("%TAG handle should be followed by some space characters")
                                 ).unwrap_err ());
@@ -1928,6 +1950,7 @@ impl Reader {
                             .ok_or_else (|| {
                                 let idx = self.get_idx ();
                                 self.yield_error (
+                                    callback,
                                     Id { level: level, parent: parent_idx, index: idx },
                                     Twine::from ("Cannot read the prefix part of a %TAG directive")
                                 ).unwrap_err ()
@@ -1944,6 +1967,7 @@ impl Reader {
                                     _ => {
                                         let idx = self.get_idx ();
                                         return Err (self.yield_error (
+                                            callback,
                                             Id { level: level, parent: parent_idx, index: idx },
                                             Twine::from ("Prefix part of a tag must have the format of a tag handle or uri")
                                         ).unwrap_err ())
@@ -1957,23 +1981,23 @@ impl Reader {
                                 self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
                                     BlockType::DirectiveTag ( (handle, prefix) )
-                                ))
+                                ), callback)
                             })
                     })
             })
     }
 
 
-    fn emit_doc_border (&mut self, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
+    fn emit_doc_border (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (
             Id { level: level, parent: parent_idx, index: idx },
             match token { Token::DocumentStart => BlockType::DocStart, _ => BlockType::DocEnd }
-        ))
+        ), callback)
     }
 
 
-    fn read_seq_block_item<R: Read> (&mut self, reader: &mut R, ctx: &Context, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_seq_block_item<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         let prev_indent: usize = *indent;
         if let Some ( (token, len, chars) ) = if accel.is_none () { self.tokenizer.get_token (reader) } else { accel.take () } {
             match token {
@@ -1984,6 +2008,7 @@ impl Reader {
                 _ => {
                     let idx = self.get_idx ();
                     return self.yield_error (
+                        callback,
                         Id { level: level, parent: parent_idx, index: idx },
                         Twine::from ("Unexpected token (expected was '-')")
                     )
@@ -1991,7 +2016,7 @@ impl Reader {
             }
         } else {
             let idx = self.get_idx ();
-            return self.yield_error (Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! ("Unexpected end of the document ({}:{})", file! (), line! ())))
+            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! ("Unexpected end of the document ({}:{})", file! (), line! ())))
         }
 
 
@@ -2003,7 +2028,7 @@ impl Reader {
                     Token::BOM16BE |
                     Token::BOM16LE |
                     Token::BOM8 => {
-                        try! (self.check_bom (reader, level, parent_idx, len));
+                        try! (self.check_bom (reader, callback, level, parent_idx, len));
                         self.skip (reader, len, chars);
                     }
 
@@ -2015,13 +2040,13 @@ impl Reader {
                     _ => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_sblockval (reader, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None, prev_indent));
+                        try! (self.read_node_sblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None, prev_indent));
                         break 'top;
                     }
                 };
             } else {
                 // end of the doc in here
-                return self.yield_null (level, parent_idx);
+                return self.yield_null (callback, level, parent_idx);
             }
         }
 
@@ -2032,6 +2057,7 @@ impl Reader {
     fn read_node_flow<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         indent: usize,
         level: usize,
@@ -2041,12 +2067,13 @@ impl Reader {
         overanchor: &mut Option<Chunk>,
         overtag: &mut Option<Chunk>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, true, false, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, true, false, None)
     }
 
     fn read_node_mblockval<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         indent: usize,
         level: usize,
@@ -2056,12 +2083,13 @@ impl Reader {
         overanchor: &mut Option<Chunk>,
         overtag: &mut Option<Chunk>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, true, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, true, None)
     }
 
     fn read_node_sblockval<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         indent: usize,
         level: usize,
@@ -2072,12 +2100,13 @@ impl Reader {
         overtag: &mut Option<Chunk>,
         orig_indent: usize
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, Some(orig_indent))
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, Some(orig_indent))
     }
 
     fn read_node<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         indent: usize,
         level: usize,
@@ -2087,13 +2116,14 @@ impl Reader {
         overanchor: &mut Option<Chunk>,
         overtag: &mut Option<Chunk>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, None)
     }
 
 
     fn read_node_<R: Read> (
         &mut self,
         reader: &mut R,
+        callback: &mut FnMut (Block) -> Result<(), Twine>,
         ctx: &Context,
         indent: usize,
         level: usize,
@@ -2142,7 +2172,7 @@ impl Reader {
                         Token::BOM16BE |
                         Token::BOM16LE |
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, level, parent_idx, len));
+                            try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -2188,7 +2218,7 @@ impl Reader {
                                             anchor: None,
                                             tag: None,
                                             content: NodeKind::LiteralBlockOpen
-                                        }))));
+                                        })), callback));
 
                                         *cur_idx = id.index;
                                         flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2203,7 +2233,7 @@ impl Reader {
                                         try! (self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Literal (chunk)
-                                        )));
+                                        ), callback));
                                     },
                                     _ => ()
                                 };
@@ -2213,7 +2243,7 @@ impl Reader {
                                 try! (self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
                                     BlockType::Literal (chunk)
-                                )));
+                                ), callback));
                                 *cur_idx = idx;
                             };
                         }
@@ -2272,7 +2302,7 @@ impl Reader {
                                             anchor: None,
                                             tag: None,
                                             content: NodeKind::LiteralBlockOpen
-                                        }))));
+                                        })), callback));
 
                                         *cur_idx = id.index;
                                         flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2287,7 +2317,7 @@ impl Reader {
                                         try! (self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Literal (chunk)
-                                        )));
+                                        ), callback));
                                     },
                                     _ => ()
                                 };
@@ -2296,7 +2326,7 @@ impl Reader {
                                 try! (self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
                                     BlockType::Literal (chunk)
-                                )));
+                                ), callback));
                                 *cur_idx = idx;
                             }
 
@@ -2383,7 +2413,7 @@ impl Reader {
                                         anchor: None,
                                         tag: None,
                                         content: NodeKind::LiteralBlockOpen
-                                    }))));
+                                    })), callback));
 
                                     *cur_idx = id.index;
                                     flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2398,7 +2428,7 @@ impl Reader {
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    )));
+                                    ), callback));
                                 },
                                 _ => ()
                             };
@@ -2411,7 +2441,7 @@ impl Reader {
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    )));
+                                    ), callback));
                                     *cur_idx = idx;
 
                                     on (&mut state, AFTER_SPACE | INDENT_PASSED);
@@ -2423,7 +2453,7 @@ impl Reader {
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    )));
+                                    ), callback));
                                     *cur_idx = idx;
 
                                     off (&mut state, INDENT_PASSED);
@@ -2438,7 +2468,7 @@ impl Reader {
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    )));
+                                    ), callback));
                                     *cur_idx = idx;
 
                                     off (&mut state, AFTER_SPACE | NEWLINE_PASSED);
@@ -2454,7 +2484,7 @@ impl Reader {
                                         try! (self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Literal (chunk)
-                                        )));
+                                        ), callback));
                                         *cur_idx = idx;
                                     }
 
@@ -2472,7 +2502,7 @@ impl Reader {
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    )));
+                                    ), callback));
                                     *cur_idx = idx;
 
                                     off (&mut state, NEWLINE_PASSED | AFTER_SPACE /*| INDENT_PASSED*/);
@@ -2487,6 +2517,7 @@ impl Reader {
                         Token::ReservedCommercialAt => {
                             let idx = self.get_idx ();
                             try! (self.yield_error (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from ("@ character is reserved and may not be used to start a plain scalar")
                             ));
@@ -2496,6 +2527,7 @@ impl Reader {
                         Token::ReservedGraveAccent => {
                             let idx = self.get_idx ();
                             try! (self.yield_error (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from ("` character is reserved and may not be used to start a plain scalar")
                             ));
@@ -2557,12 +2589,13 @@ impl Reader {
                                         anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                         tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                         content: NodeKind::Sequence
-                                    }))));
+                                    })), callback));
 
-                                    try! (self.read_seq_block (reader, &ctx, level + 1, idx, None));
+                                    try! (self.read_seq_block (reader, callback, &ctx, level + 1, idx, None));
                                 } else {
                                     try! (self.read_layer_expected (
                                         reader,
+                                        callback,
                                         &ctx,
                                         level,
                                         parent_idx,
@@ -2590,7 +2623,7 @@ impl Reader {
                                         anchor: anchor,
                                         tag: tag,
                                         content: NodeKind::Null
-                                    })));
+                                    })), callback);
                                 }
 
                                 break 'top;
@@ -2613,7 +2646,7 @@ impl Reader {
                                     anchor: anchor,
                                     tag: tag,
                                     content: NodeKind::Null
-                                })));
+                                })), callback);
                             }
                         }
 
@@ -2674,12 +2707,13 @@ impl Reader {
                                             anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                             tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                             content: NodeKind::Sequence
-                                        }))));
+                                        })), callback));
 
-                                        try! (self.read_seq_block (reader, &ctx, level + 1, idx, Some ( (token, len, chars) )));
+                                        try! (self.read_seq_block (reader, callback, &ctx, level + 1, idx, Some ( (token, len, chars) )));
                                     },
                                     _ => try! (self.read_layer_expected (
                                         reader,
+                                        callback,
                                         &ctx,
                                         level,
                                         parent_idx,
@@ -2707,7 +2741,7 @@ impl Reader {
                                         anchor: anchor,
                                         tag: tag,
                                         content: NodeKind::Null
-                                    })));
+                                    })), callback);
                                 }
 
                                 break 'top;
@@ -2730,7 +2764,7 @@ impl Reader {
                                     anchor: anchor,
                                     tag: tag,
                                     content: NodeKind::Null
-                                })));
+                                })), callback);
                             }
                         }
 
@@ -2744,7 +2778,7 @@ impl Reader {
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Alias (chunk)
-                            )));
+                            ), callback));
 
                             *cur_idx = idx;
 
@@ -2771,11 +2805,11 @@ impl Reader {
                                 anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                 tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                 content: NodeKind::Sequence
-                            }))));
+                            })), callback));
 
                             *cur_idx = idx;
 
-                            return self.read_seq_block (reader, &ctx, level + 1, idx, Some ( (token, len, chars) ));
+                            return self.read_seq_block (reader, callback, &ctx, level + 1, idx, Some ( (token, len, chars) ));
                         }
 
 
@@ -2790,9 +2824,9 @@ impl Reader {
                                     tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                     content: NodeKind::Mapping
                                 })
-                            )));
+                            ), callback));
 
-                            return self.read_map_block_explicit (reader, &ctx, level + 1, idx, Some ( (token, len, chars) ))
+                            return self.read_map_block_explicit (reader, callback, &ctx, level + 1, idx, Some ( (token, len, chars) ))
                         }
 
 
@@ -2805,8 +2839,8 @@ impl Reader {
                             *cur_idx = new_idx;
 
                             return match token {
-                                Token::SequenceStart => self.read_seq_flow (reader, &ctx, new_idx, level, parent_idx, indent, anchor, tag, overanchor, overtag),
-                                _ => self.read_map_flow (reader, &ctx, new_idx, level, parent_idx, indent, anchor, tag, overanchor, overtag)
+                                Token::SequenceStart => self.read_seq_flow (reader, callback, &ctx, new_idx, level, parent_idx, indent, anchor, tag, overanchor, overtag),
+                                _ => self.read_map_flow (reader, callback, &ctx, new_idx, level, parent_idx, indent, anchor, tag, overanchor, overtag)
                             }
                         }
 
@@ -2831,7 +2865,7 @@ impl Reader {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::Scalar (chunk)
-                            })));
+                            })), callback);
                         }
 
 
@@ -2839,6 +2873,7 @@ impl Reader {
                         Token::Pipe => {
                             return self.read_scalar_block (
                                 reader,
+                                callback,
                                 &ctx,
                                 level,
                                 parent_idx,
@@ -2942,13 +2977,14 @@ impl Reader {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::Null
-                            })));
+                            })), callback);
                         }
 
 
                         _ => {
                             let idx = self.get_idx ();
                             return Err (self.yield_error (
+                                callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Twine::from (format! (r"Unexpected token ({}:{})", file! (), line! ()))
                             ).unwrap_err ())
@@ -2975,7 +3011,7 @@ impl Reader {
                         anchor: anchor,
                         tag: tag,
                         content: NodeKind::Null
-                    })));
+                    })), callback);
                 }
 
                 break;
@@ -3005,7 +3041,7 @@ impl Reader {
                     anchor: anchor,
                     tag: tag,
                     content: NodeKind::Scalar (chunk)
-                }))));
+                })), callback));
             }
 
             Some (Block { id, cargo: BlockType::Node (Node {
@@ -3029,7 +3065,7 @@ impl Reader {
                     anchor: anchor,
                     tag: tag,
                     content: NodeKind::LiteralBlockClose
-                }))));
+                })), callback));
             }
 
             Some (_) => unreachable! (),
@@ -3053,7 +3089,7 @@ impl Reader {
                         anchor: anchor,
                         tag: tag,
                         content: NodeKind::Null
-                    })));
+                    })), callback);
                 }
             }
         };
@@ -3244,9 +3280,12 @@ mod tests {
         let src = "%YAML 1.2\n%TAG !e! tag://example.com,2015:testapp/\n---\n...";
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3304,9 +3343,12 @@ mod tests {
         let src = "%YAML";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3333,9 +3375,12 @@ mod tests {
         let src = "%YAML/1.2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3362,9 +3407,12 @@ mod tests {
         let src = "%YAML ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3391,9 +3439,12 @@ mod tests {
         let src = "%YAML -";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3420,9 +3471,12 @@ mod tests {
         let src = "%YAML 2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3449,9 +3503,12 @@ mod tests {
         let src = "%YAML 10.2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3478,9 +3535,12 @@ mod tests {
         let src = "%YAML 1.a";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3507,9 +3567,12 @@ mod tests {
         let src = "%YAML 1.0";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3536,9 +3599,12 @@ mod tests {
         let src = "%YAML 1.21";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3576,9 +3642,12 @@ mod tests {
         let src = "%YAML 1.1";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3612,9 +3681,12 @@ mod tests {
         let src = "%TAG";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3642,9 +3714,12 @@ mod tests {
         let src = "%TAG/";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3672,9 +3747,12 @@ mod tests {
         let src = "%TAG ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3702,9 +3780,12 @@ mod tests {
         let src = "%TAG testo";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3732,9 +3813,12 @@ mod tests {
         let src = "%TAG !tag!";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3762,9 +3846,12 @@ mod tests {
         let src = "%TAG !tag! ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3792,9 +3879,12 @@ mod tests {
         let src = "%TAG !tag! - testo";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender.clone ());
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ()))
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
@@ -3820,9 +3910,12 @@ mod tests {
         let src = "%TAG ! tag:clarkevans.com,2002:\n---\n";
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
-        reader.read (SliceReader::new (src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {:?}", err)); });
+        reader.read (
+            SliceReader::new (src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {:?}", err)); });
 
 
         if let Ok (block) = receiver.try_recv () {

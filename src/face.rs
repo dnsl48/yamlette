@@ -43,10 +43,13 @@ macro_rules! yamlette {
         let mut _book = $crate::book::Book::new ();
 
         let _result/*: Result<(), Result<SageError, ReadError>>*/ = match *$rs {
-            Ok ( ref mut rs ) => {
-                match rs.0.read ($crate::face::skimmer::reader::IntoReader::into_reader ($source)) {
+            Ok ( (ref mut reader, ref mut sender, ref sage) ) => {
+                match reader.read (
+                    $crate::face::skimmer::reader::IntoReader::into_reader ($source),
+                    &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+                ) {
                     Ok (_) => {
-                        _book.get_written (&rs.1);
+                        _book.get_written (sage);
                         Ok ( () )
                     }
                     Err (err) => Err (Err (err))
@@ -94,10 +97,10 @@ macro_rules! yamlette {
 
         let (sender, receiver) = channel ();
 
-        let reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         match Sage::new (cset, receiver, schema) {
-            Ok (sage) => Ok ( (reader, sage) ),
+            Ok (sage) => Ok ( (reader, sender, sage) ),
             Err ( err ) => Err ( SageError::IoError (err) )
         }
     }};

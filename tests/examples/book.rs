@@ -3,11 +3,14 @@ macro_rules! sage {
         let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         let sage = Sage::new (cset, receiver, get_schema ());
 
-        reader.read (SliceReader::new ($src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
     }}
@@ -19,14 +22,17 @@ macro_rules! sage11 {
         let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         let sage = Sage::new (cset, receiver, get_schema ()).and_then (|sg| {
             sg.set_yaml_version (YamlVersion::V1x1).ok ();
             Ok ( sg )
         });
 
-        reader.read (SliceReader::new ($src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
     }}
@@ -60,7 +66,7 @@ mod stable {
     use self::yamlette::reader::Reader;
     use self::yamlette::sage::{ Sage, YamlVersion };
     use self::yamlette::tokenizer::Tokenizer;
-    use self::yamlette::txt::get_charset_utf8;
+    use self::yamlette::txt::{ Twine, get_charset_utf8 };
     use std::sync::mpsc::channel;
 
 

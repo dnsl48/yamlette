@@ -3,11 +3,14 @@ macro_rules! sage {
         let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         let sage = Sage::new (cset, receiver, get_schema ());
 
-        reader.read (SliceReader::new ($src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src.as_bytes ()),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
     }}
@@ -20,12 +23,15 @@ macro_rules! sage_with_error {
         let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         let sage = Sage::new (cset, receiver, get_schema ());
 
         reader
-            .read (SliceReader::new ($src.as_bytes ()))
+            .read (
+                SliceReader::new ($src.as_bytes ()),
+                &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            )
             .and_then (|_| { assert! (false, format! ("Must be an error in here; {}: {}", $err_pos, $err_desc)); Ok ( () ) })
             .or_else (|err| {
                 assert_eq! ($err_desc, err.description);
@@ -44,11 +50,14 @@ macro_rules! sage_bytes {
         let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
+        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
 
         let sage = Sage::new (cset, receiver, get_schema ());
 
-        reader.read (SliceReader::new ($src)).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read (
+            SliceReader::new ($src),
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
     }}
@@ -818,7 +827,7 @@ mod stable {
     use self::yamlette::reader::Reader;
 
     use self::yamlette::tokenizer::Tokenizer;
-    use self::yamlette::txt::get_charset_utf8;
+    use self::yamlette::txt::{ Twine, get_charset_utf8 };
 
     use self::yamlette::model::Tagged;
 

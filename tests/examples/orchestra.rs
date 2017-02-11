@@ -1,36 +1,3 @@
-macro_rules! sage {
-    ($src:expr) => {{
-        let cset = get_charset_utf8 ();
-
-        let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()), sender);
-
-        let sage = Sage::new (cset, receiver, get_schema ());
-
-        reader.read (SliceReader::new ($src.as_bytes ())).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
-
-        sage
-    }}
-}
-
-
-
-macro_rules! book {
-    ($sage:expr) => {{
-        let s = $sage.unwrap ();
-
-        let mut book = Book::new ();
-
-        for idea in &*s {
-            book.stamp (idea);
-        }
-
-        book
-    }}
-}
-
-
-
 macro_rules! check {
     ( $expect:ident ; $rules:tt ) => {{
         let result = yamlette! ( write ; $rules );
