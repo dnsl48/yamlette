@@ -1,6 +1,6 @@
 extern crate skimmer;
 
-use self::skimmer::reader::Chunk;
+use self::skimmer::{ Datum, Marker, Rune };
 
 use model::Schema;
 use reader::{ Block, BlockType, Node, NodeKind };
@@ -24,14 +24,13 @@ pub enum Clue {
 
 
 
-
-// TODO: get rid of tag_handles and use schema instead
 pub struct Conveyor {
     pipe: Receiver<Block>,
     cin: Receiver<(u8, Clue)>,
     ex_cin: Receiver<Clue>,
     out: Sender<Idea>,
 
+    // data: Data,
     ants: [(SyncSender<Message>, JoinHandle<()>); 3],
     msgs: usize,
 
@@ -109,6 +108,7 @@ impl Conveyor {
                                         ex_cin: ex_cin,
                                         out: idea_sdr,
 
+                                        // data: Data::with_capacity (4),
                                         ants: [ ant1, ant2, ant3 ],
                                         msgs: 0,
 
@@ -138,7 +138,9 @@ impl Conveyor {
         let mut job_is_done = false;
         let mut job_is_done_sent = false;
 
-        let mut buf_literal_block: Option<(usize, Vec<Chunk>)> = None;
+        let mut datum: Option<Arc<Datum>> = None;
+
+        let mut buf_literal_block: Option<(usize, Vec<Result<Marker, (Rune, usize)>>)> = None;
 
 
         'top: loop {
@@ -196,6 +198,11 @@ impl Conveyor {
 
                 flush_ants = false;
 
+                if let Some (arc) = datum {
+                    _conveyor_signal! (self, Signal::Datum (arc.clone ())) ?;
+                }
+                datum = None;
+
                 if dawn {
                     dawn = false;
                     try! (self.think (Idea::Dawn));
@@ -231,6 +238,11 @@ impl Conveyor {
                         flush_ants = true;
                     }
 
+                    BlockType::Datum (arc) => {
+                        datum = Some (arc);
+                        flush_ants = true;
+                    }
+
                     BlockType::DirectiveYaml (version) => try! (self.set_version (version)),
 
                     BlockType::DirectiveTag ( (tag, handle) ) => try! (self.convey_request (Request::ReadDirectiveTag (block.id, tag, handle))),
@@ -261,11 +273,20 @@ impl Conveyor {
                         buf_literal_block = Some ((block.id.index, Vec::with_capacity (32)));
                     }
 
-                    BlockType::Literal ( _ ) if buf_literal_block.is_some () => {
+                    BlockType::Literal ( .. ) if buf_literal_block.is_some () => {
                         if let BlockType::Literal (chunk) = block.cargo {
                             if let Some ( (idx, ref mut vec) ) = buf_literal_block {
                                 if idx != block.id.parent { panic! ("Unexpected literal!") }
-                                vec.push (chunk);
+                                vec.push (Ok (chunk));
+                            }
+                        }
+                    }
+
+                    BlockType::Rune ( .. ) if buf_literal_block.is_some () => {
+                        if let BlockType::Rune (rune, amount) = block.cargo {
+                            if let Some ( (idx, ref mut vec) ) = buf_literal_block {
+                                if idx != block.id.parent { panic! ("Unexpected literal!") }
+                                vec.push (Err ((rune, amount)));
                             }
                         }
                     }
@@ -276,10 +297,11 @@ impl Conveyor {
                         try! (self.convey_request (Request::ReadLiteralBlock ( block.id, anchor, tag, vec )));
                     }
 
-                    BlockType::Alias (_) |
-                    BlockType::BlockMap (_, _, _) |
-                    BlockType::Literal ( _ ) |
-                    BlockType::Node ( _ ) => try! (self.convey_request (Request::ReadBlock (block))),
+                    BlockType::Alias ( .. ) |
+                    BlockType::BlockMap ( .. ) |
+                    BlockType::Literal ( .. ) |
+                    BlockType::Rune ( .. ) |
+                    BlockType::Node ( .. ) => try! (self.convey_request (Request::ReadBlock (block))),
                 }
 
             } else {

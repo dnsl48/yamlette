@@ -1,16 +1,6 @@
-// TODO: rtrim non-block literals
-
-// TODO: empty values like
-// - ~
-// -
-// - !!null null
-// ...
-// a:
-// b: true
-// c: false
-
-
-
+macro_rules! data {
+    () => {{ Data::with_capacity (4) }};
+}
 
 
 macro_rules! read {
@@ -86,6 +76,16 @@ macro_rules! assert_id {
 
 
 macro_rules! expect {
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), datum, $data:expr ) => {{
+        if let Ok (block) = $receiver.try_recv () {
+            assert_id! (block.id, $level, $parent, $index);
+
+            if let BlockType::Datum (datum) = block.cargo {
+                $data.push (datum);
+            } else { assert! (false, "Not a datum provided") }
+        } else { assert! (false, "No datum provided") };
+    }};
+
     ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), error, $desc:expr, $pos:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
@@ -120,13 +120,13 @@ macro_rules! expect {
         } else { assert! (false, "Cannot fetch a new block") }
     }};
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), dir, tag, $handle:expr, $prefix:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, dir, tag, $handle:expr, $prefix:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
-            if let BlockType::DirectiveTag ( (handle, prefix) ) = block.cargo {
-                assert_eq! (&*handle, $handle.as_bytes ());
-                assert_eq! (&*prefix, $prefix.as_bytes ());
+            if let BlockType::DirectiveTag ( (ref handle, ref prefix) ) = block.cargo {
+                assert_eq! ($data.chunk (handle).as_slice (), $handle.as_bytes ());
+                assert_eq! ($data.chunk (prefix).as_slice (), $prefix.as_bytes ());
             } else { assert! (false, format! ("Unexpected result: expected DirectiveTag, got {:?}", block.cargo)) }
         } else { assert! (false, "Cannot fetch a new block") }
     }};
@@ -149,18 +149,18 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), alias, $val:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, alias, $val:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
-            if let BlockType::Alias (chunk) = block.cargo {
-                assert_eq! (&*chunk, $val.as_bytes ());
+            if let BlockType::Alias (ref marker) = block.cargo {
+                assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
             } else { assert! (false, "Unexpected result") }
         } else { assert! (false, "Unexpected result") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, mapping ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, mapping ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
@@ -173,15 +173,15 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, mapping, &=$anchor:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, mapping, &=$anchor:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.tag.is_none ());
 
-                if let Some (chunk) = node.anchor {
-                    assert_eq! (&*chunk, $anchor.as_bytes ());
+                if let Some (ref marker) = node.anchor {
+                    assert_eq! ($data.chunk (marker).as_slice (), $anchor.as_bytes ());
                 } else { assert! (false, "Unexpected result"); }
 
                 if let NodeKind::Mapping = node.content { } else { assert! (false, "Unexpected result"); }
@@ -190,15 +190,15 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, mapping, !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, mapping, !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
 
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Unexpected result"); }
 
                 if let NodeKind::Mapping = node.content { } else { assert! (false, "Unexpected result {:?}", node.content); }
@@ -220,15 +220,15 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, sequence, !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, sequence, !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
 
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Tag is None, must be {:?}", $tag); }
 
                 if let NodeKind::Sequence = node.content { } else { assert! (false, "Unexpected result {:?}", node.content); }
@@ -265,89 +265,89 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, scalar, $val:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, scalar, $val:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
                 assert! (node.tag.is_none ());
-                if let NodeKind::Scalar (chunk) = node.content {
-                    assert_eq! (&*chunk, $val.as_bytes ());
+                if let NodeKind::Scalar (ref marker) = node.content {
+                    assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
                 } else { assert! (false, "Unexpected result / not a scalar / {:?}", node.content); }
             } else { assert! (false, format! ("Unexpected result / not a node / {:?}", block.cargo)) }
         } else { assert! (false, "Unexpected result / empty queue") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, scalar, $val:expr, &=$anchor:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, scalar, $val:expr, &=$anchor:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.tag.is_none ());
 
-                if let Some (chunk) = node.anchor {
-                    assert_eq! (&*chunk, $anchor.as_bytes ());
+                if let Some (ref marker) = node.anchor {
+                    assert_eq! ($data.chunk (marker).as_slice (), $anchor.as_bytes ());
                 } else { assert! (false, "Unexpected result"); }
 
-                if let NodeKind::Scalar (chunk) = node.content {
-                    assert_eq! (&*chunk, $val.as_bytes ());
+                if let NodeKind::Scalar (ref marker) = node.content {
+                    assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
                 } else { assert! (false, "Unexpected result"); }
             } else { assert! (false, "Unexpected result") }
         } else { assert! (false, "Unexpected result") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, scalar, $val:expr, !=$tag:expr, &=$anchor:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, scalar, $val:expr, !=$tag:expr, &=$anchor:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Unexpected result / tag unequality"); }
 
-                if let Some (chunk) = node.anchor {
-                    assert_eq! (&*chunk, $anchor.as_bytes ());
+                if let Some (ref marker) = node.anchor {
+                    assert_eq! ($data.chunk (marker).as_slice (), $anchor.as_bytes ());
                 } else { assert! (false, "Unexpected result"); }
 
-                if let NodeKind::Scalar (chunk) = node.content {
-                    assert_eq! (&*chunk, $val.as_bytes ());
+                if let NodeKind::Scalar (ref marker) = node.content {
+                    assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
                 } else { assert! (false, "Unexpected result / scalar unequality"); }
             } else { assert! (false, "Unexpected result / not a node") }
         } else { assert! (false, "Unexpected result / cannot fetch a block") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, scalar, $val:expr, !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, scalar, $val:expr, !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
 
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Unexpected result / tag unequality / orig != expect / {:?} != {:?}", node.tag, $tag); }
 
-                if let NodeKind::Scalar (chunk) = node.content {
-                    assert_eq! (&*chunk, $val.as_bytes ());
+                if let NodeKind::Scalar (ref marker) = node.content {
+                    assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
                 } else { assert! (false, "Unexpected scalar / {:?}", &node.content); }
             } else { assert! (false, "Unexpected result / not a node") }
         } else { assert! (false, "Unexpected result / cannot fetch a block") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, scalar !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, scalar !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
 
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Unexpected result / tag unequality / orig != expect / {:?} != {:?}", node.tag, $tag); }
 
                 if let NodeKind::Null = node.content {
@@ -357,18 +357,22 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), literal, $val:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, literal, $val:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
-            if let BlockType::Literal (chunk) = block.cargo {
-                assert_eq! (&*chunk, $val.as_bytes ());
-            } else { assert! (false, "Unexpected result") }
-        } else { assert! (false, "Unexpected result") }
+            if let BlockType::Literal (ref marker) = block.cargo {
+                assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
+            } else if let BlockType::Rune (ref rune, amount) = block.cargo {
+                let mut vec: Vec<u8> = Vec::with_capacity (rune.len () * amount);
+                for _ in 0 .. amount { vec.extend (rune.as_slice ()); }
+                assert_eq! (vec.as_slice (), $val.as_bytes ());
+            } else { assert! (false, format! ("Unexpected result: {:?}", block)) }
+        } else { assert! (false, "No result") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ) ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ) ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
@@ -379,7 +383,7 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
@@ -389,25 +393,25 @@ macro_rules! expect {
                 let tag = tag.unwrap ();
 
                 assert_id! (id, $m_level, $m_parent, $m_index);
-                assert_eq! (&*tag, $tag.as_bytes ());
+                assert_eq! ($data.chunk (&tag).as_slice (), $tag.as_bytes ());
             } else { assert! (false, "Unexpected result") }
         } else { assert! (false, "Unexpected result") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), &=$anchor:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), &=$anchor:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
-            if let BlockType::BlockMap (id, Some (anchor), None) = block.cargo {
+            if let BlockType::BlockMap (id, Some (ref anchor), None) = block.cargo {
                 assert_id! (id, $m_level, $m_parent, $m_index);
-                assert_eq! (&*anchor, $anchor.as_bytes ());
+                assert_eq! ($data.chunk (anchor).as_slice (), $anchor.as_bytes ());
             } else { assert! (false, "Unexpected result") }
         } else { assert! (false, "Unexpected result") }
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), &=$anchor:expr, !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, block, map, ( $m_level:expr, $m_parent:expr, $m_index:expr ), &=$anchor:expr, !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
@@ -419,8 +423,8 @@ macro_rules! expect {
                 let tag = tag.unwrap ();
 
                 assert_id! (id, $m_level, $m_parent, $m_index);
-                assert_eq! (&*anchor, $anchor.as_bytes ());
-                assert_eq! (&*tag, $tag.as_bytes ());
+                assert_eq! ($data.chunk (&anchor).as_slice (), $anchor.as_bytes ());
+                assert_eq! ($data.chunk (&tag).as_slice (), $tag.as_bytes ());
             } else { assert! (false, "Unexpected result") }
         } else { assert! (false, "Unexpected result") }
     }};
@@ -457,15 +461,15 @@ macro_rules! expect {
     }};
 
 
-    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, block, close, !=$tag:expr ) => {{
+    ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), $data:expr, node, block, close, !=$tag:expr ) => {{
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
                 assert! (node.anchor.is_none ());
 
-                if let Some (chunk) = node.tag {
-                    assert_eq! (&*chunk, $tag.as_bytes ());
+                if let Some (ref marker) = node.tag {
+                    assert_eq! ($data.chunk (marker).as_slice (), $tag.as_bytes ());
                 } else { assert! (false, "Unexpected result / tag unequality"); }
 
                 if let NodeKind::LiteralBlockClose  = node.content { } else { assert! (false, "Unexpected result / not a block"); }
@@ -491,11 +495,13 @@ macro_rules! expect {
 
 
 
-#[cfg (all (test, not (feature = "dev")))]
+// #[cfg (all (test, not (feature = "dev")))]
+#[cfg (test)]
 mod stable {
     extern crate skimmer;
     extern crate yamlette;
 
+    use self::skimmer::{ Data, Symbol };
     use self::skimmer::reader::SliceReader;
 
     use self::yamlette::txt::{ Twine, get_charset_utf8 };
@@ -519,12 +525,14 @@ r"- Mark McGwire
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"Mark McGwire");
-        expect! (receiver, (1, 2, 4), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 2, 5), node, scalar, r"Ken Griffey");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"Ken Griffey");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -541,15 +549,17 @@ rbi: 147   # Runs Batted In";
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"hr");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"65");
-        expect! (receiver, (1, 3, 5), node, scalar, r"avg");
-        expect! (receiver, (1, 3, 6), node, scalar, r"0.278");
-        expect! (receiver, (1, 3, 7), node, scalar, r"rbi");
-        expect! (receiver, (1, 3, 8), node, scalar, r"147");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"hr");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"65");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"avg");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"0.278");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"rbi");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"147");
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -571,19 +581,21 @@ national:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"american");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"american");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"Boston Red Sox");
-        expect! (receiver, (2, 4, 6), node, scalar, r"Detroit Tigers");
-        expect! (receiver, (2, 4, 7), node, scalar, r"New York Yankees");
-        expect! (receiver, (1, 3, 8), node, scalar, r"national");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Boston Red Sox");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"Detroit Tigers");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"New York Yankees");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"national");
         expect! (receiver, (1, 3, 9), node, sequence);
-        expect! (receiver, (2, 9, 10), node, scalar, r"New York Mets");
-        expect! (receiver, (2, 9, 11), node, scalar, r"Chicago Cubs");
-        expect! (receiver, (2, 9, 12), node, scalar, r"Atlanta Braves");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"New York Mets");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"Chicago Cubs");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r"Atlanta Braves");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -605,23 +617,25 @@ r"-
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"name");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"Mark McGwire");
-        expect! (receiver, (2, 4, 6), node, scalar, r"hr");
-        expect! (receiver, (2, 4, 7), node, scalar, r"65");
-        expect! (receiver, (2, 4, 8), node, scalar, r"avg");
-        expect! (receiver, (2, 4, 9), node, scalar, r"0.278");
-        expect! (receiver, (1, 2, 10), node, scalar, r"name");
-        expect! (receiver, (1, 2, 11), block, map, (1, 2, 10));
-        expect! (receiver, (2, 11, 12), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (2, 11, 13), node, scalar, r"hr");
-        expect! (receiver, (2, 11, 14), node, scalar, r"63");
-        expect! (receiver, (2, 11, 15), node, scalar, r"avg");
-        expect! (receiver, (2, 11, 16), node, scalar, r"0.288");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"name");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"hr");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"65");
+        expect! (receiver, (2, 4, 8), data, node, scalar, r"avg");
+        expect! (receiver, (2, 4, 9), data, node, scalar, r"0.278");
+        expect! (receiver, (1, 2, 10), data, node, scalar, r"name");
+        expect! (receiver, (1, 2, 11), data, block, map, (1, 2, 10));
+        expect! (receiver, (2, 11, 12), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (2, 11, 13), data, node, scalar, r"hr");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r"63");
+        expect! (receiver, (2, 11, 15), data, node, scalar, r"avg");
+        expect! (receiver, (2, 11, 16), data, node, scalar, r"0.288");
         expect! (receiver, (0, 0, 17), doc, end);
 
         the_end! (receiver);
@@ -638,23 +652,26 @@ r"- [name        , hr, avg  ]
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
-        expect! (receiver, (2, 3, 4), node, scalar, r"name");
-        expect! (receiver, (2, 3, 5), node, scalar, r"hr");
-        expect! (receiver, (2, 3, 6), node, scalar, r"avg");
+        expect! (receiver, (0, 0, 0), datum, data);
+
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"name");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"hr");
+        expect! (receiver, (2, 3, 6), data, node, scalar, r"avg");
         expect! (receiver, (1, 2, 3), node, sequence);
 
-        expect! (receiver, (2, 7, 8), node, scalar, r"Mark McGwire");
-        expect! (receiver, (2, 7, 9), node, scalar, r"65");
-        expect! (receiver, (2, 7, 10), node, scalar, r"0.278");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r"65");
+        expect! (receiver, (2, 7, 10), data, node, scalar, r"0.278");
         expect! (receiver, (1, 2, 7), node, sequence);
 
-        expect! (receiver, (2, 11, 12), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (2, 11, 13), node, scalar, r"63");
-        expect! (receiver, (2, 11, 14), node, scalar, r"0.288");
+        expect! (receiver, (2, 11, 12), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (2, 11, 13), data, node, scalar, r"63");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r"0.288");
         expect! (receiver, (1, 2, 11), node, sequence);
 
         expect! (receiver, (0, 0, 15), doc, end);
@@ -675,21 +692,23 @@ Sammy Sosa: {
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Mark McGwire");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (2, 4, 5), node, scalar, r"hr");
-        expect! (receiver, (2, 4, 6), node, scalar, r"65");
-        expect! (receiver, (2, 4, 7), node, scalar, r"avg");
-        expect! (receiver, (2, 4, 8), node, scalar, r"0.278");
-        expect! (receiver, (1, 3, 4), node, mapping);
-        expect! (receiver, (1, 3, 9), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (2, 10, 11), node, scalar, r"hr");
-        expect! (receiver, (2, 10, 12), node, scalar, r"63");
-        expect! (receiver, (2, 10, 13), node, scalar, r"avg");
-        expect! (receiver, (2, 10, 14), node, scalar, r"0.288");
-        expect! (receiver, (1, 3, 10), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"hr");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"65");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"avg");
+        expect! (receiver, (2, 4, 8), data, node, scalar, r"0.278");
+        expect! (receiver, (1, 3, 4), data, node, mapping);
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"hr");
+        expect! (receiver, (2, 10, 12), data, node, scalar, r"63");
+        expect! (receiver, (2, 10, 13), data, node, scalar, r"avg");
+        expect! (receiver, (2, 10, 14), data, node, scalar, r"0.288");
+        expect! (receiver, (1, 3, 10), data, node, mapping);
         expect! (receiver, (0, 0, 15), doc, end);
 
         the_end! (receiver);
@@ -713,18 +732,20 @@ r"# Ranking of 1998 home runs
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"Mark McGwire");
-        expect! (receiver, (1, 2, 4), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 2, 5), node, scalar, r"Ken Griffey");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"Ken Griffey");
         expect! (receiver, (0, 0, 6), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"Chicago Cubs");
-        expect! (receiver, (1, 2, 4), node, scalar, r"St Louis Cardinals");
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Chicago Cubs");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"St Louis Cardinals");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -748,37 +769,39 @@ action: grand slam
 ";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"time");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"time");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"20");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"03");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"20");
+        expect! (receiver, (2, 4, 5), data, literal, r"20");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"03");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"20");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"player");
-        expect! (receiver, (1, 3, 11), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 3, 12), node, scalar, r"action");
-        expect! (receiver, (1, 3, 13), node, scalar, r"strike (miss)");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"player");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"action");
+        expect! (receiver, (1, 3, 13), data, node, scalar, r"strike (miss)");
         expect! (receiver, (0, 0, 14), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"time");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"time");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"20");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"03");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"47");
+        expect! (receiver, (2, 4, 5), data, literal, r"20");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"03");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"47");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"player");
-        expect! (receiver, (1, 3, 11), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 3, 12), node, scalar, r"action");
-        expect! (receiver, (1, 3, 13), node, scalar, r"grand slam");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"player");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"action");
+        expect! (receiver, (1, 3, 13), data, node, scalar, r"grand slam");
         expect! (receiver, (0, 0, 14), doc, end);
 
         the_end! (receiver);
@@ -800,17 +823,19 @@ rbi:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"hr");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"hr");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"Mark McGwire");
-        expect! (receiver, (2, 4, 6), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 3, 7), node, scalar, r"rbi");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"rbi");
         expect! (receiver, (1, 3, 8), node, sequence);
-        expect! (receiver, (2, 8, 9), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (2, 8, 10), node, scalar, r"Ken Griffey");
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"Ken Griffey");
         expect! (receiver, (0, 0, 11), doc, end);
 
         the_end! (receiver);
@@ -832,17 +857,19 @@ rbi:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"hr");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"hr");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"Mark McGwire");
-        expect! (receiver, (2, 4, 6), node, scalar, r"Sammy Sosa", &=r"SS");
-        expect! (receiver, (1, 3, 7), node, scalar, r"rbi");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"Sammy Sosa", &=r"SS");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"rbi");
         expect! (receiver, (1, 3, 8), node, sequence);
-        expect! (receiver, (2, 8, 9), alias, r"SS");
-        expect! (receiver, (2, 8, 10), node, scalar, r"Ken Griffey");
+        expect! (receiver, (2, 8, 9), data, alias, r"SS");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"Ken Griffey");
         expect! (receiver, (0, 0, 11), doc, end);
 
         the_end! (receiver);
@@ -865,20 +892,22 @@ r"? - Detroit Tigers
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (1, 2, 3), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar, r"Detroit Tigers");
-        expect! (receiver, (2, 3, 5), node, scalar, r"Chicago cubs");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"Detroit Tigers");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"Chicago cubs");
         expect! (receiver, (1, 2, 6), node, sequence);
-        expect! (receiver, (2, 6, 7), node, scalar, r"2001-07-23");
-        expect! (receiver, (2, 8, 9), node, scalar, r"New York Yankees");
-        expect! (receiver, (2, 8, 10), node, scalar, r"Atlanta Braves");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"2001-07-23");
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"New York Yankees");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"Atlanta Braves");
         expect! (receiver, (1, 2, 8), node, sequence);
-        expect! (receiver, (2, 11, 12), node, scalar, r"2001-07-02");
-        expect! (receiver, (2, 11, 13), node, scalar, r"2001-08-12");
-        expect! (receiver, (2, 11, 14), node, scalar, r"2001-08-14");
+        expect! (receiver, (2, 11, 12), data, node, scalar, r"2001-07-02");
+        expect! (receiver, (2, 11, 13), data, node, scalar, r"2001-08-12");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r"2001-08-14");
         expect! (receiver, (1, 2, 11), node, sequence);
         expect! (receiver, (0, 0, 15), doc, end);
 
@@ -901,24 +930,26 @@ r"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"item");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"Super Hoop");
-        expect! (receiver, (2, 4, 6), node, scalar, r"quantity");
-        expect! (receiver, (2, 4, 7), node, scalar, r"1");
-        expect! (receiver, (1, 2, 8), node, scalar, r"item");
-        expect! (receiver, (1, 2, 9), block, map, (1, 2, 8));
-        expect! (receiver, (2, 9, 10), node, scalar, r"Basketball");
-        expect! (receiver, (2, 9, 11), node, scalar, r"quantity");
-        expect! (receiver, (2, 9, 12), node, scalar, r"4");
-        expect! (receiver, (1, 2, 13), node, scalar, r"item");
-        expect! (receiver, (1, 2, 14), block, map, (1, 2, 13));
-        expect! (receiver, (2, 14, 15), node, scalar, r"Big Shoes");
-        expect! (receiver, (2, 14, 16), node, scalar, r"quantity");
-        expect! (receiver, (2, 14, 17), node, scalar, r"1");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"item");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Super Hoop");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"quantity");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"1");
+        expect! (receiver, (1, 2, 8), data, node, scalar, r"item");
+        expect! (receiver, (1, 2, 9), data, block, map, (1, 2, 8));
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"Basketball");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"quantity");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r"4");
+        expect! (receiver, (1, 2, 13), data, node, scalar, r"item");
+        expect! (receiver, (1, 2, 14), data, block, map, (1, 2, 13));
+        expect! (receiver, (2, 14, 15), data, node, scalar, r"Big Shoes");
+        expect! (receiver, (2, 14, 16), data, node, scalar, r"quantity");
+        expect! (receiver, (2, 14, 17), data, node, scalar, r"1");
         expect! (receiver, (0, 0, 18), doc, end);
 
         the_end! (receiver);
@@ -936,12 +967,14 @@ r"# ASCII Art
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"\//||\/||");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, r"// ||  ||__");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"\//||\/||");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"// ||  ||__");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -960,14 +993,16 @@ r"--- >
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Mark McGwire's");
-        expect! (receiver, (1, 2, 4), literal, r" ");
-        expect! (receiver, (1, 2, 5), literal, r"year was crippled");
-        expect! (receiver, (1, 2, 6), literal, r" ");
-        expect! (receiver, (1, 2, 7), literal, r"by a knee injury.");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"Mark McGwire's");
+        expect! (receiver, (1, 2, 4), data, literal, r" ");
+        expect! (receiver, (1, 2, 5), data, literal, r"year was crippled");
+        expect! (receiver, (1, 2, 6), data, literal, r" ");
+        expect! (receiver, (1, 2, 7), data, literal, r"by a knee injury.");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -989,20 +1024,22 @@ r">
  What a year!";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Sammy Sosa completed another");
-        expect! (receiver, (1, 2, 4), literal, r" ");
-        expect! (receiver, (1, 2, 5), literal, r"fine season with great stats.");
-        expect! (receiver, (1, 2, 6), literal, "\n");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, r"  63 Home Runs");
-        expect! (receiver, (1, 2, 9), literal, "\n");
-        expect! (receiver, (1, 2, 10), literal, "  0.288 Batting Average");
-        expect! (receiver, (1, 2, 11), literal, "\n");
-        expect! (receiver, (1, 2, 12), literal, "\n");
-        expect! (receiver, (1, 2, 13), literal, "What a year!");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"Sammy Sosa completed another");
+        expect! (receiver, (1, 2, 4), data, literal, r" ");
+        expect! (receiver, (1, 2, 5), data, literal, r"fine season with great stats.");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, r"  63 Home Runs");
+        expect! (receiver, (1, 2, 9), data, literal, "\n");
+        expect! (receiver, (1, 2, 10), data, literal, "  0.288 Batting Average");
+        expect! (receiver, (1, 2, 11), data, literal, "\n");
+        expect! (receiver, (1, 2, 12), data, literal, "\n");
+        expect! (receiver, (1, 2, 13), data, literal, "What a year!");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 14), doc, end);
 
@@ -1023,23 +1060,25 @@ stats: |
   0.278 Batting Average";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"name");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"Mark McGwire");
-        expect! (receiver, (1, 3, 5), node, scalar, r"accomplishment");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"name");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"accomplishment");
         expect! (receiver, (1, 3, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, r"Mark set a major league");
-        expect! (receiver, (2, 6, 8), literal, r" ");
-        expect! (receiver, (2, 6, 9), literal, r"home run record in 1998.");
-        expect! (receiver, (2, 6, 10), literal, "\n");
+        expect! (receiver, (2, 6, 7), data, literal, r"Mark set a major league");
+        expect! (receiver, (2, 6, 8), data, literal, r" ");
+        expect! (receiver, (2, 6, 9), data, literal, r"home run record in 1998.");
+        expect! (receiver, (2, 6, 10), data, literal, "\n");
         expect! (receiver, (1, 3, 6), node, block, close);
-        expect! (receiver, (1, 3, 11), node, scalar, r"stats");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"stats");
         expect! (receiver, (1, 3, 12), node, block, open);
-        expect! (receiver, (2, 12, 13), literal, r"65 Home Runs");
-        expect! (receiver, (2, 12, 14), literal, "\n");
-        expect! (receiver, (2, 12, 15), literal, r"0.278 Batting Average");
+        expect! (receiver, (2, 12, 13), data, literal, r"65 Home Runs");
+        expect! (receiver, (2, 12, 14), data, literal, "\n");
+        expect! (receiver, (2, 12, 15), data, literal, r"0.278 Batting Average");
         expect! (receiver, (1, 3, 12), node, block, close);
         expect! (receiver, (0, 0, 16), doc, end);
 
@@ -1060,22 +1099,24 @@ quoted: ' # Not a ''comment''.'
 tie-fighter: '|\-*-/|'"##;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"unicode");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r#""Sosa did fine.\u263A""#);
-        expect! (receiver, (1, 3, 5), node, scalar, r"control");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""\b1998\t1999\t2000\n""#);
-        expect! (receiver, (1, 3, 7), node, scalar, r"hex esc");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""\x0d\x0a is \r\n""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"unicode");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""Sosa did fine.\u263A""#);
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"control");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""\b1998\t1999\t2000\n""#);
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"hex esc");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""\x0d\x0a is \r\n""#);
 
-        expect! (receiver, (1, 3, 9), node, scalar, r"single");
-        expect! (receiver, (1, 3, 10), node, scalar, r#"'"Howdy!" he cried.'"#);
-        expect! (receiver, (1, 3, 11), node, scalar, r"quoted");
-        expect! (receiver, (1, 3, 12), node, scalar, r#"' # Not a ''comment''.'"#);
-        expect! (receiver, (1, 3, 13), node, scalar, r"tie-fighter");
-        expect! (receiver, (1, 3, 14), node, scalar, r"'|\-*-/|'");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"single");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#"'"Howdy!" he cried.'"#);
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"quoted");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r#"' # Not a ''comment''.'"#);
+        expect! (receiver, (1, 3, 13), data, node, scalar, r"tie-fighter");
+        expect! (receiver, (1, 3, 14), data, node, scalar, r"'|\-*-/|'");
         expect! (receiver, (0, 0, 15), doc, end);
 
         the_end! (receiver);
@@ -1094,17 +1135,19 @@ quoted: "So does this
   quoted scalar.\n""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"plain");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"plain");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"This unquoted scalar");
-        expect! (receiver, (2, 4, 6), literal, r" ");
-        expect! (receiver, (2, 4, 7), literal, r"spans many lines.");
+        expect! (receiver, (2, 4, 5), data, literal, r"This unquoted scalar");
+        expect! (receiver, (2, 4, 6), data, literal, r" ");
+        expect! (receiver, (2, 4, 7), data, literal, r"spans many lines.");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 8), node, scalar, r"quoted");
-        expect! (receiver, (1, 3, 9), node, scalar, "\"So does this\n  quoted scalar.\\n\"");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"quoted");
+        expect! (receiver, (1, 3, 9), data, node, scalar, "\"So does this\n  quoted scalar.\\n\"");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -1121,17 +1164,19 @@ octal: 0o14
 hexadecimal: 0xC";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"canonical");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"12345");
-        expect! (receiver, (1, 3, 5), node, scalar, r"decimal");
-        expect! (receiver, (1, 3, 6), node, scalar, r"+12345");
-        expect! (receiver, (1, 3, 7), node, scalar, r"octal");
-        expect! (receiver, (1, 3, 8), node, scalar, r"0o14");
-        expect! (receiver, (1, 3, 9), node, scalar, r"hexadecimal");
-        expect! (receiver, (1, 3, 10), node, scalar, r"0xC");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"canonical");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"12345");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"decimal");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"+12345");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"octal");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"0o14");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"hexadecimal");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"0xC");
         expect! (receiver, (0, 0, 11), doc, end);
 
         the_end! (receiver);
@@ -1150,19 +1195,21 @@ not a number: .NaN";
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"canonical");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"1.23015e+3");
-        expect! (receiver, (1, 3, 5), node, scalar, r"exponential");
-        expect! (receiver, (1, 3, 6), node, scalar, r"12.3015e+02");
-        expect! (receiver, (1, 3, 7), node, scalar, r"fixed");
-        expect! (receiver, (1, 3, 8), node, scalar, r"1230.15");
-        expect! (receiver, (1, 3, 9), node, scalar, r"negative infinity");
-        expect! (receiver, (1, 3, 10), node, scalar, r"-.inf");
-        expect! (receiver, (1, 3, 11), node, scalar, r"not a number");
-        expect! (receiver, (1, 3, 12), node, scalar, r".NaN");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"canonical");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"1.23015e+3");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"exponential");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"12.3015e+02");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"fixed");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"1230.15");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"negative infinity");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"-.inf");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"not a number");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r".NaN");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -1179,17 +1226,19 @@ string: '012345'";
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"null");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"null");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, null);
-        expect! (receiver, (1, 3, 5), node, scalar, r"booleans");
-        expect! (receiver, (2, 6, 7), node, scalar, r"true");
-        expect! (receiver, (2, 6, 8), node, scalar, r"false");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"booleans");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"true");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r"false");
         expect! (receiver, (1, 3, 6), node, sequence);
-        expect! (receiver, (1, 3, 9), node, scalar, r"string");
-        expect! (receiver, (1, 3, 10), node, scalar, r"'012345'");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"string");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"'012345'");
         expect! (receiver, (0, 0, 11), doc, end);
 
         the_end! (receiver);
@@ -1207,37 +1256,39 @@ date: 2002-12-14";
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"canonical");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"canonical");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"2001-12-15T02");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"59");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"43.1Z");
+        expect! (receiver, (2, 4, 5), data, literal, r"2001-12-15T02");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"59");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"43.1Z");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"iso8601");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"iso8601");
         expect! (receiver, (1, 3, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, r"2001-12-14t21");
-        expect! (receiver, (2, 11, 13), literal, r":");
-        expect! (receiver, (2, 11, 14), literal, r"59");
-        expect! (receiver, (2, 11, 15), literal, r":");
-        expect! (receiver, (2, 11, 16), literal, r"43.10-05");
-        expect! (receiver, (2, 11, 17), literal, r":");
-        expect! (receiver, (2, 11, 18), literal, r"00");
+        expect! (receiver, (2, 11, 12), data, literal, r"2001-12-14t21");
+        expect! (receiver, (2, 11, 13), data, literal, r":");
+        expect! (receiver, (2, 11, 14), data, literal, r"59");
+        expect! (receiver, (2, 11, 15), data, literal, r":");
+        expect! (receiver, (2, 11, 16), data, literal, r"43.10-05");
+        expect! (receiver, (2, 11, 17), data, literal, r":");
+        expect! (receiver, (2, 11, 18), data, literal, r"00");
         expect! (receiver, (1, 3, 11), node, block, close);
-        expect! (receiver, (1, 3, 19), node, scalar, r"spaced");
+        expect! (receiver, (1, 3, 19), data, node, scalar, r"spaced");
         expect! (receiver, (1, 3, 20), node, block, open);
-        expect! (receiver, (2, 20, 21), literal, r"2001-12-14 21");
-        expect! (receiver, (2, 20, 22), literal, r":");
-        expect! (receiver, (2, 20, 23), literal, r"59");
-        expect! (receiver, (2, 20, 24), literal, r":");
-        expect! (receiver, (2, 20, 25), literal, r"43.10 -5");
+        expect! (receiver, (2, 20, 21), data, literal, r"2001-12-14 21");
+        expect! (receiver, (2, 20, 22), data, literal, r":");
+        expect! (receiver, (2, 20, 23), data, literal, r"59");
+        expect! (receiver, (2, 20, 24), data, literal, r":");
+        expect! (receiver, (2, 20, 25), data, literal, r"43.10 -5");
         expect! (receiver, (1, 3, 20), node, block, close);
-        expect! (receiver, (1, 3, 26), node, scalar, r"date");
-        expect! (receiver, (1, 3, 27), node, scalar, r"2002-12-14");
+        expect! (receiver, (1, 3, 26), data, node, scalar, r"date");
+        expect! (receiver, (1, 3, 27), data, node, scalar, r"2002-12-14");
         expect! (receiver, (0, 0, 28), doc, end);
 
         the_end! (receiver);
@@ -1266,32 +1317,34 @@ application specific tag: !something |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"not-date");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"2002-04-28", !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r"picture");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"not-date");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"2002-04-28", !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"picture");
         expect! (receiver, (1, 3, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, r"R0lGODlhDAAMAIQAAP//9/X");
-        expect! (receiver, (2, 6, 8), literal, "\n");
-        expect! (receiver, (2, 6, 9), literal, r"17unp5WZmZgAAAOfn515eXv");
-        expect! (receiver, (2, 6, 10), literal, "\n");
-        expect! (receiver, (2, 6, 11), literal, r"Pz7Y6OjuDg4J+fn5OTk6enp");
-        expect! (receiver, (2, 6, 12), literal, "\n");
-        expect! (receiver, (2, 6, 13), literal, r"56enmleECcgggoBADs=");
-        expect! (receiver, (2, 6, 14), literal, "\n");
-        expect! (receiver, (1, 3, 6), node, block, close, !=r"!!binary");
+        expect! (receiver, (2, 6, 7), data, literal, r"R0lGODlhDAAMAIQAAP//9/X");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
+        expect! (receiver, (2, 6, 9), data, literal, r"17unp5WZmZgAAAOfn515eXv");
+        expect! (receiver, (2, 6, 10), data, literal, "\n");
+        expect! (receiver, (2, 6, 11), data, literal, r"Pz7Y6OjuDg4J+fn5OTk6enp");
+        expect! (receiver, (2, 6, 12), data, literal, "\n");
+        expect! (receiver, (2, 6, 13), data, literal, r"56enmleECcgggoBADs=");
+        expect! (receiver, (2, 6, 14), data, literal, "\n");
+        expect! (receiver, (1, 3, 6), data, node, block, close, !=r"!!binary");
 
-        expect! (receiver, (1, 3, 15), node, scalar, r"application specific tag");
+        expect! (receiver, (1, 3, 15), data, node, scalar, r"application specific tag");
         expect! (receiver, (1, 3, 16), node, block, open);
-        expect! (receiver, (2, 16, 17), literal, r"The semantics of the tag");
-        expect! (receiver, (2, 16, 18), literal, "\n");
-        expect! (receiver, (2, 16, 19), literal, r"above may be different for");
-        expect! (receiver, (2, 16, 20), literal, "\n");
-        expect! (receiver, (2, 16, 21), literal, r"different documents.");
-        expect! (receiver, (2, 16, 22), literal, "\n");
-        expect! (receiver, (1, 3, 16), node, block, close, !=r"!something");
+        expect! (receiver, (2, 16, 17), data, literal, r"The semantics of the tag");
+        expect! (receiver, (2, 16, 18), data, literal, "\n");
+        expect! (receiver, (2, 16, 19), data, literal, r"above may be different for");
+        expect! (receiver, (2, 16, 20), data, literal, "\n");
+        expect! (receiver, (2, 16, 21), data, literal, r"different documents.");
+        expect! (receiver, (2, 16, 22), data, literal, "\n");
+        expect! (receiver, (1, 3, 16), data, node, block, close, !=r"!something");
         expect! (receiver, (0, 0, 23), doc, end);
 
         the_end! (receiver);
@@ -1320,39 +1373,41 @@ r"%TAG ! tag:clarkevans.com,2002:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!", r"tag:clarkevans.com,2002:");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!", r"tag:clarkevans.com,2002:");
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!shape");
-        expect! (receiver, (1, 3, 4), node, scalar, r"center");
-        expect! (receiver, (1, 3, 5), block, map, (1, 3, 4), !=r"!circle");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!shape");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"center");
+        expect! (receiver, (1, 3, 5), data, block, map, (1, 3, 4), !=r"!circle");
 
-        expect! (receiver, (3, 6, 7), node, scalar, r"x");
-        expect! (receiver, (3, 6, 8), node, scalar, r"73");
-        expect! (receiver, (3, 6, 9), node, scalar, r"y");
-        expect! (receiver, (3, 6, 10), node, scalar, r"129");
-        expect! (receiver, (2, 5, 6), node, mapping, &=r"ORIGIN");
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"x");
+        expect! (receiver, (3, 6, 8), data, node, scalar, r"73");
+        expect! (receiver, (3, 6, 9), data, node, scalar, r"y");
+        expect! (receiver, (3, 6, 10), data, node, scalar, r"129");
+        expect! (receiver, (2, 5, 6), data, node, mapping, &=r"ORIGIN");
 
-        expect! (receiver, (2, 5, 11), node, scalar, r"radius");
-        expect! (receiver, (2, 5, 12), node, scalar, r"7");
-        expect! (receiver, (1, 3, 13), node, scalar, r"start");
-        expect! (receiver, (1, 3, 14), block, map, (1, 3, 13), !=r"!line");
-        expect! (receiver, (2, 14, 15), alias, r"ORIGIN");
-        expect! (receiver, (2, 14, 16), node, scalar, r"finish");
+        expect! (receiver, (2, 5, 11), data, node, scalar, r"radius");
+        expect! (receiver, (2, 5, 12), data, node, scalar, r"7");
+        expect! (receiver, (1, 3, 13), data, node, scalar, r"start");
+        expect! (receiver, (1, 3, 14), data, block, map, (1, 3, 13), !=r"!line");
+        expect! (receiver, (2, 14, 15), data, alias, r"ORIGIN");
+        expect! (receiver, (2, 14, 16), data, node, scalar, r"finish");
 
-        expect! (receiver, (3, 17, 18), node, scalar, r"x");
-        expect! (receiver, (3, 17, 19), node, scalar, r"89");
-        expect! (receiver, (3, 17, 20), node, scalar, r"y");
-        expect! (receiver, (3, 17, 21), node, scalar, r"102");
-        expect! (receiver, (2, 14, 17), node, mapping);
+        expect! (receiver, (3, 17, 18), data, node, scalar, r"x");
+        expect! (receiver, (3, 17, 19), data, node, scalar, r"89");
+        expect! (receiver, (3, 17, 20), data, node, scalar, r"y");
+        expect! (receiver, (3, 17, 21), data, node, scalar, r"102");
+        expect! (receiver, (2, 14, 17), data, node, mapping);
 
-        expect! (receiver, (1, 3, 22), node, scalar, r"start");
-        expect! (receiver, (1, 3, 23), block, map, (1, 3, 22), !=r"!label");
-        expect! (receiver, (2, 23, 24), alias, r"ORIGIN");
-        expect! (receiver, (2, 23, 25), node, scalar, r"color");
-        expect! (receiver, (2, 23, 26), node, scalar, r"0xFFEEBB");
-        expect! (receiver, (2, 23, 27), node, scalar, r"text");
-        expect! (receiver, (2, 23, 28), node, scalar, r"Pretty vector drawing.");
+        expect! (receiver, (1, 3, 22), data, node, scalar, r"start");
+        expect! (receiver, (1, 3, 23), data, block, map, (1, 3, 22), !=r"!label");
+        expect! (receiver, (2, 23, 24), data, alias, r"ORIGIN");
+        expect! (receiver, (2, 23, 25), data, node, scalar, r"color");
+        expect! (receiver, (2, 23, 26), data, node, scalar, r"0xFFEEBB");
+        expect! (receiver, (2, 23, 27), data, node, scalar, r"text");
+        expect! (receiver, (2, 23, 28), data, node, scalar, r"Pretty vector drawing.");
         expect! (receiver, (0, 0, 29), doc, end);
 
         the_end! (receiver);
@@ -1372,14 +1427,16 @@ r"# Sets are represented as a
 ? Ken Griff";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, mapping, !=r"!!set");
-        expect! (receiver, (1, 2, 3), node, scalar, r"Mark McGwire");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, mapping, !=r"!!set");
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Mark McGwire");
         expect! (receiver, (1, 2, 4), node, null);
-        expect! (receiver, (1, 2, 5), node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"Sammy Sosa");
         expect! (receiver, (1, 2, 6), node, null);
-        expect! (receiver, (1, 2, 7), node, scalar, r"Ken Griff");
+        expect! (receiver, (1, 2, 7), data, node, scalar, r"Ken Griff");
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -1399,18 +1456,20 @@ r"# Ordered maps are represented as
 - Ken Griffy: 58";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, sequence, !=r"!!omap");
-        expect! (receiver, (1, 2, 3), node, scalar, r"Mark McGwire");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"65");
-        expect! (receiver, (1, 2, 6), node, scalar, r"Sammy Sosa");
-        expect! (receiver, (1, 2, 7), block, map, (1, 2, 6));
-        expect! (receiver, (2, 7, 8), node, scalar, r"63");
-        expect! (receiver, (1, 2, 9), node, scalar, r"Ken Griffy");
-        expect! (receiver, (1, 2, 10), block, map, (1, 2, 9));
-        expect! (receiver, (2, 10, 11), node, scalar, r"58");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, sequence, !=r"!!omap");
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Mark McGwire");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"65");
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"Sammy Sosa");
+        expect! (receiver, (1, 2, 7), data, block, map, (1, 2, 6));
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"63");
+        expect! (receiver, (1, 2, 9), data, node, scalar, r"Ken Griffy");
+        expect! (receiver, (1, 2, 10), data, block, map, (1, 2, 9));
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"58");
         expect! (receiver, (0, 0, 12), doc, end);
 
         the_end! (receiver);
@@ -1453,67 +1512,69 @@ comments:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"invoice");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2), !=r"!<tag:clarkevans.com,2002:invoice>");
-        expect! (receiver, (1, 3, 4), node, scalar, r"34843");
-        expect! (receiver, (1, 3, 5), node, scalar, r"date");
-        expect! (receiver, (1, 3, 6), node, scalar, r"2001-01-23");
-        expect! (receiver, (1, 3, 7), node, scalar, r"bill-to");
-        expect! (receiver, (1, 3, 8), node, scalar, r"given");
-        expect! (receiver, (1, 3, 9), block, map, (1, 3, 8), &=r"id001");
-        expect! (receiver, (2, 9, 10), node, scalar, r"Chris");
-        expect! (receiver, (2, 9, 11), node, scalar, r"family");
-        expect! (receiver, (2, 9, 12), node, scalar, r"Dumars");
-        expect! (receiver, (2, 9, 13), node, scalar, r"address");
-        expect! (receiver, (2, 9, 14), node, scalar, r"lines");
-        expect! (receiver, (2, 9, 15), block, map, (2, 9, 14));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"invoice");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2), !=r"!<tag:clarkevans.com,2002:invoice>");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"34843");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"date");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"2001-01-23");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"bill-to");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"given");
+        expect! (receiver, (1, 3, 9), data, block, map, (1, 3, 8), &=r"id001");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"Chris");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"family");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r"Dumars");
+        expect! (receiver, (2, 9, 13), data, node, scalar, r"address");
+        expect! (receiver, (2, 9, 14), data, node, scalar, r"lines");
+        expect! (receiver, (2, 9, 15), data, block, map, (2, 9, 14));
         expect! (receiver, (3, 15, 16), node, block, open);
-        expect! (receiver, (4, 16, 17), literal, r"458 Walkman Dr.");
-        expect! (receiver, (4, 16, 18), literal, "\n");
-        expect! (receiver, (4, 16, 19), literal, r"Suite #292");
-        expect! (receiver, (4, 16, 20), literal, "\n");
+        expect! (receiver, (4, 16, 17), data, literal, r"458 Walkman Dr.");
+        expect! (receiver, (4, 16, 18), data, literal, "\n");
+        expect! (receiver, (4, 16, 19), data, literal, r"Suite #292");
+        expect! (receiver, (4, 16, 20), data, literal, "\n");
         expect! (receiver, (3, 15, 16), node, block, close);
-        expect! (receiver, (3, 15, 21), node, scalar, r"city");
-        expect! (receiver, (3, 15, 22), node, scalar, r"Royal Oak");
-        expect! (receiver, (3, 15, 23), node, scalar, r"state");
-        expect! (receiver, (3, 15, 24), node, scalar, r"MI");
-        expect! (receiver, (3, 15, 25), node, scalar, r"postal");
-        expect! (receiver, (3, 15, 26), node, scalar, r"48046");
-        expect! (receiver, (1, 3, 27), node, scalar, r"ship-to");
-        expect! (receiver, (1, 3, 28), alias, r"id001");
-        expect! (receiver, (1, 3, 29), node, scalar, r"product");
+        expect! (receiver, (3, 15, 21), data, node, scalar, r"city");
+        expect! (receiver, (3, 15, 22), data, node, scalar, r"Royal Oak");
+        expect! (receiver, (3, 15, 23), data, node, scalar, r"state");
+        expect! (receiver, (3, 15, 24), data, node, scalar, r"MI");
+        expect! (receiver, (3, 15, 25), data, node, scalar, r"postal");
+        expect! (receiver, (3, 15, 26), data, node, scalar, r"48046");
+        expect! (receiver, (1, 3, 27), data, node, scalar, r"ship-to");
+        expect! (receiver, (1, 3, 28), data, alias, r"id001");
+        expect! (receiver, (1, 3, 29), data, node, scalar, r"product");
         expect! (receiver, (1, 3, 30), node, sequence);
-        expect! (receiver, (2, 30, 31), node, scalar, r"sku");
-        expect! (receiver, (2, 30, 32), block, map, (2, 30, 31));
-        expect! (receiver, (3, 32, 33), node, scalar, r"BL394D");
-        expect! (receiver, (3, 32, 34), node, scalar, r"quantity");
-        expect! (receiver, (3, 32, 35), node, scalar, r"4");
-        expect! (receiver, (3, 32, 36), node, scalar, r"description");
-        expect! (receiver, (3, 32, 37), node, scalar, r"Basketball");
-        expect! (receiver, (3, 32, 38), node, scalar, r"price");
-        expect! (receiver, (3, 32, 39), node, scalar, r"450.00");
-        expect! (receiver, (2, 30, 40), node, scalar, r"sku");
-        expect! (receiver, (2, 30, 41), block, map, (2, 30, 40));
-        expect! (receiver, (3, 41, 42), node, scalar, r"BL4438H");
-        expect! (receiver, (3, 41, 43), node, scalar, r"quantity");
-        expect! (receiver, (3, 41, 44), node, scalar, r"1");
-        expect! (receiver, (3, 41, 45), node, scalar, r"description");
-        expect! (receiver, (3, 41, 46), node, scalar, r"Super Hoop");
-        expect! (receiver, (3, 41, 47), node, scalar, r"price");
-        expect! (receiver, (3, 41, 48), node, scalar, r"2392.00");
-        expect! (receiver, (1, 3, 49), node, scalar, r"tax");
-        expect! (receiver, (1, 3, 50), node, scalar, r"251.42");
-        expect! (receiver, (1, 3, 51), node, scalar, r"total");
-        expect! (receiver, (1, 3, 52), node, scalar, r"4443.52");
-        expect! (receiver, (1, 3, 53), node, scalar, r"comments");
+        expect! (receiver, (2, 30, 31), data, node, scalar, r"sku");
+        expect! (receiver, (2, 30, 32), data, block, map, (2, 30, 31));
+        expect! (receiver, (3, 32, 33), data, node, scalar, r"BL394D");
+        expect! (receiver, (3, 32, 34), data, node, scalar, r"quantity");
+        expect! (receiver, (3, 32, 35), data, node, scalar, r"4");
+        expect! (receiver, (3, 32, 36), data, node, scalar, r"description");
+        expect! (receiver, (3, 32, 37), data, node, scalar, r"Basketball");
+        expect! (receiver, (3, 32, 38), data, node, scalar, r"price");
+        expect! (receiver, (3, 32, 39), data, node, scalar, r"450.00");
+        expect! (receiver, (2, 30, 40), data, node, scalar, r"sku");
+        expect! (receiver, (2, 30, 41), data, block, map, (2, 30, 40));
+        expect! (receiver, (3, 41, 42), data, node, scalar, r"BL4438H");
+        expect! (receiver, (3, 41, 43), data, node, scalar, r"quantity");
+        expect! (receiver, (3, 41, 44), data, node, scalar, r"1");
+        expect! (receiver, (3, 41, 45), data, node, scalar, r"description");
+        expect! (receiver, (3, 41, 46), data, node, scalar, r"Super Hoop");
+        expect! (receiver, (3, 41, 47), data, node, scalar, r"price");
+        expect! (receiver, (3, 41, 48), data, node, scalar, r"2392.00");
+        expect! (receiver, (1, 3, 49), data, node, scalar, r"tax");
+        expect! (receiver, (1, 3, 50), data, node, scalar, r"251.42");
+        expect! (receiver, (1, 3, 51), data, node, scalar, r"total");
+        expect! (receiver, (1, 3, 52), data, node, scalar, r"4443.52");
+        expect! (receiver, (1, 3, 53), data, node, scalar, r"comments");
         expect! (receiver, (1, 3, 54), node, block, open);
-        expect! (receiver, (2, 54, 55), literal, r"Late afternoon is best.");
-        expect! (receiver, (2, 54, 56), literal, r" ");
-        expect! (receiver, (2, 54, 57), literal, r"Backup contact is Nancy");
-        expect! (receiver, (2, 54, 58), literal, r" ");
-        expect! (receiver, (2, 54, 59), literal, r"Billsmer @ 338-4338.");
+        expect! (receiver, (2, 54, 55), data, literal, r"Late afternoon is best.");
+        expect! (receiver, (2, 54, 56), data, literal, r" ");
+        expect! (receiver, (2, 54, 57), data, literal, r"Backup contact is Nancy");
+        expect! (receiver, (2, 54, 58), data, literal, r" ");
+        expect! (receiver, (2, 54, 59), data, literal, r"Billsmer @ 338-4338.");
         expect! (receiver, (1, 3, 54), node, block, close);
         expect! (receiver, (0, 0, 60), doc, end);
 
@@ -1558,81 +1619,83 @@ Stack:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Time");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Time");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"2001-11-23 15");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"01");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"42 -5");
+        expect! (receiver, (2, 4, 5), data, literal, r"2001-11-23 15");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"01");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"42 -5");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"User");
-        expect! (receiver, (1, 3, 11), node, scalar, r"ed");
-        expect! (receiver, (1, 3, 12), node, scalar, r"Warning");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"User");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"ed");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"Warning");
         expect! (receiver, (1, 3, 13), node, block, open);
-        expect! (receiver, (2, 13, 14), literal, r"This is an error message");
-        expect! (receiver, (2, 13, 15), literal, r" ");
-        expect! (receiver, (2, 13, 16), literal, r"for the log file");
+        expect! (receiver, (2, 13, 14), data, literal, r"This is an error message");
+        expect! (receiver, (2, 13, 15), data, literal, r" ");
+        expect! (receiver, (2, 13, 16), data, literal, r"for the log file");
         expect! (receiver, (1, 3, 13), node, block, close);
         expect! (receiver, (0, 0, 17), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Time");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Time");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"2001-11-23 15");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"02");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"31 -5");
+        expect! (receiver, (2, 4, 5), data, literal, r"2001-11-23 15");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"02");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"31 -5");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"User");
-        expect! (receiver, (1, 3, 11), node, scalar, r"ed");
-        expect! (receiver, (1, 3, 12), node, scalar, r"Warning");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"User");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"ed");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"Warning");
         expect! (receiver, (1, 3, 13), node, block, open);
-        expect! (receiver, (2, 13, 14), literal, r"A slightly different error");
-        expect! (receiver, (2, 13, 15), literal, r" ");
-        expect! (receiver, (2, 13, 16), literal, r"message.");
+        expect! (receiver, (2, 13, 14), data, literal, r"A slightly different error");
+        expect! (receiver, (2, 13, 15), data, literal, r" ");
+        expect! (receiver, (2, 13, 16), data, literal, r"message.");
         expect! (receiver, (1, 3, 13), node, block, close);
         expect! (receiver, (0, 0, 17), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Date");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Date");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"2001-11-23 15");
-        expect! (receiver, (2, 4, 6), literal, r":");
-        expect! (receiver, (2, 4, 7), literal, r"03");
-        expect! (receiver, (2, 4, 8), literal, r":");
-        expect! (receiver, (2, 4, 9), literal, r"17 -5");
+        expect! (receiver, (2, 4, 5), data, literal, r"2001-11-23 15");
+        expect! (receiver, (2, 4, 6), data, literal, r":");
+        expect! (receiver, (2, 4, 7), data, literal, r"03");
+        expect! (receiver, (2, 4, 8), data, literal, r":");
+        expect! (receiver, (2, 4, 9), data, literal, r"17 -5");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"User");
-        expect! (receiver, (1, 3, 11), node, scalar, r"ed");
-        expect! (receiver, (1, 3, 12), node, scalar, r"Fatal");
-        expect! (receiver, (1, 3, 13), node, scalar, "Unknown variable \"bar\"");
-        expect! (receiver, (1, 3, 14), node, scalar, r"Stack");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"User");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"ed");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"Fatal");
+        expect! (receiver, (1, 3, 13), data, node, scalar, "Unknown variable \"bar\"");
+        expect! (receiver, (1, 3, 14), data, node, scalar, r"Stack");
         expect! (receiver, (1, 3, 15), node, sequence);
-        expect! (receiver, (2, 15, 16), node, scalar, r"file");
-        expect! (receiver, (2, 15, 17), block, map, (2, 15, 16));
-        expect! (receiver, (3, 17, 18), node, scalar, r"TopClass.py");
-        expect! (receiver, (3, 17, 19), node, scalar, r"line");
-        expect! (receiver, (3, 17, 20), node, scalar, r"23");
-        expect! (receiver, (3, 17, 21), node, scalar, r"code");
+        expect! (receiver, (2, 15, 16), data, node, scalar, r"file");
+        expect! (receiver, (2, 15, 17), data, block, map, (2, 15, 16));
+        expect! (receiver, (3, 17, 18), data, node, scalar, r"TopClass.py");
+        expect! (receiver, (3, 17, 19), data, node, scalar, r"line");
+        expect! (receiver, (3, 17, 20), data, node, scalar, r"23");
+        expect! (receiver, (3, 17, 21), data, node, scalar, r"code");
         expect! (receiver, (3, 17, 22), node, block, open);
-        expect! (receiver, (4, 22, 23), literal, r#"x = MoreObject("345\n")"#);
-        expect! (receiver, (4, 22, 24), literal, "\n");
+        expect! (receiver, (4, 22, 23), data, literal, r#"x = MoreObject("345\n")"#);
+        expect! (receiver, (4, 22, 24), data, literal, "\n");
         expect! (receiver, (3, 17, 22), node, block, close);
-        expect! (receiver, (2, 15, 25), node, scalar, r"file");
-        expect! (receiver, (2, 15, 26), block, map, (2, 15, 25));
-        expect! (receiver, (3, 26, 27), node, scalar, r"MoreClass.py");
-        expect! (receiver, (3, 26, 28), node, scalar, r"line");
-        expect! (receiver, (3, 26, 29), node, scalar, r"58");
-        expect! (receiver, (3, 26, 30), node, scalar, r"code");
+        expect! (receiver, (2, 15, 25), data, node, scalar, r"file");
+        expect! (receiver, (2, 15, 26), data, block, map, (2, 15, 25));
+        expect! (receiver, (3, 26, 27), data, node, scalar, r"MoreClass.py");
+        expect! (receiver, (3, 26, 28), data, node, scalar, r"line");
+        expect! (receiver, (3, 26, 29), data, node, scalar, r"58");
+        expect! (receiver, (3, 26, 30), data, node, scalar, r"code");
         expect! (receiver, (3, 26, 31), node, block, open);
-        expect! (receiver, (4, 31, 32), literal, r"foo = bar");
+        expect! (receiver, (4, 31, 32), data, literal, r"foo = bar");
         expect! (receiver, (3, 26, 31), node, block, close);
         expect! (receiver, (0, 0, 33), doc, end);
 
@@ -1653,27 +1716,29 @@ baseball teams: !!set { Boston Red Sox, Detroit Tigers, New York Yankees }";
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"baseball players");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!set");
-        expect! (receiver, (2, 4, 5), node, scalar, r"Mark McGwire");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"baseball players");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!set");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Mark McGwire");
         expect! (receiver, (2, 4, 6), node, null);
-        expect! (receiver, (2, 4, 7), node, scalar, r"Sammy Sosa");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"Sammy Sosa");
         expect! (receiver, (2, 4, 8), node, null);
-        expect! (receiver, (2, 4, 9), node, scalar, r"Ken Griffey");
+        expect! (receiver, (2, 4, 9), data, node, scalar, r"Ken Griffey");
 
-        expect! (receiver, (1, 3, 10), node, scalar, r"baseball teams");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"baseball teams");
         
-        expect! (receiver, (2, 11, 12), node, scalar, r"Boston Red Sox");
+        expect! (receiver, (2, 11, 12), data, node, scalar, r"Boston Red Sox");
         expect! (receiver, (2, 11, 13), node, null);
-        expect! (receiver, (2, 11, 14), node, scalar, r"Detroit Tigers");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r"Detroit Tigers");
         expect! (receiver, (2, 11, 15), node, null);
-        expect! (receiver, (2, 11, 16), node, scalar, r"New York Yankees");
+        expect! (receiver, (2, 11, 16), data, node, scalar, r"New York Yankees");
         expect! (receiver, (2, 11, 17), node, null);
 
-        expect! (receiver, (1, 3, 11), node, mapping, !=r"!!set");
+        expect! (receiver, (1, 3, 11), data, node, mapping, !=r"!!set");
         expect! (receiver, (0, 0, 18), doc, end);
 
         the_end! (receiver);
@@ -1696,29 +1761,31 @@ link with:
     version: 2.3";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"link with");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"link with");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"library1.dll");
-        expect! (receiver, (2, 4, 6), node, scalar, r"library2.dll");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"library1.dll");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"library2.dll");
         expect! (receiver, (0, 0, 7), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"link with");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"link with");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"=");
-        expect! (receiver, (2, 4, 6), block, map, (2, 4, 5));
-        expect! (receiver, (3, 6, 7), node, scalar, r"library1.dll");
-        expect! (receiver, (3, 6, 8), node, scalar, r"version");
-        expect! (receiver, (3, 6, 9), node, scalar, r"1.2");
-        expect! (receiver, (2, 4, 10), node, scalar, r"=");
-        expect! (receiver, (2, 4, 11), block, map, (2, 4, 10));
-        expect! (receiver, (3, 11, 12), node, scalar, r"library2.dll");
-        expect! (receiver, (3, 11, 13), node, scalar, r"version");
-        expect! (receiver, (3, 11, 14), node, scalar, r"2.3");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"=");
+        expect! (receiver, (2, 4, 6), data, block, map, (2, 4, 5));
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"library1.dll");
+        expect! (receiver, (3, 6, 8), data, node, scalar, r"version");
+        expect! (receiver, (3, 6, 9), data, node, scalar, r"1.2");
+        expect! (receiver, (2, 4, 10), data, node, scalar, r"=");
+        expect! (receiver, (2, 4, 11), data, block, map, (2, 4, 10));
+        expect! (receiver, (3, 11, 12), data, node, scalar, r"library2.dll");
+        expect! (receiver, (3, 11, 13), data, node, scalar, r"version");
+        expect! (receiver, (3, 11, 14), data, node, scalar, r"2.3");
         expect! (receiver, (0, 0, 15), doc, end);
 
         the_end! (receiver);
@@ -1749,11 +1816,13 @@ b"- Invalid use of BOM
 - Inside a document.";
 
         let receiver = read_bytes! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"Invalid use of BOM");
-        expect! (receiver, (1, 2, 4), node, scalar, r"Inside a document.");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"Invalid use of BOM");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"Inside a document.");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -1774,19 +1843,21 @@ mapping:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"sequence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"one");
-        expect! (receiver, (2, 4, 6), node, scalar, r"two");
-        expect! (receiver, (1, 3, 7), node, scalar, r"mapping");
-        expect! (receiver, (1, 3, 8), node, mapping);
-        expect! (receiver, (2, 8, 9), node, scalar, r"sky");
-        expect! (receiver, (2, 8, 10), node, scalar, r"blue");
-        expect! (receiver, (2, 8, 11), node, scalar, r"sea");
-        expect! (receiver, (2, 8, 12), node, scalar, r"green");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"one");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"two");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"mapping");
+        expect! (receiver, (1, 3, 8), data, node, mapping);
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"sky");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"blue");
+        expect! (receiver, (2, 8, 11), data, node, scalar, r"sea");
+        expect! (receiver, (2, 8, 12), data, node, scalar, r"green");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -1811,20 +1882,22 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1,2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (1, 3, 4), node, scalar, r#""sequence""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (2, 5, 7), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""mapping""#, !=r"!!str");
-        expect! (receiver, (2, 9, 10), node, scalar, r#""sky""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""blue""#, !=r"!!str");
-        expect! (receiver, (2, 9, 12), node, scalar, r#""sea""#, !=r"!!str");
-        expect! (receiver, (2, 9, 13), node, scalar, r#""green""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""sequence""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""mapping""#, !=r"!!str");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""sky""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""blue""#, !=r"!!str");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r#""sea""#, !=r"!!str");
+        expect! (receiver, (2, 9, 13), data, node, scalar, r#""green""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 14), doc, end);
 
         the_end! (receiver);
@@ -1839,23 +1912,25 @@ r#"%YAML 1.2
 mapping: { sky: blue, sea: green }";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"sequence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
 
-        expect! (receiver, (2, 4, 5), node, scalar, r"one");
-        expect! (receiver, (2, 4, 6), node, scalar, r"two");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"one");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"two");
         expect! (receiver, (1, 3, 4), node, sequence);
 
-        expect! (receiver, (1, 3, 7), node, scalar, r"mapping");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"mapping");
 
-        expect! (receiver, (2, 8, 9), node, scalar, r"sky");
-        expect! (receiver, (2, 8, 10), node, scalar, r"blue");
-        expect! (receiver, (2, 8, 11), node, scalar, r"sea");
-        expect! (receiver, (2, 8, 12), node, scalar, r"green");
-        expect! (receiver, (1, 3, 8), node, mapping);
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"sky");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"blue");
+        expect! (receiver, (2, 8, 11), data, node, scalar, r"sea");
+        expect! (receiver, (2, 8, 12), data, node, scalar, r"green");
+        expect! (receiver, (1, 3, 8), data, node, mapping);
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -1885,13 +1960,15 @@ mapping: { sky: blue, sea: green }";
 alias: *anchor";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"anchored");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"value", !=r"!local", &=r"anchor");
-        expect! (receiver, (1, 3, 5), node, scalar, r"alias");
-        expect! (receiver, (1, 3, 6), alias, r"anchor");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"anchored");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"value", !=r"!local", &=r"anchor");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"alias");
+        expect! (receiver, (1, 3, 6), data, alias, r"anchor");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -1913,15 +1990,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""anchored""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""value""#, !=r"!local", &=r"A1");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""alias""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), alias, r"A1");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""anchored""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""value""#, !=r"!local", &=r"A1");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""alias""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, alias, r"A1");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -1942,22 +2021,24 @@ folded: >
 ";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"literal");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"literal");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"some");
-        expect! (receiver, (2, 4, 6), literal, "\n");
-        expect! (receiver, (2, 4, 7), literal, r"text");
-        expect! (receiver, (2, 4, 8), literal, "\n");
+        expect! (receiver, (2, 4, 5), data, literal, r"some");
+        expect! (receiver, (2, 4, 6), data, literal, "\n");
+        expect! (receiver, (2, 4, 7), data, literal, r"text");
+        expect! (receiver, (2, 4, 8), data, literal, "\n");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 9), node, scalar, r"folded");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"folded");
         expect! (receiver, (1, 3, 10), node, block, open);
-        expect! (receiver, (2, 10, 11), literal, r"some");
-        expect! (receiver, (2, 10, 12), literal, r" ");
-        expect! (receiver, (2, 10, 13), literal, r"text");
-        expect! (receiver, (2, 10, 14), literal, "\n");
+        expect! (receiver, (2, 10, 11), data, literal, r"some");
+        expect! (receiver, (2, 10, 12), data, literal, r" ");
+        expect! (receiver, (2, 10, 13), data, literal, r"text");
+        expect! (receiver, (2, 10, 14), data, literal, "\n");
         expect! (receiver, (1, 3, 10), node, block, close);
         expect! (receiver, (0, 0, 15), doc, end);
 
@@ -1979,15 +2060,17 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        
-        expect! (receiver, (1, 3, 4), node, scalar, r#""literal""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""some\ntext\n""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""folded""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""some text\n""#, !=r"!!str");
-        expect! (receiver, (0, 0, 3), node, mapping, !="!!map");
+
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""literal""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""some\ntext\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""folded""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""some text\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !="!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -2003,13 +2086,15 @@ r#"single: 'text'
 double: "text""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"single");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"'text'");
-        expect! (receiver, (1, 3, 5), node, scalar, r"double");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""text""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"single");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"'text'");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"double");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""text""#);
 
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -2032,15 +2117,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""single""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""text""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""double""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""text""#, !=r"!!str");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""single""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""text""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""double""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""text""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
         the_end! (receiver);
@@ -2055,10 +2142,12 @@ r#"%YAML 1.2
 --- text";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r"text");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r"text");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2074,10 +2163,12 @@ r#"%YAML 1.2
 !!str "text""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""text""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""text""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2092,10 +2183,12 @@ r#"%YAML 1.2
 grave-accent: `text";
 
         let receiver = read_with_error! (src, r"@ character is reserved and may not be used to start a plain scalar", 15);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"commercial-at");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"commercial-at");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), error, r"@ character is reserved and may not be used to start a plain scalar", 15);
 
         the_end! (receiver);
@@ -2112,13 +2205,15 @@ grave-accent: `text";
 ";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Line break (no glyph)");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, r"Line break (glyphed)");
-        expect! (receiver, (1, 2, 6), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"Line break (no glyph)");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"Line break (glyphed)");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -2136,10 +2231,12 @@ r#"%YAML 1.2
       line break (glyphed)\n""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\"line break (no glyph)\\n\\\n      line break (glyphed)\\n\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"line break (no glyph)\\n\\\n      line break (glyphed)\\n\"", !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2158,18 +2255,20 @@ block:	|
   }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"quoted");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r#""Quoted 	""#);
-        expect! (receiver, (1, 3, 5), node, scalar, r"block");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"quoted");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""Quoted 	""#);
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"block");
         expect! (receiver, (1, 3, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, r"void main() {");
-        expect! (receiver, (2, 6, 8), literal, "\n");
-        expect! (receiver, (2, 6, 9), literal, r#"	printf("Hello, world!\n");"#);
-        expect! (receiver, (2, 6, 10), literal, "\n");
-        expect! (receiver, (2, 6, 11), literal, r"}");
+        expect! (receiver, (2, 6, 7), data, literal, r"void main() {");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
+        expect! (receiver, (2, 6, 9), data, literal, r#"	printf("Hello, world!\n");"#);
+        expect! (receiver, (2, 6, 10), data, literal, "\n");
+        expect! (receiver, (2, 6, 11), data, literal, r"}");
         expect! (receiver, (1, 3, 6), node, block, close);
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -2194,15 +2293,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""quoted""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""Quoted \t""#);
-        expect! (receiver, (1, 3, 6), node, scalar, r#""block""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, "\"void main() {\\n\\\n    \\tprintf(\\\"Hello, world!\\\\n\\\");\\n\\\n    }\\n\"");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""quoted""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""Quoted \t""#);
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""block""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, "\"void main() {\\n\\\n    \\tprintf(\\\"Hello, world!\\\\n\\\");\\n\\\n    }\\n\"");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -2220,10 +2321,12 @@ r#""Fun with \\
 \  \_ \N \L \P \↓
 \x41 \u0041 \U00000041""#;
 
-        let receiver = read! (src);;
+        let receiver = read! (src);
+        let mut data = data! ();;
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, "\"Fun with \\\\\n\\\" \\a \\b \\e \\f \\↓\n\\n \\r \\t \\v \\0 \\↓\n\\  \\_ \\N \\L \\P \\↓\n\\x41 \\u0041 \\U00000041\"");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, "\"Fun with \\\\\n\\\" \\a \\b \\e \\f \\↓\n\\n \\r \\t \\v \\0 \\↓\n\\  \\_ \\N \\L \\P \\↓\n\\x41 \\u0041 \\U00000041\"");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -2242,11 +2345,13 @@ r#"%YAML 1.2
 \x20 \xA0 \x85 \u2028 \u2029
 A A A""#;
 
-        let receiver = read! (src);;
+        let receiver = read! (src);
+        let mut data = data! ();;
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\"Fun with \\x5C\n\\x22 \\x07 \\x08 \\x1B \\x0C\n\\x0A \\x0D \\x09 \\x0B \\x00\n\\x20 \\xA0 \\x85 \\u2028 \\u2029\nA A A\"");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"Fun with \\x5C\n\\x22 \\x07 \\x08 \\x1B \\x0C\n\\x0A \\x0D \\x09 \\x0B \\x00\n\\x20 \\xA0 \\x85 \\u2028 \\u2029\nA A A\"");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2261,12 +2366,14 @@ r#"Bad escapes:
   "\c
   \xq-""#;
 
-        let receiver = read! (src);;
+        let receiver = read! (src);
+        let mut data = data! ();;
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Bad escapes");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, "\"\\c\n  \\xq-\"");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Bad escapes");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, "\"\\c\n  \\xq-\"");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -2292,22 +2399,24 @@ Not indented:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Not indented");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"By one space");
-        expect! (receiver, (1, 3, 5), block, map, (1, 3, 4));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Not indented");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"By one space");
+        expect! (receiver, (1, 3, 5), data, block, map, (1, 3, 4));
         expect! (receiver, (2, 5, 6), node, block, open);
-        expect! (receiver, (3, 6, 7), literal, r"By four");
-        expect! (receiver, (3, 6, 8), literal, "\n");
-        expect! (receiver, (3, 6, 9), literal, r"  spaces");
-        expect! (receiver, (3, 6, 10), literal, "\n");
+        expect! (receiver, (3, 6, 7), data, literal, r"By four");
+        expect! (receiver, (3, 6, 8), data, literal, "\n");
+        expect! (receiver, (3, 6, 9), data, literal, r"  spaces");
+        expect! (receiver, (3, 6, 10), data, literal, "\n");
         expect! (receiver, (2, 5, 6), node, block, close);
-        expect! (receiver, (2, 5, 11), node, scalar, r"Flow style");
-        expect! (receiver, (3, 12, 13), node, scalar, r"By two");
-        expect! (receiver, (3, 12, 14), node, scalar, r"Also by two");
-        expect! (receiver, (3, 12, 15), node, scalar, r"Still by two");
+        expect! (receiver, (2, 5, 11), data, node, scalar, r"Flow style");
+        expect! (receiver, (3, 12, 13), data, node, scalar, r"By two");
+        expect! (receiver, (3, 12, 14), data, node, scalar, r"Also by two");
+        expect! (receiver, (3, 12, 15), data, node, scalar, r"Still by two");
         expect! (receiver, (2, 5, 12), node, sequence);
         expect! (receiver, (0, 0, 16), doc, end);
 
@@ -2337,7 +2446,9 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
@@ -2346,19 +2457,19 @@ r#"%YAML 1.2
         expect! (receiver, (2, 4, 5), node, sequence);
         expect! (receiver, (3, 5, 6), node, null);
 
-        expect! (receiver, (1, 7, 8), node, scalar, "\"Not indented\"", !=r"!!str");
+        expect! (receiver, (1, 7, 8), data, node, scalar, "\"Not indented\"", !=r"!!str");
 
-        expect! (receiver, (2, 9, 10), node, scalar, r#""By one space""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""By four\n  spaces\n""#, !=r"!!str");
-        expect! (receiver, (2, 9, 12), node, scalar, r#""Flow style""#, !=r"!!str");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""By one space""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""By four\n  spaces\n""#, !=r"!!str");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r#""Flow style""#, !=r"!!str");
 
-        expect! (receiver, (3, 13, 14), node, scalar, r#""By two""#, !=r"!!str");
-        expect! (receiver, (3, 13, 15), node, scalar, r#""Also by two""#, !=r"!!str");
-        expect! (receiver, (3, 13, 16), node, scalar, r#""Still by two""#, !=r"!!str");
+        expect! (receiver, (3, 13, 14), data, node, scalar, r#""By two""#, !=r"!!str");
+        expect! (receiver, (3, 13, 15), data, node, scalar, r#""Also by two""#, !=r"!!str");
+        expect! (receiver, (3, 13, 16), data, node, scalar, r#""Still by two""#, !=r"!!str");
 
-        expect! (receiver, (2, 9, 13), node, sequence, !="!!seq");
-        expect! (receiver, (1, 7, 9), node, mapping, !="!!map");
-        expect! (receiver, (0, 0, 7), node, mapping, !="!!map");
+        expect! (receiver, (2, 9, 13), data, node, sequence, !="!!seq");
+        expect! (receiver, (1, 7, 9), data, node, mapping, !="!!map");
+        expect! (receiver, (0, 0, 7), data, node, mapping, !="!!map");
 
         expect! (receiver, (0, 0, 17), doc, end);
 
@@ -2377,15 +2488,17 @@ r"? a
 ";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, mapping);
-        expect! (receiver, (1, 2, 3), node, scalar, r"a");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"a");
         expect! (receiver, (1, 2, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"b");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"b");
         expect! (receiver, (2, 4, 6), node, sequence);
-        expect! (receiver, (3, 6, 7), node, scalar, r"c");
-        expect! (receiver, (3, 6, 8), node, scalar, r"d");
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"c");
+        expect! (receiver, (3, 6, 8), data, node, scalar, r"d");
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -2408,18 +2521,20 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, scalar, r#""b""#, !=r"!!str");
-        expect! (receiver, (3, 7, 8), node, scalar, r#""c""#, !=r"!!str");
-        expect! (receiver, (3, 7, 9), node, scalar, r#""d""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r#""b""#, !=r"!!str");
+        expect! (receiver, (3, 7, 8), data, node, scalar, r#""c""#, !=r"!!str");
+        expect! (receiver, (3, 7, 9), data, node, scalar, r#""d""#, !=r"!!str");
 
-        expect! (receiver, (2, 5, 7), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 5, 7), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -2436,15 +2551,17 @@ r#"- foo:	 bar
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"bar");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"bar");
         expect! (receiver, (1, 2, 6), node, sequence);
-        expect! (receiver, (2, 6, 7), node, scalar, r"baz");
-        expect! (receiver, (2, 6, 8), node, scalar, r"baz");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"baz");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r"baz");
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -2466,19 +2583,21 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""foo""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""bar""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""foo""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r#""baz""#, !=r"!!str");
-        expect! (receiver, (2, 7, 9), node, scalar, r#""baz""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r#""baz""#, !=r"!!str");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r#""baz""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -2500,23 +2619,25 @@ block: |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"plain");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"plain");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"text");
-        expect! (receiver, (2, 4, 6), literal, " ");
-        expect! (receiver, (2, 4, 7), literal, r"lines");
+        expect! (receiver, (2, 4, 5), data, literal, r"text");
+        expect! (receiver, (2, 4, 6), data, literal, " ");
+        expect! (receiver, (2, 4, 7), data, literal, r"lines");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 8), node, scalar, r"quoted");
-        expect! (receiver, (1, 3, 9), node, scalar, "\"text\n  	lines\"");
-        expect! (receiver, (1, 3, 10), node, scalar, r"block");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"quoted");
+        expect! (receiver, (1, 3, 9), data, node, scalar, "\"text\n  	lines\"");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"block");
         expect! (receiver, (1, 3, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, r"text");
-        expect! (receiver, (2, 11, 13), literal, "\n");
-        expect! (receiver, (2, 11, 14), literal, " 	lines");
-        expect! (receiver, (2, 11, 15), literal, "\n");
+        expect! (receiver, (2, 11, 12), data, literal, r"text");
+        expect! (receiver, (2, 11, 13), data, literal, "\n");
+        expect! (receiver, (2, 11, 14), data, literal, " 	lines");
+        expect! (receiver, (2, 11, 15), data, literal, "\n");
         expect! (receiver, (1, 3, 11), node, block, close);
         expect! (receiver, (0, 0, 16), doc, end);
 
@@ -2541,17 +2662,19 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""plain""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""text lines""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""quoted""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""text lines""#, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""block""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""text\n 	lines\n""#, !=r"!!str");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""plain""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""text lines""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""quoted""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""text lines""#, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""block""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""text\n 	lines\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 10), doc, end);
 
@@ -2573,15 +2696,17 @@ Chomping: |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Folding");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, "\"Empty line\n   	\n  as a line feed\"");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Chomping");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Folding");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, "\"Empty line\n   	\n  as a line feed\"");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Chomping");
         expect! (receiver, (1, 3, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, r"Clipped empty lines");
-        expect! (receiver, (2, 6, 8), literal, "\n");
+        expect! (receiver, (2, 6, 7), data, literal, r"Clipped empty lines");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
         expect! (receiver, (1, 3, 6), node, block, close);
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -2604,15 +2729,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""Folding""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""Empty line\nas a line feed""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Chomping""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""Clipped empty lines\n""#, !=r"!!str");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""Folding""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""Empty line\nas a line feed""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Chomping""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""Clipped empty lines\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -2634,14 +2761,16 @@ r#">-
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"trimmed");
-        expect! (receiver, (1, 2, 4), literal, "\n\n\n");
-        expect! (receiver, (1, 2, 5), literal, r"as");
-        expect! (receiver, (1, 2, 6), literal, r" ");
-        expect! (receiver, (1, 2, 7), literal, r"space");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"trimmed");
+        expect! (receiver, (1, 2, 4), data, literal, "\n\n\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"as");
+        expect! (receiver, (1, 2, 6), data, literal, r" ");
+        expect! (receiver, (1, 2, 7), data, literal, r"space");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -2659,10 +2788,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""trimmed\n\n\nas space""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""trimmed\n\n\nas space""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2683,17 +2814,19 @@ r#">
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"foo ");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, "\n");
-        expect! (receiver, (1, 2, 6), literal, "\t bar");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, "\n");
-        expect! (receiver, (1, 2, 9), literal, r"baz");
-        expect! (receiver, (1, 2, 10), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"foo ");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, "\n");
+        expect! (receiver, (1, 2, 6), data, literal, "\t bar");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, "\n");
+        expect! (receiver, (1, 2, 9), data, literal, r"baz");
+        expect! (receiver, (1, 2, 10), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 11), doc, end);
 
@@ -2711,10 +2844,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""foo \n\n\t bar\n\nbaz\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""foo \n\n\t bar\n\nbaz\n""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2735,9 +2870,11 @@ r#""
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, "\"\n  foo \n \n  	 bar\n\n  baz\n\"");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, "\"\n  foo \n \n  	 bar\n\n  baz\n\"");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -2754,10 +2891,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#"" foo\nbar\nbaz ""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#"" foo\nbar\nbaz ""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2773,12 +2912,14 @@ r#"key:    # Comment
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"key");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"key");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"value");
 
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -2799,13 +2940,15 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""key""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""key""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -2842,12 +2985,14 @@ r#"key:    # Comment
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"key");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"key");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"value");
 
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -2868,23 +3013,24 @@ r#"{ first: Sammy, last: Sosa }:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"first");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"Sammy");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"last");
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"Sosa");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"first");
-        expect! (receiver, (1, 2, 4), node, scalar, r"Sammy");
-        expect! (receiver, (1, 2, 5), node, scalar, r"last");
-        expect! (receiver, (1, 2, 6), node, scalar, r"Sosa");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 7), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 7, 8), data, node, scalar, r"hr");
 
-        expect! (receiver, (0, 0, 7), block, map, (0, 0, 2));
-        expect! (receiver, (1, 7, 8), node, scalar, r"hr");
-
-        expect! (receiver, (1, 7, 9), block, map, (1, 7, 8));
-        expect! (receiver, (2, 9, 10), node, scalar, r"65");
-        expect! (receiver, (2, 9, 11), node, scalar, r"avg");
-        expect! (receiver, (2, 9, 12), node, scalar, r"0.278");
+        expect! (receiver, (1, 7, 9), data, block, map, (1, 7, 8));
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"65");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"avg");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r"0.278");
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -2915,23 +3061,25 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""first""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""Sammy""#, !=r"!!str");
-        expect! (receiver, (2, 4, 7), node, scalar, r#""last""#, !=r"!!str");
-        expect! (receiver, (2, 4, 8), node, scalar, r#""Sosa""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""first""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""Sammy""#, !=r"!!str");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r#""last""#, !=r"!!str");
+        expect! (receiver, (2, 4, 8), data, node, scalar, r#""Sosa""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (2, 9, 10), node, scalar, r#""hr""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""65""#, !=r"!!int");
-        expect! (receiver, (2, 9, 12), node, scalar, r#""avg""#, !=r"!!str");
-        expect! (receiver, (2, 9, 13), node, scalar, r#""0.278""#, !=r"!!float");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""hr""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""65""#, !=r"!!int");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r#""avg""#, !=r"!!str");
+        expect! (receiver, (2, 9, 13), data, node, scalar, r#""0.278""#, !=r"!!float");
 
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 14), doc, end);
 
@@ -2949,10 +3097,12 @@ r#"%FOO  bar baz # Should be ignored
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), warning, "Unknown directive at the line 0", 0);
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""foo""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""foo""#);
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -2969,11 +3119,13 @@ r#"%YAML 1.3 # Attempt parsing
 "foo""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), warning, "%YAML minor version is not fully supported", 10);
         expect! (receiver, (0, 0, 2), dir, yaml, (1, 3));
         expect! (receiver, (0, 0, 3), doc, start);
-        expect! (receiver, (0, 0, 4), node, scalar, r#""foo""#);
+        expect! (receiver, (0, 0, 4), data, node, scalar, r#""foo""#);
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -2990,7 +3142,9 @@ foo"#;
 
 
         let receiver = read_with_error! (src, r"The YAML directive must only be given at most once per document", 10);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), error, r"The YAML directive must only be given at most once per document", 10);
 
@@ -3008,10 +3162,12 @@ r#"%TAG !yaml! tag:yaml.org,2002:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!yaml!", r"tag:yaml.org,2002:");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!yaml!", r"tag:yaml.org,2002:");
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""foo""#, !=r"!yaml!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""foo""#, !=r"!yaml!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3027,12 +3183,14 @@ r#"%TAG ! !foo
 bar"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!", r"!foo");
-        expect! (receiver, (0, 0, 2), dir, tag, r"!", r"!foo");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!", r"!foo");
+        expect! (receiver, (0, 0, 2), data, dir, tag, r"!", r"!foo");
 
         expect! (receiver, (0, 0, 3), doc, start);
-        expect! (receiver, (0, 0, 4), node, scalar, r"bar");
+        expect! (receiver, (0, 0, 4), data, node, scalar, r"bar");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -3053,14 +3211,16 @@ r#"# Private
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#""bar""#, !=r"!foo");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#""bar""#, !=r"!foo");
         expect! (receiver, (0, 0, 3), doc, end);
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!", r"tag:example.com,2000:app/");
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!", r"tag:example.com,2000:app/");
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""bar""#, !=r"!foo");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""bar""#, !=r"!foo");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3080,14 +3240,16 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""bar""#, !=r"!<!foo>");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""bar""#, !=r"!<!foo>");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#""bar""#, !=r"!<tag:example.com,2000:app/foo>");
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#""bar""#, !=r"!<tag:example.com,2000:app/foo>");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -3103,11 +3265,13 @@ r#"%TAG !! tag:example.com,2000:app/
 !!int 1 - 3 # Interval, not integer"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!!", r"tag:example.com,2000:app/");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!!", r"tag:example.com,2000:app/");
 
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r"1 - 3", !=r"!!int");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r"1 - 3", !=r"!!int");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3124,10 +3288,12 @@ r#"%YAML 1.2
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""1 - 3""#, !=r"!<tag:example.com,2000:app/int>");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""1 - 3""#, !=r"!<tag:example.com,2000:app/int>");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3143,11 +3309,13 @@ r#"%TAG !e! tag:example.com,2000:app/
 !e!foo "bar""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!e!", r"tag:example.com,2000:app/");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!e!", r"tag:example.com,2000:app/");
 
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""bar""#, !=r"!e!foo");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""bar""#, !=r"!e!foo");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3168,15 +3336,17 @@ r#"%TAG !m! !my-
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!m!", r"!my-");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!m!", r"!my-");
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r"fluorescent", !=r"!m!light");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r"fluorescent", !=r"!m!light");
         expect! (receiver, (0, 0, 4), doc, end);
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!m!", r"!my-");
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!m!", r"!my-");
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r"green", !=r"!m!light");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r"green", !=r"!m!light");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3196,16 +3366,17 @@ r#"%YAML 1.2
 !<!my-light> "green""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""fluorescent""#, !=r"!<!my-light>");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""fluorescent""#, !=r"!<!my-light>");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""green""#, !=r"!<!my-light>");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""green""#, !=r"!<!my-light>");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3221,12 +3392,14 @@ r#"%TAG !e! tag:example.com,2000:app/
 - !e!foo "bar""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!e!", r"tag:example.com,2000:app/");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!e!", r"tag:example.com,2000:app/");
 
         expect! (receiver, (0, 0, 2), doc, start);
         expect! (receiver, (0, 0, 3), node, sequence);
-        expect! (receiver, (1, 3, 4), node, scalar, r#""bar""#, !=r"!e!foo");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""bar""#, !=r"!e!foo");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -3243,14 +3416,16 @@ r#"!!str &a1 "foo":
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r#""foo""#, !=r"!!str", &=r"a1"); 
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"bar", !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r"baz", &=r"a2");
-        expect! (receiver, (1, 3, 6), alias, r"a1");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#""foo""#, !=r"!!str", &=r"a1"); 
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"bar", !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"baz", &=r"a2");
+        expect! (receiver, (1, 3, 6), data, alias, r"a1");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -3272,15 +3447,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""foo""#, !=r"!!str", &=r"B1");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""bar""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""baz""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), alias, r"B1");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""foo""#, !=r"!!str", &=r"B1");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""baz""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, alias, r"B1");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -3297,11 +3474,13 @@ r#"!<tag:yaml.org,2002:str> foo :
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"foo", !=r"!<tag:yaml.org,2002:str>");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"baz", !=r"!<!bar>");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"foo", !=r"!<tag:yaml.org,2002:str>");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"baz", !=r"!<!bar>");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -3320,13 +3499,15 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""foo""#, !=r"!<tag:yaml.org,2002:str>");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""baz""#, !=r"!<!bar>");
-        expect! (receiver, (0, 0, 3), node, mapping, !="!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""foo""#, !=r"!<tag:yaml.org,2002:str>");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""baz""#, !=r"!<!bar>");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !="!!map");
 
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -3343,11 +3524,13 @@ r#"- !<!> foo
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo", !=r"!<!>");
-        expect! (receiver, (1, 2, 4), node, scalar, r"bar", !=r"!<$:?>");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo", !=r"!<!>");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"bar", !=r"!<$:?>");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -3366,15 +3549,17 @@ r#"%TAG !e! tag:example.com,2000:app/
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!e!", r"tag:example.com,2000:app/");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!e!", r"tag:example.com,2000:app/");
         expect! (receiver, (0, 0, 2), doc, start);
 
         expect! (receiver, (0, 0, 3), node, sequence);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r"foo", !=r"!local");
-        expect! (receiver, (1, 3, 5), node, scalar, r"bar", !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r"baz", !=r"!e!tag%21");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"foo", !=r"!local");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"bar", !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"baz", !=r"!e!tag%21");
 
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -3396,15 +3581,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""foo""#, !=r"!<!local>");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""bar""#, !=r"!<tag:yaml.org,2002:str>");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""baz""#, !=r"!<tag:example.com,2000:app/tag!>");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""foo""#, !=r"!<!local>");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""bar""#, !=r"!<tag:yaml.org,2002:str>");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""baz""#, !=r"!<tag:example.com,2000:app/tag!>");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -3423,14 +3610,16 @@ r#"%TAG !e! tag:example,2000:app/
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
-        expect! (receiver, (0, 0, 1), dir, tag, r"!e!", r"tag:example,2000:app/");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 1), data, dir, tag, r"!e!", r"tag:example,2000:app/");
         expect! (receiver, (0, 0, 2), doc, start);
 
         expect! (receiver, (0, 0, 3), node, sequence);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r"foo", !=r"!e!");
-        expect! (receiver, (1, 3, 5), node, scalar, r"baz", !=r"!h!bar");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"foo", !=r"!e!");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"baz", !=r"!h!bar");
 
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -3449,12 +3638,14 @@ r#"# Assuming conventional resolution:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r#""12""#);
-        expect! (receiver, (1, 2, 4), node, scalar, r"12");
-        expect! (receiver, (1, 2, 5), node, scalar, r"12", !=r"!");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r#""12""#);
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"12");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"12", !=r"!");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -3475,15 +3666,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:str>");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:int>");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:str>");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:str>");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:int>");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""12""#, !=r"!<tag:yaml.org,2002:str>");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -3499,13 +3692,15 @@ r#"First occurrence: &anchor Value
 Second occurrence: *anchor"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"First occurrence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"Value", &=r"anchor");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Second occurrence");
-        expect! (receiver, (1, 3, 6), alias, r"anchor");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"First occurrence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"Value", &=r"anchor");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Second occurrence");
+        expect! (receiver, (1, 3, 6), data, alias, r"anchor");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -3527,15 +3722,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""First occurrence""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""Value""#, !=r"!!str", &=r"A");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Second occurrence""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), alias, r"A");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""First occurrence""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""Value""#, !=r"!!str", &=r"A");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Second occurrence""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, alias, r"A");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -3554,17 +3751,19 @@ Reuse anchor: *anchor"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"First occurrence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"Foo", &=r"anchor");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Second occurrence");
-        expect! (receiver, (1, 3, 6), alias, r"anchor");
-        expect! (receiver, (1, 3, 7), node, scalar, r"Override anchor");
-        expect! (receiver, (1, 3, 8), node, scalar, r"Bar", &=r"anchor");
-        expect! (receiver, (1, 3, 9), node, scalar, r"Reuse anchor");
-        expect! (receiver, (1, 3, 10), alias, r"anchor");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"First occurrence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"Foo", &=r"anchor");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Second occurrence");
+        expect! (receiver, (1, 3, 6), data, alias, r"anchor");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"Override anchor");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"Bar", &=r"anchor");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"Reuse anchor");
+        expect! (receiver, (1, 3, 10), data, alias, r"anchor");
         expect! (receiver, (0, 0, 11), doc, end);
 
         the_end! (receiver);
@@ -3590,23 +3789,25 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""First occurrence""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""Foo""#, !=r"!!str", &=r"A");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""First occurrence""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""Foo""#, !=r"!!str", &=r"A");
 
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Override anchor""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""Bar""#, !=r"!!str", &=r"B");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Override anchor""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""Bar""#, !=r"!!str", &=r"B");
 
-        expect! (receiver, (1, 3, 8), node, scalar, r#""Second occurrence""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), alias, r"A");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""Second occurrence""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, alias, r"A");
 
-        expect! (receiver, (1, 3, 10), node, scalar, r#""Reuse anchor""#, !=r"!!str");
-        expect! (receiver, (1, 3, 11), alias, r"B");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#""Reuse anchor""#, !=r"!!str");
+        expect! (receiver, (1, 3, 11), data, alias, r"B");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -3625,13 +3826,15 @@ r#"{
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo");
-        expect! (receiver, (1, 2, 4), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 5), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 6), node, scalar, r"bar");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo");
+        expect! (receiver, (1, 2, 4), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 5), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"bar");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -3649,13 +3852,15 @@ r#"{
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo");
-        expect! (receiver, (1, 2, 4), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 5), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 6), node, scalar, r"bar");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo");
+        expect! (receiver, (1, 2, 4), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 5), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"bar");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -3674,16 +3879,18 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""foo""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""foo""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""bar""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -3700,13 +3907,15 @@ r#"{
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo");
         expect! (receiver, (1, 2, 4), node, null);
         expect! (receiver, (1, 2, 5), node, null);
-        expect! (receiver, (1, 2, 6), node, scalar, r"bar");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"bar");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -3726,16 +3935,18 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""foo""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""foo""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""bar""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -3752,13 +3963,15 @@ r#""implicit block key" : [
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#""implicit block key""#);
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (2, 4, 5), node, scalar, r#""implicit flow key""#);
-        expect! (receiver, (2, 4, 6), block, map, (2, 4, 5));
-        expect! (receiver, (3, 6, 7), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#""implicit block key""#);
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""implicit flow key""#);
+        expect! (receiver, (2, 4, 6), data, block, map, (2, 4, 5));
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"value");
         expect! (receiver, (1, 3, 4), node, sequence);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -3777,16 +3990,18 @@ r#""implicit block key" : [
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#""implicit block key""#);
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (2, 4, 5), node, scalar, r#""implicit flow key""#);
-        expect! (receiver, (2, 4, 6), block, map, (2, 4, 5));
-        expect! (receiver, (3, 6, 7), node, scalar, r"value");
-        expect! (receiver, (2, 4, 8), node, scalar, r#""implicit flow key2""#);
-        expect! (receiver, (2, 4, 9), block, map, (2, 4, 8));
-        expect! (receiver, (3, 9, 10), node, scalar, r"value2");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#""implicit block key""#);
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""implicit flow key""#);
+        expect! (receiver, (2, 4, 6), data, block, map, (2, 4, 5));
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"value");
+        expect! (receiver, (2, 4, 8), data, node, scalar, r#""implicit flow key2""#);
+        expect! (receiver, (2, 4, 9), data, block, map, (2, 4, 8));
+        expect! (receiver, (3, 9, 10), data, node, scalar, r"value2");
         expect! (receiver, (1, 3, 4), node, sequence);
         expect! (receiver, (0, 0, 11), doc, end);
 
@@ -3812,16 +4027,18 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""implicit block key""#, !=r"!!str");
-        expect! (receiver, (3, 6, 7), node, scalar, r#""implicit flow key""#, !=r"!!str");
-        expect! (receiver, (3, 6, 8), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""implicit block key""#, !=r"!!str");
+        expect! (receiver, (3, 6, 7), data, node, scalar, r#""implicit flow key""#, !=r"!!str");
+        expect! (receiver, (3, 6, 8), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -3841,9 +4058,11 @@ to a line feed, or 	\
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, "\"folded \nto a space,	\n \nto a line feed, or 	\\\n \\ 	non-content\"");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, "\"folded \nto a space,	\n \nto a line feed, or 	\\\n \\ 	non-content\"");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -3862,10 +4081,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\"folded to a space,\\n\\\n      to a line feed, \\\n      or \\t \\tnon-content\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"folded to a space,\\n\\\n      to a line feed, \\\n      or \\t \\tnon-content\"", !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3883,9 +4104,11 @@ r#"" 1st non-empty
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, "\" 1st non-empty\n\n 2nd non-empty \n	3rd non-empty \"");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, "\" 1st non-empty\n\n 2nd non-empty \n	3rd non-empty \"");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -3904,10 +4127,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\" 1st non-empty\\n\\\n      2nd non-empty \\\n      3rd non-empty \"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\" 1st non-empty\\n\\\n      2nd non-empty \\\n      3rd non-empty \"", !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3922,9 +4147,11 @@ r#"'here''s to "quotes"'"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#"'here''s to "quotes"'"#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#"'here''s to "quotes"'"#);
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -3941,10 +4168,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\"here's to \\\"quotes\\\"\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"here's to \\\"quotes\\\"\"", !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -3961,13 +4190,15 @@ r#"'implicit block key' : [
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r#"'implicit block key'"#);
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (2, 4, 5), node, scalar, r#"'implicit flow key'"#);
-        expect! (receiver, (2, 4, 6), block, map, (2, 4, 5));
-        expect! (receiver, (3, 6, 7), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r#"'implicit block key'"#);
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#"'implicit flow key'"#);
+        expect! (receiver, (2, 4, 6), data, block, map, (2, 4, 5));
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"value");
         expect! (receiver, (1, 3, 4), node, sequence);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -3986,9 +4217,11 @@ r#"' 1st non-empty
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, "' 1st non-empty\n\n 2nd non-empty \n	3rd non-empty '");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, "' 1st non-empty\n\n 2nd non-empty \n	3rd non-empty '");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -4014,50 +4247,52 @@ r#"# Outside flow collection:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, r":");
-        expect! (receiver, (2, 3, 5), literal, r":");
-        expect! (receiver, (2, 3, 6), literal, r"vector");
+        expect! (receiver, (2, 3, 4), data, literal, r":");
+        expect! (receiver, (2, 3, 5), data, literal, r":");
+        expect! (receiver, (2, 3, 6), data, literal, r"vector");
         expect! (receiver, (1, 2, 3), node, block, close);
 
-        expect! (receiver, (1, 2, 7), node, scalar, r#"": - ()""#);
+        expect! (receiver, (1, 2, 7), data, node, scalar, r#"": - ()""#);
         expect! (receiver, (1, 2, 8), node, block, open);
-        expect! (receiver, (2, 8, 9), literal, r"Up");
-        expect! (receiver, (2, 8, 10), literal, r",");
-        expect! (receiver, (2, 8, 11), literal, r" ");
-        expect! (receiver, (2, 8, 12), literal, r"up");
-        expect! (receiver, (2, 8, 13), literal, r",");
-        expect! (receiver, (2, 8, 14), literal, r" ");
-        expect! (receiver, (2, 8, 15), literal, r"and away!");
+        expect! (receiver, (2, 8, 9), data, literal, r"Up");
+        expect! (receiver, (2, 8, 10), data, literal, r",");
+        expect! (receiver, (2, 8, 11), data, literal, r" ");
+        expect! (receiver, (2, 8, 12), data, literal, r"up");
+        expect! (receiver, (2, 8, 13), data, literal, r",");
+        expect! (receiver, (2, 8, 14), data, literal, r" ");
+        expect! (receiver, (2, 8, 15), data, literal, r"and away!");
         expect! (receiver, (1, 2, 8), node, block, close);
 
-        expect! (receiver, (1, 2, 16), node, scalar, r"-123");
+        expect! (receiver, (1, 2, 16), data, node, scalar, r"-123");
         expect! (receiver, (1, 2, 17), node, block, open);
-        expect! (receiver, (2, 17, 18), literal, r"http");
-        expect! (receiver, (2, 17, 19), literal, r":");
-        expect! (receiver, (2, 17, 20), literal, r"//example.com/foo");
-        expect! (receiver, (2, 17, 21), literal, "#");
-        expect! (receiver, (2, 17, 22), literal, "bar");
+        expect! (receiver, (2, 17, 18), data, literal, r"http");
+        expect! (receiver, (2, 17, 19), data, literal, r":");
+        expect! (receiver, (2, 17, 20), data, literal, r"//example.com/foo");
+        expect! (receiver, (2, 17, 21), data, literal, "#");
+        expect! (receiver, (2, 17, 22), data, literal, "bar");
         expect! (receiver, (1, 2, 17), node, block, close);
 
         expect! (receiver, (2, 23, 24), node, block, open);
-        expect! (receiver, (3, 24, 25), literal, r":");
-        expect! (receiver, (3, 24, 26), literal, r":");
-        expect! (receiver, (3, 24, 27), literal, r"vector");
+        expect! (receiver, (3, 24, 25), data, literal, r":");
+        expect! (receiver, (3, 24, 26), data, literal, r":");
+        expect! (receiver, (3, 24, 27), data, literal, r"vector");
         expect! (receiver, (2, 23, 24), node, block, close);
 
-        expect! (receiver, (2, 23, 28), node, scalar, r#"": - ()""#);
-        expect! (receiver, (2, 23, 29), node, scalar, r#""Up, up and away!""#);
-        expect! (receiver, (2, 23, 30), node, scalar, r"-123");
+        expect! (receiver, (2, 23, 28), data, node, scalar, r#"": - ()""#);
+        expect! (receiver, (2, 23, 29), data, node, scalar, r#""Up, up and away!""#);
+        expect! (receiver, (2, 23, 30), data, node, scalar, r"-123");
         expect! (receiver, (2, 23, 31), node, block, open);
-        expect! (receiver, (3, 31, 32), literal, r"http");
-        expect! (receiver, (3, 31, 33), literal, r":");
-        expect! (receiver, (3, 31, 34), literal, r"//example.com/foo");
-        expect! (receiver, (3, 31, 35), literal, r"#");
-        expect! (receiver, (3, 31, 36), literal, r"bar");
+        expect! (receiver, (3, 31, 32), data, literal, r"http");
+        expect! (receiver, (3, 31, 33), data, literal, r":");
+        expect! (receiver, (3, 31, 34), data, literal, r"//example.com/foo");
+        expect! (receiver, (3, 31, 35), data, literal, r"#");
+        expect! (receiver, (3, 31, 36), data, literal, r"bar");
         expect! (receiver, (2, 23, 31), node, block, close);
         expect! (receiver, (1, 2, 23), node, sequence);
         expect! (receiver, (0, 0, 37), doc, end);
@@ -4088,22 +4323,24 @@ r#"%YAML 1.2
 ]"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""::vector""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#"": - ()""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Up, up, and away!""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""-123""#, !=r"!!int");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""http://example.com/foo#bar""#, !=r"!!str");
-        expect! (receiver, (2, 9, 10), node, scalar, r#""::vector""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#"": - ()""#, !=r"!!str");
-        expect! (receiver, (2, 9, 12), node, scalar, r#""Up, up, and away!""#, !=r"!!str");
-        expect! (receiver, (2, 9, 13), node, scalar, r#""-123""#, !=r"!!int");
-        expect! (receiver, (2, 9, 14), node, scalar, r#""http://example.com/foo#bar""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""::vector""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#"": - ()""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Up, up, and away!""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""-123""#, !=r"!!int");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""http://example.com/foo#bar""#, !=r"!!str");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""::vector""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#"": - ()""#, !=r"!!str");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r#""Up, up, and away!""#, !=r"!!str");
+        expect! (receiver, (2, 9, 13), data, node, scalar, r#""-123""#, !=r"!!int");
+        expect! (receiver, (2, 9, 14), data, node, scalar, r#""http://example.com/foo#bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 15), doc, end);
         the_end!(receiver);
@@ -4120,13 +4357,15 @@ r#"implicit block key : [
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"implicit block key");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (2, 4, 5), node, scalar, r"implicit flow key");
-        expect! (receiver, (2, 4, 6), block, map, (2, 4, 5));
-        expect! (receiver, (3, 6, 7), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"implicit block key");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"implicit flow key");
+        expect! (receiver, (2, 4, 6), data, block, map, (2, 4, 5));
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"value");
         expect! (receiver, (1, 3, 4), node, sequence);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -4152,16 +4391,18 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""implicit block key""#, !=r"!!str");
-        expect! (receiver, (3, 6, 7), node, scalar, r#""implicit flow key""#, !=r"!!str");
-        expect! (receiver, (3, 6, 8), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""implicit block key""#, !=r"!!str");
+        expect! (receiver, (3, 6, 7), data, node, scalar, r#""implicit flow key""#, !=r"!!str");
+        expect! (receiver, (3, 6, 8), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 9), doc, end);
         the_end! (receiver);
@@ -4180,14 +4421,16 @@ r#"1st non-empty
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"1st non-empty");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, r"2nd non-empty");
-        expect! (receiver, (1, 2, 6), literal, r" ");
-        expect! (receiver, (1, 2, 7), literal, r"3rd non-empty");
+        expect! (receiver, (1, 2, 3), data, literal, r"1st non-empty");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"2nd non-empty");
+        expect! (receiver, (1, 2, 6), data, literal, r" ");
+        expect! (receiver, (1, 2, 7), data, literal, r"3rd non-empty");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -4208,11 +4451,13 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (0, 0, 3), node, scalar, "\"1st non-empty\\n\\\n      2nd non-empty \\\n      3rd non-empty\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"1st non-empty\\n\\\n      2nd non-empty \\\n      3rd non-empty\"", !=r"!!str");
 
         expect! (receiver, (0, 0, 4), doc, end);
 
@@ -4229,16 +4474,18 @@ r#"- [ one, two, ]
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
-        expect! (receiver, (2, 3, 4), node, scalar, r"one");
-        expect! (receiver, (2, 3, 5), node, scalar, r"two");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"one");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"two");
         expect! (receiver, (1, 2, 3), node, sequence);
 
-        expect! (receiver, (2, 6, 7), node, scalar, r"three");
-        expect! (receiver, (2, 6, 8), node, scalar, r"four");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"three");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r"four");
         expect! (receiver, (1, 2, 6), node, sequence);
 
         expect! (receiver, (0, 0, 9), doc, end);
@@ -4266,19 +4513,21 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r#""three""#, !=r"!!str");
-        expect! (receiver, (2, 7, 9), node, scalar, r#""four""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r#""three""#, !=r"!!str");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r#""four""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -4300,21 +4549,23 @@ single: pair,
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, "\"double\n quoted\"");
-        expect! (receiver, (1, 2, 4), node, scalar, "'single\n           quoted'");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, "\"double\n quoted\"");
+        expect! (receiver, (1, 2, 4), data, node, scalar, "'single\n           quoted'");
         expect! (receiver, (1, 2, 5), node, block, open);
-        expect! (receiver, (2, 5, 6), literal, r"plain");
-        expect! (receiver, (2, 5, 7), literal, r" ");
-        expect! (receiver, (2, 5, 8), literal, r"text");
+        expect! (receiver, (2, 5, 6), data, literal, r"plain");
+        expect! (receiver, (2, 5, 7), data, literal, r" ");
+        expect! (receiver, (2, 5, 8), data, literal, r"text");
         expect! (receiver, (1, 2, 5), node, block, close);
-        expect! (receiver, (2, 9, 10), node, scalar, r"nested");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"nested");
         expect! (receiver, (1, 2, 9), node, sequence);
-        expect! (receiver, (1, 2, 11), node, scalar, r"single");
-        expect! (receiver, (1, 2, 12), block, map, (1, 2, 11));
-        expect! (receiver, (2, 12, 13), node, scalar, r"pair");
+        expect! (receiver, (1, 2, 11), data, node, scalar, r"single");
+        expect! (receiver, (1, 2, 12), data, block, map, (1, 2, 11));
+        expect! (receiver, (2, 12, 13), data, node, scalar, r"pair");
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (0, 0, 14), doc, end);
 
@@ -4342,22 +4593,24 @@ r#"%YAML 1.2
 ]"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""double quoted""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""single quoted""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""plain text""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""double quoted""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""single quoted""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""plain text""#, !=r"!!str");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r#""nested""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r#""nested""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (2, 9, 10), node, scalar, r#""single""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""pair""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""single""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""pair""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 12), doc, end);
 
         the_end! (receiver);
@@ -4373,22 +4626,24 @@ r#"- { one : two , three: four , }
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
 
-        expect! (receiver, (2, 3, 4), node, scalar, r"one");
-        expect! (receiver, (2, 3, 5), node, scalar, r"two");
-        expect! (receiver, (2, 3, 6), node, scalar, r"three");
-        expect! (receiver, (2, 3, 7), node, scalar, r"four");
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"one");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"two");
+        expect! (receiver, (2, 3, 6), data, node, scalar, r"three");
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"four");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
 
-        expect! (receiver, (2, 8, 9), node, scalar, r"five");
-        expect! (receiver, (2, 8, 10), node, scalar, r"six");
-        expect! (receiver, (2, 8, 11), node, scalar, r"seven");
-        expect! (receiver, (2, 8, 12), node, scalar, r"eight");
-        expect! (receiver, (1, 2, 8), node, mapping);
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"five");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"six");
+        expect! (receiver, (2, 8, 11), data, node, scalar, r"seven");
+        expect! (receiver, (2, 8, 12), data, node, scalar, r"eight");
+        expect! (receiver, (1, 2, 8), data, node, mapping);
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -4415,23 +4670,25 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (2, 4, 7), node, scalar, r#""three""#, !=r"!!str");
-        expect! (receiver, (2, 4, 8), node, scalar, r#""four""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r#""three""#, !=r"!!str");
+        expect! (receiver, (2, 4, 8), data, node, scalar, r#""four""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (2, 9, 10), node, scalar, r#""five""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""six""#, !=r"!!str");
-        expect! (receiver, (2, 9, 12), node, scalar, r#""seven""#, !=r"!!str");
-        expect! (receiver, (2, 9, 13), node, scalar, r#""eight""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""five""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""six""#, !=r"!!str");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r#""seven""#, !=r"!!str");
+        expect! (receiver, (2, 9, 13), data, node, scalar, r#""eight""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 14), doc, end);
 
         the_end! (receiver);
@@ -4451,16 +4708,18 @@ implicit: entry,
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"explicit");
-        expect! (receiver, (1, 2, 4), node, scalar, r"entry");
-        expect! (receiver, (1, 2, 5), node, scalar, r"implicit");
-        expect! (receiver, (1, 2, 6), node, scalar, r"entry");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"explicit");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"entry");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r"implicit");
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"entry");
         expect! (receiver, (1, 2, 7), node, null);
         expect! (receiver, (1, 2, 8), node, null);
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 2), data, node, mapping);
 
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -4482,17 +4741,19 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""explicit""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""entry""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""implicit""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""entry""#, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""explicit""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""entry""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""implicit""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""entry""#, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 10), doc, end);
 
@@ -4513,23 +4774,25 @@ omitted value:,
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"unquoted");
-        expect! (receiver, (1, 2, 4), node, scalar, r#""separate""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"unquoted");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r#""separate""#);
         expect! (receiver, (1, 2, 5), node, block, open);
-        expect! (receiver, (2, 5, 6), literal, r"http");
-        expect! (receiver, (2, 5, 7), literal, r":");
-        expect! (receiver, (2, 5, 8), literal, r"//foo.com");
+        expect! (receiver, (2, 5, 6), data, literal, r"http");
+        expect! (receiver, (2, 5, 7), data, literal, r":");
+        expect! (receiver, (2, 5, 8), data, literal, r"//foo.com");
         expect! (receiver, (1, 2, 5), node, block, close);
         expect! (receiver, (1, 2, 9), node, null);
-        expect! (receiver, (1, 2, 10), node, scalar, r"omitted value");
+        expect! (receiver, (1, 2, 10), data, node, scalar, r"omitted value");
         expect! (receiver, (1, 2, 11), node, null);
         expect! (receiver, (1, 2, 12), node, null);
-        expect! (receiver, (1, 2, 13), node, scalar, r"omitted key");
+        expect! (receiver, (1, 2, 13), data, node, scalar, r"omitted key");
 
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (0, 0, 14), doc, end);
 
         the_end! (receiver);
@@ -4550,20 +4813,22 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""unquoted""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""separate""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""http://foo.com""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""omitted value""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 10), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 11), node, scalar, r#""omitted key""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""unquoted""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""separate""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""http://foo.com""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""omitted value""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r#""omitted key""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -4582,17 +4847,19 @@ r#"{
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r#""adjacent""#);
-        expect! (receiver, (1, 2, 4), node, scalar, r"value");
-        expect! (receiver, (1, 2, 5), node, scalar, r#""readable""#);
-        expect! (receiver, (1, 2, 6), node, scalar, r"value");
-        expect! (receiver, (1, 2, 7), node, scalar, r#""empty""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r#""adjacent""#);
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"value");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r#""readable""#);
+        expect! (receiver, (1, 2, 6), data, node, scalar, r"value");
+        expect! (receiver, (1, 2, 7), data, node, scalar, r#""empty""#);
         expect! (receiver, (1, 2, 8), node, null);
 
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 2), data, node, mapping);
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -4613,18 +4880,20 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""adjacent""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""readable""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""empty""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""adjacent""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""readable""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""empty""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""""#, !=r"!!null");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -4641,11 +4910,13 @@ foo: bar
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (1, 2, 3), node, scalar, r"foo");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"bar");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"foo");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"bar");
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -4665,15 +4936,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""foo""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""foo""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""bar""#, !=r"!!str");
 
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -4691,15 +4964,17 @@ r#"[
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (2, 3, 4), node, block, open);
-        expect! (receiver, (3, 4, 5), literal, r"foo");
-        expect! (receiver, (3, 4, 6), literal, r" ");
-        expect! (receiver, (3, 4, 7), literal, r"bar");
+        expect! (receiver, (3, 4, 5), data, literal, r"foo");
+        expect! (receiver, (3, 4, 6), data, literal, r" ");
+        expect! (receiver, (3, 4, 7), data, literal, r"bar");
         expect! (receiver, (2, 3, 4), node, block, close);
-        expect! (receiver, (2, 3, 8), node, scalar, r"baz");
+        expect! (receiver, (2, 3, 8), data, node, scalar, r"baz");
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -4722,14 +4997,16 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""foo bar""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""baz""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""foo bar""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""baz""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -4746,24 +5023,26 @@ r#"- [ YAML : separate ]
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar, r"YAML");
-        expect! (receiver, (2, 3, 5), block, map, (2, 3, 4));
-        expect! (receiver, (3, 5, 6), node, scalar, r"separate");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"YAML");
+        expect! (receiver, (2, 3, 5), data, block, map, (2, 3, 4));
+        expect! (receiver, (3, 5, 6), data, node, scalar, r"separate");
         expect! (receiver, (1, 2, 3), node, sequence);
 
-        expect! (receiver, (2, 7, 8), node, mapping);
+        expect! (receiver, (2, 7, 8), data, node, mapping);
         expect! (receiver, (3, 8, 9), node, null);
-        expect! (receiver, (3, 8, 10), node, scalar, r"empty key entry");
+        expect! (receiver, (3, 8, 10), data, node, scalar, r"empty key entry");
         expect! (receiver, (1, 2, 7), node, sequence);
 
-        expect! (receiver, (3, 12, 13), node, scalar, r"JSON");
-        expect! (receiver, (3, 12, 14), node, scalar, r"like");
-        expect! (receiver, (2, 11, 12), node, mapping);
-        expect! (receiver, (2, 11, 15), block, map, (2, 11, 12));
-        expect! (receiver, (3, 15, 16), node, scalar, r"adjacent");
+        expect! (receiver, (3, 12, 13), data, node, scalar, r"JSON");
+        expect! (receiver, (3, 12, 14), data, node, scalar, r"like");
+        expect! (receiver, (2, 11, 12), data, node, mapping);
+        expect! (receiver, (2, 11, 15), data, block, map, (2, 11, 12));
+        expect! (receiver, (3, 15, 16), data, node, scalar, r"adjacent");
         expect! (receiver, (1, 2, 11), node, sequence);
         expect! (receiver, (0, 0, 17), doc, end);
 
@@ -4801,27 +5080,29 @@ r#"%YAML 1.2
 ]"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (3, 5, 6), node, scalar, r#""YAML""#, !=r"!!str");
-        expect! (receiver, (3, 5, 7), node, scalar, r#""separate""#, !=r"!!str");
-        expect! (receiver, (2, 4, 5), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 4), node, sequence, !=r"!!seq");
+        expect! (receiver, (3, 5, 6), data, node, scalar, r#""YAML""#, !=r"!!str");
+        expect! (receiver, (3, 5, 7), data, node, scalar, r#""separate""#, !=r"!!str");
+        expect! (receiver, (2, 4, 5), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (3, 9, 10), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (3, 9, 11), node, scalar, r#""empty key entry""#, !=r"!!str");
-        expect! (receiver, (2, 8, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 8), node, sequence, !=r"!!seq");
+        expect! (receiver, (3, 9, 10), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (3, 9, 11), data, node, scalar, r#""empty key entry""#, !=r"!!str");
+        expect! (receiver, (2, 8, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 8), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (4, 14, 15), node, scalar, r#""JSON""#, !=r"!!str");
-        expect! (receiver, (4, 14, 16), node, scalar, r#""like""#, !=r"!!str");
-        expect! (receiver, (3, 13, 14), node, mapping, !=r"!!map");
-        expect! (receiver, (3, 13, 17), node, scalar, r#""adjacent""#);
-        expect! (receiver, (2, 12, 13), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 12), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (4, 14, 15), data, node, scalar, r#""JSON""#, !=r"!!str");
+        expect! (receiver, (4, 14, 16), data, node, scalar, r#""like""#, !=r"!!str");
+        expect! (receiver, (3, 13, 14), data, node, mapping, !=r"!!map");
+        expect! (receiver, (3, 13, 17), data, node, scalar, r#""adjacent""#);
+        expect! (receiver, (2, 12, 13), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 12), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 18), doc, end);
 
@@ -4839,19 +5120,21 @@ r#"[ foo
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, r"foo");
-        expect! (receiver, (2, 3, 5), literal, r" ");
-        expect! (receiver, (2, 3, 6), literal, r"bar");
+        expect! (receiver, (2, 3, 4), data, literal, r"foo");
+        expect! (receiver, (2, 3, 5), data, literal, r" ");
+        expect! (receiver, (2, 3, 6), data, literal, r"bar");
         expect! (receiver, (1, 2, 3), node, block, close);
-        expect! (receiver, (1, 2, 7), block, map, (1, 2, 3));
-        expect! (receiver, (2, 7, 8), node, scalar, r"invalid");
-        expect! (receiver, (1, 2, 9), node, scalar, r#""foo...>1K characters...bar""#);
-        expect! (receiver, (1, 2, 10), block, map, (1, 2, 9));
-        expect! (receiver, (2, 10, 11), node, scalar, r"invalid");
+        expect! (receiver, (1, 2, 7), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"invalid");
+        expect! (receiver, (1, 2, 9), data, node, scalar, r#""foo...>1K characters...bar""#);
+        expect! (receiver, (1, 2, 10), data, block, map, (1, 2, 9));
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"invalid");
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -4869,19 +5152,21 @@ r#"[ foo
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, r"foo");
-        expect! (receiver, (2, 3, 5), literal, r" ");
-        expect! (receiver, (2, 3, 6), literal, r"bar");
+        expect! (receiver, (2, 3, 4), data, literal, r"foo");
+        expect! (receiver, (2, 3, 5), data, literal, r" ");
+        expect! (receiver, (2, 3, 6), data, literal, r"bar");
         expect! (receiver, (1, 2, 3), node, block, close);
-        expect! (receiver, (1, 2, 7), block, map, (1, 2, 3));
-        expect! (receiver, (2, 7, 8), node, scalar, r"invalid");
-        expect! (receiver, (1, 2, 9), node, scalar, r#""foo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bar""#);
-        expect! (receiver, (1, 2, 10), block, map, (1, 2, 9));
-        expect! (receiver, (2, 10, 11), node, scalar, r"invalid");
+        expect! (receiver, (1, 2, 7), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"invalid");
+        expect! (receiver, (1, 2, 9), data, node, scalar, r#""foo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bar""#);
+        expect! (receiver, (1, 2, 10), data, block, map, (1, 2, 9));
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"invalid");
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -4900,21 +5185,23 @@ r#"- [ a, b ]
 - c"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar, r"a");
-        expect! (receiver, (2, 3, 5), node, scalar, r"b");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"a");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"b");
         expect! (receiver, (1, 2, 3), node, sequence);
 
-        expect! (receiver, (2, 6, 7), node, scalar, r"a");
-        expect! (receiver, (2, 6, 8), node, scalar, r"b");
-        expect! (receiver, (1, 2, 6), node, mapping);
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"a");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r"b");
+        expect! (receiver, (1, 2, 6), data, node, mapping);
 
-        expect! (receiver, (1, 2, 9), node, scalar, r#""a""#);
-        expect! (receiver, (1, 2, 10), node, scalar, r"'b'");
-        expect! (receiver, (1, 2, 11), node, scalar, r"c");
+        expect! (receiver, (1, 2, 9), data, node, scalar, r#""a""#);
+        expect! (receiver, (1, 2, 10), data, node, scalar, r"'b'");
+        expect! (receiver, (1, 2, 11), data, node, scalar, r"c");
 
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -4939,23 +5226,25 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""b""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""b""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (2, 7, 9), node, scalar, r#""b""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r#""b""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (1, 3, 10), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (1, 3, 11), node, scalar, r#""b""#, !=r"!!str");
-        expect! (receiver, (1, 3, 12), node, scalar, r#""c""#, !=r"!!str");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r#""b""#, !=r"!!str");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r#""c""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -4974,14 +5263,16 @@ r#"- !!str "a"
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (1, 2, 4), node, scalar, r"'b'");
-        expect! (receiver, (1, 2, 5), node, scalar, r#""c""#, &=r"anchor");
-        expect! (receiver, (1, 2, 6), alias, r"anchor");
-        expect! (receiver, (1, 2, 7), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"'b'");
+        expect! (receiver, (1, 2, 5), data, node, scalar, r#""c""#, &=r"anchor");
+        expect! (receiver, (1, 2, 6), data, alias, r"anchor");
+        expect! (receiver, (1, 2, 7), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -5004,17 +5295,19 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""a""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""b""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""c""#, !=r"!!str", &=r"A");
-        expect! (receiver, (1, 3, 7), alias, r"A");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""a""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""b""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""c""#, !=r"!!str", &=r"A");
+        expect! (receiver, (1, 3, 7), data, alias, r"A");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -5038,28 +5331,30 @@ r#"- | # Empty header
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, "literal");
-        expect! (receiver, (2, 3, 5), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, literal, "literal");
+        expect! (receiver, (2, 3, 5), data, literal, "\n");
         expect! (receiver, (1, 2, 3), node, block, close);
 
         expect! (receiver, (1, 2, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, " folded");
-        expect! (receiver, (2, 6, 8), literal, "\n");
+        expect! (receiver, (2, 6, 7), data, literal, " folded");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
         expect! (receiver, (1, 2, 6), node, block, close);
 
         expect! (receiver, (1, 2, 9), node, block, open);
-        expect! (receiver, (2, 9, 10), literal, "keep");
-        expect! (receiver, (2, 9, 11), literal, "\n");
-        expect! (receiver, (2, 9, 12), literal, "\n");
+        expect! (receiver, (2, 9, 10), data, literal, "keep");
+        expect! (receiver, (2, 9, 11), data, literal, "\n");
+        expect! (receiver, (2, 9, 12), data, literal, "\n");
         expect! (receiver, (1, 2, 9), node, block, close);
 
         expect! (receiver, (1, 2, 13), node, block, open);
-        expect! (receiver, (2, 13, 14), literal, " strip");
+        expect! (receiver, (2, 13, 14), data, literal, " strip");
         expect! (receiver, (1, 2, 13), node, block, close);
 
         expect! (receiver, (0, 0, 15), doc, end);
@@ -5082,16 +5377,18 @@ r#"%YAML 1.2
 ]"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""literal\n""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""·folded\n""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""keep\n\n""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""·strip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""literal\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""·folded\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""keep\n\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""·strip""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -5117,32 +5414,34 @@ r#"- |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, "detected");
-        expect! (receiver, (2, 3, 5), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, literal, "detected");
+        expect! (receiver, (2, 3, 5), data, literal, "\n");
         expect! (receiver, (1, 2, 3), node, block, close);
 
         expect! (receiver, (1, 2, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, "\n");
-        expect! (receiver, (2, 6, 8), literal, "\n");
-        expect! (receiver, (2, 6, 9), literal, "# detected");
-        expect! (receiver, (2, 6, 10), literal, "\n");
+        expect! (receiver, (2, 6, 7), data, literal, "\n");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
+        expect! (receiver, (2, 6, 9), data, literal, "# detected");
+        expect! (receiver, (2, 6, 10), data, literal, "\n");
         expect! (receiver, (1, 2, 6), node, block, close);
 
         expect! (receiver, (1, 2, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, " explicit");
-        expect! (receiver, (2, 11, 13), literal, "\n");
+        expect! (receiver, (2, 11, 12), data, literal, " explicit");
+        expect! (receiver, (2, 11, 13), data, literal, "\n");
         expect! (receiver, (1, 2, 11), node, block, close);
 
         expect! (receiver, (1, 2, 14), node, block, open);
-        expect! (receiver, (2, 14, 15), literal, "\t");
-        expect! (receiver, (2, 14, 16), literal, "\n");
-        expect! (receiver, (2, 14, 17), literal, "detected");
-        expect! (receiver, (2, 14, 18), literal, "\n");
+        expect! (receiver, (2, 14, 15), data, literal, "\t");
+        expect! (receiver, (2, 14, 16), data, literal, "\n");
+        expect! (receiver, (2, 14, 17), data, literal, "detected");
+        expect! (receiver, (2, 14, 18), data, literal, "\n");
         expect! (receiver, (1, 2, 14), node, block, close);
 
         expect! (receiver, (0, 0, 19), doc, end);
@@ -5170,32 +5469,34 @@ r#"- |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, "detected");
-        expect! (receiver, (2, 3, 5), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, literal, "detected");
+        expect! (receiver, (2, 3, 5), data, literal, "\n");
         expect! (receiver, (1, 2, 3), node, block, close);
 
         expect! (receiver, (1, 2, 6), node, block, open);
-        expect! (receiver, (2, 6, 7), literal, "\n");
-        expect! (receiver, (2, 6, 8), literal, "\n");
-        expect! (receiver, (2, 6, 9), literal, "# detected");
-        expect! (receiver, (2, 6, 10), literal, "\n");
+        expect! (receiver, (2, 6, 7), data, literal, "\n");
+        expect! (receiver, (2, 6, 8), data, literal, "\n");
+        expect! (receiver, (2, 6, 9), data, literal, "# detected");
+        expect! (receiver, (2, 6, 10), data, literal, "\n");
         expect! (receiver, (1, 2, 6), node, block, close);
 
         expect! (receiver, (1, 2, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, " explicit");
-        expect! (receiver, (2, 11, 13), literal, "\n");
+        expect! (receiver, (2, 11, 12), data, literal, " explicit");
+        expect! (receiver, (2, 11, 13), data, literal, "\n");
         expect! (receiver, (1, 2, 11), node, block, close);
 
         expect! (receiver, (1, 2, 14), node, block, open);
-        expect! (receiver, (2, 14, 15), literal, "\t");
-        expect! (receiver, (2, 14, 16), literal, "\n");
-        expect! (receiver, (2, 14, 17), literal, "detected");
-        expect! (receiver, (2, 14, 18), literal, "\n");
+        expect! (receiver, (2, 14, 15), data, literal, "\t");
+        expect! (receiver, (2, 14, 16), data, literal, "\n");
+        expect! (receiver, (2, 14, 17), data, literal, "detected");
+        expect! (receiver, (2, 14, 18), data, literal, "\n");
         expect! (receiver, (1, 2, 14), node, block, close);
 
         expect! (receiver, (0, 0, 19), doc, end);
@@ -5214,13 +5515,15 @@ r#"- |
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, "\n");
-        expect! (receiver, (2, 3, 5), literal, r"text");
-        expect! (receiver, (2, 3, 6), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, literal, "\n");
+        expect! (receiver, (2, 3, 5), data, literal, r"text");
+        expect! (receiver, (2, 3, 6), data, literal, "\n");
         expect! (receiver, (1, 2, 3), node, block, close);
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -5238,14 +5541,16 @@ r#"- >
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, r"text");
-        expect! (receiver, (2, 3, 5), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, literal, r"text");
+        expect! (receiver, (2, 3, 5), data, literal, "\n");
         expect! (receiver, (1, 2, 3), node, block, close);
-        expect! (receiver, (0, 0, 6), node, scalar, r"text");
+        expect! (receiver, (0, 0, 6), data, node, scalar, r"text");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -5261,12 +5566,14 @@ r#"- |2
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (1, 2, 3), node, block, open);
         expect! (receiver, (1, 2, 3), node, block, close);
-        expect! (receiver, (0, 0, 4), node, scalar, r"text");
+        expect! (receiver, (0, 0, 4), data, node, scalar, r"text");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -5287,23 +5594,25 @@ keep: |+
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"strip");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"strip");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"text");
+        expect! (receiver, (2, 4, 5), data, literal, r"text");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 6), node, scalar, r"clip");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"clip");
         expect! (receiver, (1, 3, 7), node, block, open);
-        expect! (receiver, (2, 7, 8), literal, r"text");
-        expect! (receiver, (2, 7, 9), literal, "\n");
+        expect! (receiver, (2, 7, 8), data, literal, r"text");
+        expect! (receiver, (2, 7, 9), data, literal, "\n");
         expect! (receiver, (1, 3, 7), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"keep");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"keep");
         expect! (receiver, (1, 3, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, r"text");
-        expect! (receiver, (2, 11, 13), literal, "\n");
+        expect! (receiver, (2, 11, 12), data, literal, r"text");
+        expect! (receiver, (2, 11, 13), data, literal, "\n");
         expect! (receiver, (1, 3, 11), node, block, close);
 
         expect! (receiver, (0, 0, 14), doc, end);
@@ -5329,18 +5638,20 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""strip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""text""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""clip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""text\n""#, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""keep""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""text\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""strip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""text""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""clip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""text\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""keep""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""text\n""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -5373,24 +5684,26 @@ keep: |+
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"strip");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"strip");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"# text");
+        expect! (receiver, (2, 4, 5), data, literal, r"# text");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 6), node, scalar, r"clip");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"clip");
         expect! (receiver, (1, 3, 7), node, block, open);
-        expect! (receiver, (2, 7, 8), literal, r"# text");
-        expect! (receiver, (2, 7, 9), literal, "\n");
+        expect! (receiver, (2, 7, 8), data, literal, r"# text");
+        expect! (receiver, (2, 7, 9), data, literal, "\n");
         expect! (receiver, (1, 3, 7), node, block, close);
-        expect! (receiver, (1, 3, 10), node, scalar, r"keep");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r"keep");
         expect! (receiver, (1, 3, 11), node, block, open);
-        expect! (receiver, (2, 11, 12), literal, r"# text");
-        expect! (receiver, (2, 11, 13), literal, "\n");
-        expect! (receiver, (2, 11, 14), literal, "\n");
+        expect! (receiver, (2, 11, 12), data, literal, r"# text");
+        expect! (receiver, (2, 11, 13), data, literal, "\n");
+        expect! (receiver, (2, 11, 14), data, literal, "\n");
         expect! (receiver, (1, 3, 11), node, block, close);
 
         expect! (receiver, (0, 0, 15), doc, end);
@@ -5416,18 +5729,20 @@ r##"%YAML 1.2
 "##;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""strip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r##""# text""##, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""clip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r##""# text\n""##, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""keep""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r##""# text\n""##, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""strip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r##""# text""##, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""clip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r##""# text\n""##, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""keep""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r##""# text\n""##, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -5447,21 +5762,23 @@ keep: |+
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"strip");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"strip");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
         expect! (receiver, (1, 3, 4), node, block, close);
 
-        expect! (receiver, (1, 3, 5), node, scalar, r"clip");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"clip");
         expect! (receiver, (1, 3, 6), node, block, open);
         expect! (receiver, (1, 3, 6), node, block, close);
 
-        expect! (receiver, (1, 3, 7), node, scalar, r"keep");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"keep");
         expect! (receiver, (1, 3, 8), node, block, open);
-        expect! (receiver, (2, 8, 9), literal, "\n");
+        expect! (receiver, (2, 8, 9), data, literal, "\n");
         expect! (receiver, (1, 3, 8), node, block, close);
 
         expect! (receiver, (0, 0, 10), doc, end);
@@ -5486,18 +5803,20 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""strip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""clip""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""""#, !=r"!!str");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""keep""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""strip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""clip""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""keep""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""\n""#, !=r"!!str");
 
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -5516,14 +5835,16 @@ r#"|
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"literal");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, "\ttext");
-        expect! (receiver, (1, 2, 6), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"literal");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, "\ttext");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
 
         expect! (receiver, (0, 0, 7), doc, end);
@@ -5542,11 +5863,13 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (0, 0, 3), node, scalar, r#""literal\n\ttext\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""literal\n\ttext\n""#, !=r"!!str");
 
         expect! (receiver, (0, 0, 4), doc, end);
 
@@ -5570,19 +5893,21 @@ r#"|
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, "\n");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, "literal");
-        expect! (receiver, (1, 2, 6), literal, "\n");
-        expect! (receiver, (1, 2, 7), literal, " ");
-        expect! (receiver, (1, 2, 8), literal, "\n");
-        expect! (receiver, (1, 2, 9), literal, "\n");
-        expect! (receiver, (1, 2, 10), literal, "text");
-        expect! (receiver, (1, 2, 11), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, "\n");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, "literal");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
+        expect! (receiver, (1, 2, 7), data, literal, " ");
+        expect! (receiver, (1, 2, 8), data, literal, "\n");
+        expect! (receiver, (1, 2, 9), data, literal, "\n");
+        expect! (receiver, (1, 2, 10), data, literal, "text");
+        expect! (receiver, (1, 2, 11), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
 
         expect! (receiver, (0, 0, 12), doc, end);
@@ -5603,14 +5928,16 @@ r#">
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, "folded");
-        expect! (receiver, (1, 2, 4), literal, r" ");
-        expect! (receiver, (1, 2, 5), literal, "text");
-        expect! (receiver, (1, 2, 6), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, "folded");
+        expect! (receiver, (1, 2, 4), data, literal, r" ");
+        expect! (receiver, (1, 2, 5), data, literal, "text");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
 
         expect! (receiver, (0, 0, 7), doc, end);
@@ -5642,31 +5969,33 @@ r#">
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, "\n");
-        expect! (receiver, (1, 2, 4), literal, r"folded");
-        expect! (receiver, (1, 2, 5), literal, r" ");
-        expect! (receiver, (1, 2, 6), literal, r"line");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, r"next");
-        expect! (receiver, (1, 2, 9), literal, r" ");
-        expect! (receiver, (1, 2, 10), literal, r"line");
-        expect! (receiver, (1, 2, 11), literal, "\n");
-        expect! (receiver, (1, 2, 12), literal, r"  * bullet");
-        expect! (receiver, (1, 2, 13), literal, "\n");
-        expect! (receiver, (1, 2, 14), literal, "\n");
-        expect! (receiver, (1, 2, 15), literal, r"  * list");
-        expect! (receiver, (1, 2, 16), literal, "\n");
-        expect! (receiver, (1, 2, 17), literal, r"  * lines");
-        expect! (receiver, (1, 2, 18), literal, "\n");
-        expect! (receiver, (1, 2, 19), literal, "\n");
-        expect! (receiver, (1, 2, 20), literal, r"last");
-        expect! (receiver, (1, 2, 21), literal, r" ");
-        expect! (receiver, (1, 2, 22), literal, r"line");
-        expect! (receiver, (1, 2, 23), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, "\n");
+        expect! (receiver, (1, 2, 4), data, literal, r"folded");
+        expect! (receiver, (1, 2, 5), data, literal, r" ");
+        expect! (receiver, (1, 2, 6), data, literal, r"line");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, r"next");
+        expect! (receiver, (1, 2, 9), data, literal, r" ");
+        expect! (receiver, (1, 2, 10), data, literal, r"line");
+        expect! (receiver, (1, 2, 11), data, literal, "\n");
+        expect! (receiver, (1, 2, 12), data, literal, r"  * bullet");
+        expect! (receiver, (1, 2, 13), data, literal, "\n");
+        expect! (receiver, (1, 2, 14), data, literal, "\n");
+        expect! (receiver, (1, 2, 15), data, literal, r"  * list");
+        expect! (receiver, (1, 2, 16), data, literal, "\n");
+        expect! (receiver, (1, 2, 17), data, literal, r"  * lines");
+        expect! (receiver, (1, 2, 18), data, literal, "\n");
+        expect! (receiver, (1, 2, 19), data, literal, "\n");
+        expect! (receiver, (1, 2, 20), data, literal, r"last");
+        expect! (receiver, (1, 2, 21), data, literal, r" ");
+        expect! (receiver, (1, 2, 22), data, literal, r"line");
+        expect! (receiver, (1, 2, 23), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
 
         expect! (receiver, (0, 0, 24), doc, end);
@@ -5693,11 +6022,13 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (0, 0, 3), node, scalar, "\"\\n\\\n      folded line\\n\\\n      next line\\n\\\n      \\  * bullet\\n\n      \\n\\\n      \\  * list\\n\\\n      \\  * lines\\n\\\n      \\n\\\n      last line\\n\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"\\n\\\n      folded line\\n\\\n      next line\\n\\\n      \\  * bullet\\n\n      \\n\\\n      \\  * list\\n\\\n      \\  * lines\\n\\\n      \\n\\\n      last line\\n\"", !=r"!!str");
 
         expect! (receiver, (0, 0, 4), doc, end);
 
@@ -5728,31 +6059,33 @@ r#">
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, "\n");
-        expect! (receiver, (1, 2, 4), literal, r"folded");
-        expect! (receiver, (1, 2, 5), literal, r" ");
-        expect! (receiver, (1, 2, 6), literal, r"line");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, r"next");
-        expect! (receiver, (1, 2, 9), literal, r" ");
-        expect! (receiver, (1, 2, 10), literal, r"line");
-        expect! (receiver, (1, 2, 11), literal, "\n");
-        expect! (receiver, (1, 2, 12), literal, r"  * bullet");
-        expect! (receiver, (1, 2, 13), literal, "\n");
-        expect! (receiver, (1, 2, 14), literal, "\n");
-        expect! (receiver, (1, 2, 15), literal, r"  * list");
-        expect! (receiver, (1, 2, 16), literal, "\n");
-        expect! (receiver, (1, 2, 17), literal, r"  * lines");
-        expect! (receiver, (1, 2, 18), literal, "\n");
-        expect! (receiver, (1, 2, 19), literal, "\n");
-        expect! (receiver, (1, 2, 20), literal, r"last");
-        expect! (receiver, (1, 2, 21), literal, r" ");
-        expect! (receiver, (1, 2, 22), literal, r"line");
-        expect! (receiver, (1, 2, 23), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, "\n");
+        expect! (receiver, (1, 2, 4), data, literal, r"folded");
+        expect! (receiver, (1, 2, 5), data, literal, r" ");
+        expect! (receiver, (1, 2, 6), data, literal, r"line");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, r"next");
+        expect! (receiver, (1, 2, 9), data, literal, r" ");
+        expect! (receiver, (1, 2, 10), data, literal, r"line");
+        expect! (receiver, (1, 2, 11), data, literal, "\n");
+        expect! (receiver, (1, 2, 12), data, literal, r"  * bullet");
+        expect! (receiver, (1, 2, 13), data, literal, "\n");
+        expect! (receiver, (1, 2, 14), data, literal, "\n");
+        expect! (receiver, (1, 2, 15), data, literal, r"  * list");
+        expect! (receiver, (1, 2, 16), data, literal, "\n");
+        expect! (receiver, (1, 2, 17), data, literal, r"  * lines");
+        expect! (receiver, (1, 2, 18), data, literal, "\n");
+        expect! (receiver, (1, 2, 19), data, literal, "\n");
+        expect! (receiver, (1, 2, 20), data, literal, r"last");
+        expect! (receiver, (1, 2, 21), data, literal, r" ");
+        expect! (receiver, (1, 2, 22), data, literal, r"line");
+        expect! (receiver, (1, 2, 23), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
 
         expect! (receiver, (0, 0, 24), doc, end);
@@ -5772,16 +6105,18 @@ r#"block sequence:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"block sequence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"block sequence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, sequence);
-        expect! (receiver, (2, 4, 5), node, scalar, r"one");
-        expect! (receiver, (2, 4, 6), node, scalar, r"two");
-        expect! (receiver, (2, 4, 7), block, map, (2, 4, 6));
-        expect! (receiver, (3, 7, 8), node, scalar, r"three");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"one");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"two");
+        expect! (receiver, (2, 4, 7), data, block, map, (2, 4, 6));
+        expect! (receiver, (3, 7, 8), data, node, scalar, r"three");
 
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -5807,17 +6142,19 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""block sequence""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (3, 7, 8), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (3, 7, 9), node, scalar, r#""three""#, !=r"!!str");
-        expect! (receiver, (2, 5, 7), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""block sequence""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (3, 7, 8), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (3, 7, 9), data, node, scalar, r#""three""#, !=r"!!str");
+        expect! (receiver, (2, 5, 7), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 10), doc, end);
 
@@ -5838,21 +6175,23 @@ r#"- # Empty
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
         expect! (receiver, (1, 2, 3), node, null);
         expect! (receiver, (1, 2, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"block node");
-        expect! (receiver, (2, 4, 6), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 4, 5), data, literal, r"block node");
+        expect! (receiver, (2, 4, 6), data, literal, "\n");
         expect! (receiver, (1, 2, 4), node, block, close);
         expect! (receiver, (1, 2, 7), node, sequence);
-        expect! (receiver, (2, 7, 8), node, scalar, r"one");
-        expect! (receiver, (2, 7, 9), node, scalar, r"two");
-        expect! (receiver, (1, 2, 10), node, scalar, r"one");
-        expect! (receiver, (1, 2, 11), block, map, (1, 2, 10));
-        expect! (receiver, (2, 11, 12), node, scalar, r"two");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"one");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r"two");
+        expect! (receiver, (1, 2, 10), data, node, scalar, r"one");
+        expect! (receiver, (1, 2, 11), data, block, map, (1, 2, 10));
+        expect! (receiver, (2, 11, 12), data, node, scalar, r"two");
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -5881,22 +6220,24 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, "\"\"", !=r"!!null");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""block node\n""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, "\"\"", !=r"!!null");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""block node\n""#, !=r"!!str");
 
-        expect! (receiver, (2, 6, 7), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (2, 6, 8), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (2, 9, 10), node, scalar, r#""one""#, !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r#""two""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""one""#, !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r#""two""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 12), doc, end);
 
@@ -5914,14 +6255,16 @@ r#"block mapping:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"block mapping");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"key");
-        expect! (receiver, (1, 3, 5), block, map, (1, 3, 4));
-        expect! (receiver, (2, 5, 6), node, scalar, r"value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"block mapping");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"key");
+        expect! (receiver, (1, 3, 5), data, block, map, (1, 3, 4));
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"value");
 
         expect! (receiver, (0, 0, 7), doc, end);
 
@@ -5942,19 +6285,21 @@ r#"? explicit key # Empty value
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, mapping);
-        expect! (receiver, (1, 2, 3), node, scalar, r"explicit key");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"explicit key");
         expect! (receiver, (1, 2, 4), node, null);
         expect! (receiver, (1, 2, 5), node, block, open);
-        expect! (receiver, (2, 5, 6), literal, r"block key");
-        expect! (receiver, (2, 5, 7), literal, "\n");
+        expect! (receiver, (2, 5, 6), data, literal, r"block key");
+        expect! (receiver, (2, 5, 7), data, literal, "\n");
         expect! (receiver, (1, 2, 5), node, block, close);
         expect! (receiver, (1, 2, 8), node, sequence);
-        expect! (receiver, (2, 8, 9), node, scalar, r"one");
-        expect! (receiver, (2, 8, 10), node, scalar, r"two");
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"one");
+        expect! (receiver, (2, 8, 10), data, node, scalar, r"two");
 
         expect! (receiver, (0, 0, 11), doc, end);
 
@@ -5974,17 +6319,19 @@ r#"plain key: in-line value
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"plain key");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"in-line value");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"plain key");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"in-line value");
         expect! (receiver, (1, 3, 5), node, null);
         expect! (receiver, (1, 3, 6), node, null);
-        expect! (receiver, (1, 3, 7), node, scalar, r#""quoted key""#);
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""quoted key""#);
         expect! (receiver, (1, 3, 8), node, sequence);
-        expect! (receiver, (2, 8, 9), node, scalar, r"entry");
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"entry");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -6007,18 +6354,20 @@ r#"%YAML 1.2
 }"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""plain key""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""in-line value""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""quoted key""#, !=r"!!str");
-        expect! (receiver, (2, 9, 10), node, scalar, r#""entry""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""plain key""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""in-line value""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""quoted key""#, !=r"!!str");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r#""entry""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 11), doc, end);
 
@@ -6037,20 +6386,22 @@ r#"- sun: yellow
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar, r"sun");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar, r"yellow");
-        expect! (receiver, (1, 2, 6), node, mapping);
-        expect! (receiver, (2, 6, 7), node, scalar, r"earth");
-        expect! (receiver, (2, 6, 8), block, map, (2, 6, 7));
-        expect! (receiver, (3, 8, 9), node, scalar, r"blue");
-        expect! (receiver, (2, 6, 10), node, scalar, r"moon");
-        expect! (receiver, (2, 6, 11), block, map, (2, 6, 10));
-        expect! (receiver, (3, 11, 12), node, scalar, r"white");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"sun");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"yellow");
+        expect! (receiver, (1, 2, 6), data, node, mapping);
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"earth");
+        expect! (receiver, (2, 6, 8), data, block, map, (2, 6, 7));
+        expect! (receiver, (3, 8, 9), data, node, scalar, r"blue");
+        expect! (receiver, (2, 6, 10), data, node, scalar, r"moon");
+        expect! (receiver, (2, 6, 11), data, block, map, (2, 6, 10));
+        expect! (receiver, (3, 11, 12), data, node, scalar, r"white");
         expect! (receiver, (0, 0, 13), doc, end);
         the_end! (receiver);
     }
@@ -6080,27 +6431,29 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (2, 4, 5), node, scalar, r#""sun""#, !=r"!!str");
-        expect! (receiver, (2, 4, 6), node, scalar, r#""yellow""#, !=r"!!str");
-        expect! (receiver, (1, 3, 4), node, mapping, !=r"!!map");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r#""sun""#, !=r"!!str");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r#""yellow""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (3, 8, 9), node, scalar, r#""earth""#, !=r"!!str");
-        expect! (receiver, (3, 8, 10), node, scalar, r#""blue""#, !=r"!!str");
-        expect! (receiver, (2, 7, 8), node, mapping, !=r"!!map");
+        expect! (receiver, (3, 8, 9), data, node, scalar, r#""earth""#, !=r"!!str");
+        expect! (receiver, (3, 8, 10), data, node, scalar, r#""blue""#, !=r"!!str");
+        expect! (receiver, (2, 7, 8), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (2, 7, 11), node, null);
         expect! (receiver, (2, 7, 12), node, null);
 
-        expect! (receiver, (3, 13, 14), node, scalar, r#""moon""#, !=r"!!str");
-        expect! (receiver, (3, 13, 15), node, scalar, r#""white""#, !=r"!!str");
-        expect! (receiver, (2, 7, 13), node, mapping, !=r"!!map");
+        expect! (receiver, (3, 13, 14), data, node, scalar, r#""moon""#, !=r"!!str");
+        expect! (receiver, (3, 13, 15), data, node, scalar, r#""white""#, !=r"!!str");
+        expect! (receiver, (2, 7, 13), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (1, 3, 7), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 7), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 16), doc, end);
 
@@ -6122,18 +6475,20 @@ r#"-
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r#""flow in block""#);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r#""flow in block""#);
         expect! (receiver, (1, 2, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"Block scalar");
-        expect! (receiver, (2, 4, 6), literal, "\n");
+        expect! (receiver, (2, 4, 5), data, literal, r"Block scalar");
+        expect! (receiver, (2, 4, 6), data, literal, "\n");
         expect! (receiver, (1, 2, 4), node, block, close);
-        expect! (receiver, (1, 2, 7), node, scalar, r"foo");
-        expect! (receiver, (1, 2, 8), block, map, (1, 2, 7), !="!!map");
-        expect! (receiver, (2, 8, 9), node, scalar, r"bar");
+        expect! (receiver, (1, 2, 7), data, node, scalar, r"foo");
+        expect! (receiver, (1, 2, 8), data, block, map, (1, 2, 7), !="!!map");
+        expect! (receiver, (2, 8, 9), data, node, scalar, r"bar");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -6158,16 +6513,18 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""flow in block""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""Block scalar\n""#, !=r"!!str");
-        expect! (receiver, (2, 6, 7), node, scalar, r#""foo""#, !="!!str");
-        expect! (receiver, (2, 6, 8), node, scalar, r#""bar""#, !="!!str");
-        expect! (receiver, (1, 3, 6), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""flow in block""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""Block scalar\n""#, !=r"!!str");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r#""foo""#, !="!!str");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r#""bar""#, !="!!str");
+        expect! (receiver, (1, 3, 6), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, sequence, !=r"!!seq");
 
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -6188,18 +6545,20 @@ folded:
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"literal");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"literal");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"value");
-        expect! (receiver, (2, 4, 6), literal, "\n");
+        expect! (receiver, (2, 4, 5), data, literal, r"value");
+        expect! (receiver, (2, 4, 6), data, literal, "\n");
         expect! (receiver, (1, 3, 4), node, block, close);
-        expect! (receiver, (1, 3, 7), node, scalar, r"folded");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"folded");
         expect! (receiver, (1, 3, 8), node, block, open);
-        expect! (receiver, (2, 8, 9), literal, r"value");
-        expect! (receiver, (1, 3, 8), node, block, close, !="!foo");
+        expect! (receiver, (2, 8, 9), data, literal, r"value");
+        expect! (receiver, (1, 3, 8), data, node, block, close, !="!foo");
         expect! (receiver, (0, 0, 10), doc, end);
 
         the_end! (receiver);
@@ -6221,15 +6580,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""literal""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""value""#, !=r"!!str");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""folded""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""value""#, !=r"!<!foo>");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""literal""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""value""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""folded""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""value""#, !=r"!<!foo>");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -6250,18 +6611,20 @@ mapping: !!map
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"sequence");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, sequence, !=r"!!seq");
-        expect! (receiver, (2, 4, 5), node, scalar, r"entry");
-        expect! (receiver, (2, 4, 6), node, sequence, !=r"!!seq");
-        expect! (receiver, (3, 6, 7), node, scalar, r"nested");
-        expect! (receiver, (1, 3, 8), node, scalar, r"mapping");
-        expect! (receiver, (1, 3, 9), node, scalar, r"foo");
-        expect! (receiver, (1, 3, 10), block, map, (1, 3, 9), !=r"!!map");
-        expect! (receiver, (2, 10, 11), node, scalar, r"bar");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"entry");
+        expect! (receiver, (2, 4, 6), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (3, 6, 7), data, node, scalar, r"nested");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"mapping");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"foo");
+        expect! (receiver, (1, 3, 10), data, block, map, (1, 3, 9), !=r"!!map");
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"bar");
         expect! (receiver, (0, 0, 12), doc, end);
 
         the_end! (receiver);
@@ -6288,20 +6651,22 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""sequence""#, !=r"!!str");
-        expect! (receiver, (2, 5, 6), node, scalar, r#""entry""#, !=r"!!str");
-        expect! (receiver, (3, 7, 8), node, scalar, r#""nested""#, !=r"!!str");
-        expect! (receiver, (2, 5, 7), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""mapping""#, !=r"!!str");
-        expect! (receiver, (2, 10, 11), node, scalar, r#""foo""#, !=r"!!str");
-        expect! (receiver, (2, 10, 12), node, scalar, r#""bar""#, !=r"!!str");
-        expect! (receiver, (1, 3, 10), node, mapping, !=r"!!map");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""sequence""#, !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r#""entry""#, !=r"!!str");
+        expect! (receiver, (3, 7, 8), data, node, scalar, r#""nested""#, !=r"!!str");
+        expect! (receiver, (2, 5, 7), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""mapping""#, !=r"!!str");
+        expect! (receiver, (2, 10, 11), data, node, scalar, r#""foo""#, !=r"!!str");
+        expect! (receiver, (2, 10, 12), data, node, scalar, r#""bar""#, !=r"!!str");
+        expect! (receiver, (1, 3, 10), data, node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -6319,9 +6684,11 @@ Document";
 
 
         let receiver = read_bytes! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Document");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Document");
         expect! (receiver, (0, 0, 3), doc, end);
 
         the_end! (receiver);
@@ -6337,10 +6704,12 @@ r#"%YAML 1.2
 !!str "Document""#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""Document""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""Document""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6358,10 +6727,12 @@ Document
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#"Document"#);
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#"Document"#);
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6378,10 +6749,12 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""Document""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""Document""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6402,19 +6775,21 @@ document
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Bare");
-        expect! (receiver, (1, 2, 4), literal, " ");
-        expect! (receiver, (1, 2, 5), literal, r"document");
+        expect! (receiver, (1, 2, 3), data, literal, r"Bare");
+        expect! (receiver, (1, 2, 4), data, literal, " ");
+        expect! (receiver, (1, 2, 5), data, literal, r"document");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 6), doc, end);
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), doc, end);
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"%!PS-Adobe-2.0 # Not the first line");
+        expect! (receiver, (1, 2, 3), data, literal, r"%!PS-Adobe-2.0 # Not the first line");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 4), doc, end);
 
@@ -6435,15 +6810,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""Bare document""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""Bare document""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, "\"%!PS-Adobe-2.0\\n\"", !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, "\"%!PS-Adobe-2.0\\n\"", !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6464,16 +6841,18 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (1, 2, 3), node, block, open);
-        expect! (receiver, (2, 3, 4), literal, r"matches");
-        expect! (receiver, (2, 3, 5), literal, r" ");
-        expect! (receiver, (2, 3, 6), literal, r"%");
+        expect! (receiver, (2, 3, 4), data, literal, r"matches");
+        expect! (receiver, (2, 3, 5), data, literal, r" ");
+        expect! (receiver, (2, 3, 6), data, literal, r"%");
         expect! (receiver, (1, 2, 3), node, block, close);
-        expect! (receiver, (1, 2, 7), node, scalar, r"20");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (1, 2, 7), data, node, scalar, r"20");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -6500,17 +6879,19 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (1, 3, 4), node, scalar, r#""matches %""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""20""#, !=r"!!int");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""matches %""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""20""#, !=r"!!int");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 6), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""""#, !=r"!!null");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6532,12 +6913,14 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
         expect! (receiver, (0, 0, 3), node, block, open);
-        expect! (receiver, (1, 3, 4), literal, r"%!PS-Adobe-2.0");
-        expect! (receiver, (1, 3, 5), literal, "\n");
+        expect! (receiver, (1, 3, 4), data, literal, r"%!PS-Adobe-2.0");
+        expect! (receiver, (1, 3, 5), data, literal, "\n");
         expect! (receiver, (0, 0, 3), node, block, close);
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -6563,15 +6946,17 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""%!PS-Adobe-2.0\n""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""%!PS-Adobe-2.0\n""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""""#, !=r"!!null");
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -6593,20 +6978,21 @@ matches %: 20
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Document");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Document");
         expect! (receiver, (0, 0, 3), doc, end);
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), doc, end);
 
-        
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r"matches %");
-        expect! (receiver, (0, 0, 4), block, map, (0, 0, 3));
-        expect! (receiver, (1, 4, 5), node, scalar, r"20");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r"matches %");
+        expect! (receiver, (0, 0, 4), data, block, map, (0, 0, 3));
+        expect! (receiver, (1, 4, 5), data, node, scalar, r"20");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -6634,22 +7020,24 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""Document""#, !=r"!!str");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""Document""#, !=r"!!str");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (0, 0, 3), node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (0, 0, 3), data, node, scalar, r#""""#, !=r"!!null");
         expect! (receiver, (0, 0, 4), doc, end);
 
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
-        expect! (receiver, (1, 3, 4), node, scalar, r#""matches %""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""20""#, !=r"!!int");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""matches %""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""20""#, !=r"!!int");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -6669,26 +7057,28 @@ Flow style: !!map { Clark: Evans, Ingy: döt Net, Oren: Ben-Kiki }"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Block style");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"Clark");
-        expect! (receiver, (1, 3, 5), block, map, (1, 3, 4), !=r"!!map");
-        expect! (receiver, (2, 5, 6), node, scalar, r"Evans");
-        expect! (receiver, (2, 5, 7), node, scalar, r"Ingy");
-        expect! (receiver, (2, 5, 8), node, scalar, r"döt Net");
-        expect! (receiver, (2, 5, 9), node, scalar, r"Oren");
-        expect! (receiver, (2, 5, 10), node, scalar, r"Ben-Kiki");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Block style");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"Clark");
+        expect! (receiver, (1, 3, 5), data, block, map, (1, 3, 4), !=r"!!map");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"Evans");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r"Ingy");
+        expect! (receiver, (2, 5, 8), data, node, scalar, r"döt Net");
+        expect! (receiver, (2, 5, 9), data, node, scalar, r"Oren");
+        expect! (receiver, (2, 5, 10), data, node, scalar, r"Ben-Kiki");
 
-        expect! (receiver, (1, 3, 11), node, scalar, r"Flow style");
-        expect! (receiver, (2, 12, 13), node, scalar, r"Clark");
-        expect! (receiver, (2, 12, 14), node, scalar, r"Evans");
-        expect! (receiver, (2, 12, 15), node, scalar, r"Ingy");
-        expect! (receiver, (2, 12, 16), node, scalar, r"döt Net");
-        expect! (receiver, (2, 12, 17), node, scalar, r"Oren");
-        expect! (receiver, (2, 12, 18), node, scalar, r"Ben-Kiki");
-        expect! (receiver, (1, 3, 12), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"Flow style");
+        expect! (receiver, (2, 12, 13), data, node, scalar, r"Clark");
+        expect! (receiver, (2, 12, 14), data, node, scalar, r"Evans");
+        expect! (receiver, (2, 12, 15), data, node, scalar, r"Ingy");
+        expect! (receiver, (2, 12, 16), data, node, scalar, r"döt Net");
+        expect! (receiver, (2, 12, 17), data, node, scalar, r"Oren");
+        expect! (receiver, (2, 12, 18), data, node, scalar, r"Ben-Kiki");
+        expect! (receiver, (1, 3, 12), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 19), doc, end);
 
@@ -6709,19 +7099,21 @@ Flow style: !!seq [ Clark Evans, Ingy döt Net, Oren Ben-Kiki ]"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Block style");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, sequence, !=r"!!seq");
-        expect! (receiver, (2, 4, 5), node, scalar, r"Clark Evans");
-        expect! (receiver, (2, 4, 6), node, scalar, r"Ingy döt Net");
-        expect! (receiver, (2, 4, 7), node, scalar, r"Oren Ben-Kiki");
-        expect! (receiver, (1, 3, 8), node, scalar, r"Flow style");
-        expect! (receiver, (2, 9, 10), node, scalar, r"Clark Evans");
-        expect! (receiver, (2, 9, 11), node, scalar, r"Ingy döt Net");
-        expect! (receiver, (2, 9, 12), node, scalar, r"Oren Ben-Kiki");
-        expect! (receiver, (1, 3, 9), node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Block style");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 4, 5), data, node, scalar, r"Clark Evans");
+        expect! (receiver, (2, 4, 6), data, node, scalar, r"Ingy döt Net");
+        expect! (receiver, (2, 4, 7), data, node, scalar, r"Oren Ben-Kiki");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"Flow style");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"Clark Evans");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"Ingy döt Net");
+        expect! (receiver, (2, 9, 12), data, node, scalar, r"Oren Ben-Kiki");
+        expect! (receiver, (1, 3, 9), data, node, sequence, !=r"!!seq");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -6739,16 +7131,18 @@ Flow style: !!str "String: just a theory.""#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"Block style");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"Block style");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
         expect! (receiver, (1, 3, 4), node, block, open);
-        expect! (receiver, (2, 4, 5), literal, r"String: just a theory.");
-        expect! (receiver, (1, 3, 4), node, block, close, !="!!str");
+        expect! (receiver, (2, 4, 5), data, literal, r"String: just a theory.");
+        expect! (receiver, (1, 3, 4), data, node, block, close, !="!!str");
 
-        expect! (receiver, (1, 3, 6), node, scalar, r"Flow style");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""String: just a theory.""#, !=r"!!str");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"Flow style");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""String: just a theory.""#, !=r"!!str");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -6765,13 +7159,15 @@ key with null value: !!null null"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"null", !=r"!!null");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"value for null key");
-        expect! (receiver, (1, 3, 5), node, scalar, r"key with null value");
-        expect! (receiver, (1, 3, 6), node, scalar, r"null", !=r"!!null");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"null", !=r"!!null");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"value for null key");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"key with null value");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"null", !=r"!!null");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -6787,13 +7183,15 @@ Pluto is a planet: !!bool false"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"YAML is a superset of JSON");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"true", !=r"!!bool");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Pluto is a planet");
-        expect! (receiver, (1, 3, 6), node, scalar, r"false", !=r"!!bool");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"YAML is a superset of JSON");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"true", !=r"!!bool");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Pluto is a planet");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"false", !=r"!!bool");
         expect! (receiver, (0, 0, 7), doc, end);
 
         the_end! (receiver);
@@ -6810,15 +7208,17 @@ positive: !!int 34"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"negative");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"-12", !=r"!!int");
-        expect! (receiver, (1, 3, 5), node, scalar, r"zero");
-        expect! (receiver, (1, 3, 6), node, scalar, r"0", !=r"!!int");
-        expect! (receiver, (1, 3, 7), node, scalar, r"positive");
-        expect! (receiver, (1, 3, 8), node, scalar, r"34", !=r"!!int");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"negative");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"-12", !=r"!!int");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"zero");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"0", !=r"!!int");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"positive");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"34", !=r"!!int");
         expect! (receiver, (0, 0, 9), doc, end);
 
         the_end! (receiver);
@@ -6837,19 +7237,21 @@ not a number: !!float .nan"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"negative");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"-1", !=r"!!float");
-        expect! (receiver, (1, 3, 5), node, scalar, r"zero");
-        expect! (receiver, (1, 3, 6), node, scalar, r"0", !=r"!!float");
-        expect! (receiver, (1, 3, 7), node, scalar, r"positive");
-        expect! (receiver, (1, 3, 8), node, scalar, r"2.3e4", !=r"!!float");
-        expect! (receiver, (1, 3, 9), node, scalar, r"infinity");
-        expect! (receiver, (1, 3, 10), node, scalar, r".inf", !=r"!!float");
-        expect! (receiver, (1, 3, 11), node, scalar, r"not a number");
-        expect! (receiver, (1, 3, 12), node, scalar, r".nan", !=r"!!float");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"negative");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"-1", !=r"!!float");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"zero");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"0", !=r"!!float");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"positive");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"2.3e4", !=r"!!float");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"infinity");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r".inf", !=r"!!float");
+        expect! (receiver, (1, 3, 11), data, node, scalar, r"not a number");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r".nan", !=r"!!float");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -6868,33 +7270,35 @@ Invalid: [ True, Null, 0o7, 0x3A, +12.3 ]"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"A null");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"null");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Booleans");
-        expect! (receiver, (2, 6, 7), node, scalar, r"true");
-        expect! (receiver, (2, 6, 8), node, scalar, r"false");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"A null");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"null");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Booleans");
+        expect! (receiver, (2, 6, 7), data, node, scalar, r"true");
+        expect! (receiver, (2, 6, 8), data, node, scalar, r"false");
         expect! (receiver, (1, 3, 6), node, sequence);
-        expect! (receiver, (1, 3, 9), node, scalar, r"Integers");
-        expect! (receiver, (2, 10, 11), node, scalar, r"0");
-        expect! (receiver, (2, 10, 12), node, scalar, r"-0");
-        expect! (receiver, (2, 10, 13), node, scalar, r"3");
-        expect! (receiver, (2, 10, 14), node, scalar, r"-19");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"Integers");
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"0");
+        expect! (receiver, (2, 10, 12), data, node, scalar, r"-0");
+        expect! (receiver, (2, 10, 13), data, node, scalar, r"3");
+        expect! (receiver, (2, 10, 14), data, node, scalar, r"-19");
         expect! (receiver, (1, 3, 10), node, sequence);
-        expect! (receiver, (1, 3, 15), node, scalar, r"Floats");
-        expect! (receiver, (2, 16, 17), node, scalar, r"0.");
-        expect! (receiver, (2, 16, 18), node, scalar, r"-0.0");
-        expect! (receiver, (2, 16, 19), node, scalar, r"12e03");
-        expect! (receiver, (2, 16, 20), node, scalar, r"-2E+05");
+        expect! (receiver, (1, 3, 15), data, node, scalar, r"Floats");
+        expect! (receiver, (2, 16, 17), data, node, scalar, r"0.");
+        expect! (receiver, (2, 16, 18), data, node, scalar, r"-0.0");
+        expect! (receiver, (2, 16, 19), data, node, scalar, r"12e03");
+        expect! (receiver, (2, 16, 20), data, node, scalar, r"-2E+05");
         expect! (receiver, (1, 3, 16), node, sequence);
-        expect! (receiver, (1, 3, 21), node, scalar, r"Invalid");
-        expect! (receiver, (2, 22, 23), node, scalar, r"True");
-        expect! (receiver, (2, 22, 24), node, scalar, r"Null");
-        expect! (receiver, (2, 22, 25), node, scalar, r"0o7");
-        expect! (receiver, (2, 22, 26), node, scalar, r"0x3A");
-        expect! (receiver, (2, 22, 27), node, scalar, r"+12.3");
+        expect! (receiver, (1, 3, 21), data, node, scalar, r"Invalid");
+        expect! (receiver, (2, 22, 23), data, node, scalar, r"True");
+        expect! (receiver, (2, 22, 24), data, node, scalar, r"Null");
+        expect! (receiver, (2, 22, 25), data, node, scalar, r"0o7");
+        expect! (receiver, (2, 22, 26), data, node, scalar, r"0x3A");
+        expect! (receiver, (2, 22, 27), data, node, scalar, r"+12.3");
         expect! (receiver, (1, 3, 22), node, sequence);
         expect! (receiver, (0, 0, 28), doc, end);
 
@@ -6930,40 +7334,42 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""A null""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""null""#, !=r"!!null");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Booleans""#, !=r"!!str");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""A null""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""null""#, !=r"!!null");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Booleans""#, !=r"!!str");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r#""true""#, !=r"!!bool");
-        expect! (receiver, (2, 7, 9), node, scalar, r#""false""#, !=r"!!bool");
-        expect! (receiver, (1, 3, 7), node, sequence, !=r"!!seq");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r#""true""#, !=r"!!bool");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r#""false""#, !=r"!!bool");
+        expect! (receiver, (1, 3, 7), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (1, 3, 10), node, scalar, r#""Integers""#, !=r"!!str");
-        expect! (receiver, (2, 11, 12), node, scalar, r#""0""#, !=r"!!int");
-        expect! (receiver, (2, 11, 13), node, scalar, r#""-0""#, !=r"!!int");
-        expect! (receiver, (2, 11, 14), node, scalar, r#""3""#, !=r"!!int");
-        expect! (receiver, (2, 11, 15), node, scalar, r#""-19""#, !=r"!!int");
-        expect! (receiver, (1, 3, 11), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#""Integers""#, !=r"!!str");
+        expect! (receiver, (2, 11, 12), data, node, scalar, r#""0""#, !=r"!!int");
+        expect! (receiver, (2, 11, 13), data, node, scalar, r#""-0""#, !=r"!!int");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r#""3""#, !=r"!!int");
+        expect! (receiver, (2, 11, 15), data, node, scalar, r#""-19""#, !=r"!!int");
+        expect! (receiver, (1, 3, 11), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (1, 3, 16), node, scalar, r#""Floats""#, !=r"!!str");
-        expect! (receiver, (2, 17, 18), node, scalar, r#""0.""#, !=r"!!float");
-        expect! (receiver, (2, 17, 19), node, scalar, r#""-0.0""#, !=r"!!float");
-        expect! (receiver, (2, 17, 20), node, scalar, r#""12e03""#, !=r"!!float");
-        expect! (receiver, (2, 17, 21), node, scalar, r#""-2E+05""#, !=r"!!float");
-        expect! (receiver, (1, 3, 17), node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 16), data, node, scalar, r#""Floats""#, !=r"!!str");
+        expect! (receiver, (2, 17, 18), data, node, scalar, r#""0.""#, !=r"!!float");
+        expect! (receiver, (2, 17, 19), data, node, scalar, r#""-0.0""#, !=r"!!float");
+        expect! (receiver, (2, 17, 20), data, node, scalar, r#""12e03""#, !=r"!!float");
+        expect! (receiver, (2, 17, 21), data, node, scalar, r#""-2E+05""#, !=r"!!float");
+        expect! (receiver, (1, 3, 17), data, node, sequence, !=r"!!seq");
 
-        expect! (receiver, (1, 3, 22), node, scalar, r#""Invalid""#, !=r"!!str");
-        expect! (receiver, (2, 23, 24), node, scalar, r"True");
-        expect! (receiver, (2, 23, 25), node, scalar, r"Null");
-        expect! (receiver, (2, 23, 26), node, scalar, r"0o7");
-        expect! (receiver, (2, 23, 27), node, scalar, r"0x3A");
-        expect! (receiver, (2, 23, 28), node, scalar, r"+12.3");
-        expect! (receiver, (1, 3, 23), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 22), data, node, scalar, r#""Invalid""#, !=r"!!str");
+        expect! (receiver, (2, 23, 24), data, node, scalar, r"True");
+        expect! (receiver, (2, 23, 25), data, node, scalar, r"Null");
+        expect! (receiver, (2, 23, 26), data, node, scalar, r"0o7");
+        expect! (receiver, (2, 23, 27), data, node, scalar, r"0x3A");
+        expect! (receiver, (2, 23, 28), data, node, scalar, r"+12.3");
+        expect! (receiver, (1, 3, 23), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
 
         expect! (receiver, (0, 0, 29), doc, end);
 
@@ -6985,39 +7391,41 @@ Also floats: [ .inf, -.Inf, +.INF, .NAN ]"#;
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, scalar, r"A null");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"null");
-        expect! (receiver, (1, 3, 5), node, scalar, r"Also a null");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"A null");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"null");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"Also a null");
         expect! (receiver, (1, 3, 6), node, null);
-        expect! (receiver, (1, 3, 7), node, scalar, r"Not a null");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""""#);
-        expect! (receiver, (1, 3, 9), node, scalar, r"Booleans");
-        expect! (receiver, (2, 10, 11), node, scalar, r"true");
-        expect! (receiver, (2, 10, 12), node, scalar, r"True");
-        expect! (receiver, (2, 10, 13), node, scalar, r"false");
-        expect! (receiver, (2, 10, 14), node, scalar, r"FALSE");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r"Not a null");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""""#);
+        expect! (receiver, (1, 3, 9), data, node, scalar, r"Booleans");
+        expect! (receiver, (2, 10, 11), data, node, scalar, r"true");
+        expect! (receiver, (2, 10, 12), data, node, scalar, r"True");
+        expect! (receiver, (2, 10, 13), data, node, scalar, r"false");
+        expect! (receiver, (2, 10, 14), data, node, scalar, r"FALSE");
         expect! (receiver, (1, 3, 10), node, sequence);
-        expect! (receiver, (1, 3, 15), node, scalar, r"Integers");
-        expect! (receiver, (2, 16, 17), node, scalar, r"0");
-        expect! (receiver, (2, 16, 18), node, scalar, r"0o7");
-        expect! (receiver, (2, 16, 19), node, scalar, r"0x3A");
-        expect! (receiver, (2, 16, 20), node, scalar, r"-19");
+        expect! (receiver, (1, 3, 15), data, node, scalar, r"Integers");
+        expect! (receiver, (2, 16, 17), data, node, scalar, r"0");
+        expect! (receiver, (2, 16, 18), data, node, scalar, r"0o7");
+        expect! (receiver, (2, 16, 19), data, node, scalar, r"0x3A");
+        expect! (receiver, (2, 16, 20), data, node, scalar, r"-19");
         expect! (receiver, (1, 3, 16), node, sequence);
-        expect! (receiver, (1, 3, 21), node, scalar, r"Floats");
-        expect! (receiver, (2, 22, 23), node, scalar, r"0.");
-        expect! (receiver, (2, 22, 24), node, scalar, r"-0.0");
-        expect! (receiver, (2, 22, 25), node, scalar, r".5");
-        expect! (receiver, (2, 22, 26), node, scalar, r"+12e03");
-        expect! (receiver, (2, 22, 27), node, scalar, r"-2E+05");
+        expect! (receiver, (1, 3, 21), data, node, scalar, r"Floats");
+        expect! (receiver, (2, 22, 23), data, node, scalar, r"0.");
+        expect! (receiver, (2, 22, 24), data, node, scalar, r"-0.0");
+        expect! (receiver, (2, 22, 25), data, node, scalar, r".5");
+        expect! (receiver, (2, 22, 26), data, node, scalar, r"+12e03");
+        expect! (receiver, (2, 22, 27), data, node, scalar, r"-2E+05");
         expect! (receiver, (1, 3, 22), node, sequence);
-        expect! (receiver, (1, 3, 28), node, scalar, r"Also floats");
-        expect! (receiver, (2, 29, 30), node, scalar, r".inf");
-        expect! (receiver, (2, 29, 31), node, scalar, r"-.Inf");
-        expect! (receiver, (2, 29, 32), node, scalar, r"+.INF");
-        expect! (receiver, (2, 29, 33), node, scalar, r".NAN");
+        expect! (receiver, (1, 3, 28), data, node, scalar, r"Also floats");
+        expect! (receiver, (2, 29, 30), data, node, scalar, r".inf");
+        expect! (receiver, (2, 29, 31), data, node, scalar, r"-.Inf");
+        expect! (receiver, (2, 29, 32), data, node, scalar, r"+.INF");
+        expect! (receiver, (2, 29, 33), data, node, scalar, r".NAN");
         expect! (receiver, (1, 3, 29), node, sequence);
         expect! (receiver, (0, 0, 34), doc, end);
 
@@ -7057,42 +7465,44 @@ r#"%YAML 1.2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
+        expect! (receiver, (0, 0, 0), datum, data);
         expect! (receiver, (0, 0, 1), dir, yaml, (1, 2));
         expect! (receiver, (0, 0, 2), doc, start);
 
-        expect! (receiver, (1, 3, 4), node, scalar, r#""A null""#, !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r#""null""#, !=r"!!null");
-        expect! (receiver, (1, 3, 6), node, scalar, r#""Also a null""#, !=r"!!str");
-        expect! (receiver, (1, 3, 7), node, scalar, r#""""#, !=r"!!null");
-        expect! (receiver, (1, 3, 8), node, scalar, r#""Not a null""#, !=r"!!str");
-        expect! (receiver, (1, 3, 9), node, scalar, r#""""#, !=r"!!str");
-        expect! (receiver, (1, 3, 10), node, scalar, r#""Booleans""#, !=r"!!str");
-        expect! (receiver, (2, 11, 12), node, scalar, r#""true""#, !=r"!!bool");
-        expect! (receiver, (2, 11, 13), node, scalar, r#""True""#, !=r"!!bool");
-        expect! (receiver, (2, 11, 14), node, scalar, r#""false""#, !=r"!!bool");
-        expect! (receiver, (2, 11, 15), node, scalar, r#""FALSE""#, !=r"!!bool");
-        expect! (receiver, (1, 3, 11), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 16), node, scalar, r#""Integers""#, !=r"!!str");
-        expect! (receiver, (2, 17, 18), node, scalar, r#""0""#, !=r"!!int");
-        expect! (receiver, (2, 17, 19), node, scalar, r#""0o7""#, !=r"!!int");
-        expect! (receiver, (2, 17, 20), node, scalar, r#""0x3A""#, !=r"!!int");
-        expect! (receiver, (2, 17, 21), node, scalar, r#""-19""#, !=r"!!int");
-        expect! (receiver, (1, 3, 17), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 22), node, scalar, r#""Floats""#, !=r"!!str");
-        expect! (receiver, (2, 23, 24), node, scalar, r#""0.""#, !=r"!!float");
-        expect! (receiver, (2, 23, 25), node, scalar, r#""-0.0""#, !=r"!!float");
-        expect! (receiver, (2, 23, 26), node, scalar, r#"".5""#, !=r"!!float");
-        expect! (receiver, (2, 23, 27), node, scalar, r#""+12e03""#, !=r"!!float");
-        expect! (receiver, (2, 23, 28), node, scalar, r#""-2E+05""#, !=r"!!float");
-        expect! (receiver, (1, 3, 23), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 29), node, scalar, r#""Also floats""#, !=r"!!str");
-        expect! (receiver, (2, 30, 31), node, scalar, r#"".inf""#, !=r"!!float");
-        expect! (receiver, (2, 30, 32), node, scalar, r#""-.Inf""#, !=r"!!float");
-        expect! (receiver, (2, 30, 33), node, scalar, r#""+.INF""#, !=r"!!float");
-        expect! (receiver, (2, 30, 34), node, scalar, r#"".NAN""#, !=r"!!float");
-        expect! (receiver, (1, 3, 30), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 3), node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r#""A null""#, !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r#""null""#, !=r"!!null");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r#""Also a null""#, !=r"!!str");
+        expect! (receiver, (1, 3, 7), data, node, scalar, r#""""#, !=r"!!null");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r#""Not a null""#, !=r"!!str");
+        expect! (receiver, (1, 3, 9), data, node, scalar, r#""""#, !=r"!!str");
+        expect! (receiver, (1, 3, 10), data, node, scalar, r#""Booleans""#, !=r"!!str");
+        expect! (receiver, (2, 11, 12), data, node, scalar, r#""true""#, !=r"!!bool");
+        expect! (receiver, (2, 11, 13), data, node, scalar, r#""True""#, !=r"!!bool");
+        expect! (receiver, (2, 11, 14), data, node, scalar, r#""false""#, !=r"!!bool");
+        expect! (receiver, (2, 11, 15), data, node, scalar, r#""FALSE""#, !=r"!!bool");
+        expect! (receiver, (1, 3, 11), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 16), data, node, scalar, r#""Integers""#, !=r"!!str");
+        expect! (receiver, (2, 17, 18), data, node, scalar, r#""0""#, !=r"!!int");
+        expect! (receiver, (2, 17, 19), data, node, scalar, r#""0o7""#, !=r"!!int");
+        expect! (receiver, (2, 17, 20), data, node, scalar, r#""0x3A""#, !=r"!!int");
+        expect! (receiver, (2, 17, 21), data, node, scalar, r#""-19""#, !=r"!!int");
+        expect! (receiver, (1, 3, 17), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 22), data, node, scalar, r#""Floats""#, !=r"!!str");
+        expect! (receiver, (2, 23, 24), data, node, scalar, r#""0.""#, !=r"!!float");
+        expect! (receiver, (2, 23, 25), data, node, scalar, r#""-0.0""#, !=r"!!float");
+        expect! (receiver, (2, 23, 26), data, node, scalar, r#"".5""#, !=r"!!float");
+        expect! (receiver, (2, 23, 27), data, node, scalar, r#""+12e03""#, !=r"!!float");
+        expect! (receiver, (2, 23, 28), data, node, scalar, r#""-2E+05""#, !=r"!!float");
+        expect! (receiver, (1, 3, 23), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 29), data, node, scalar, r#""Also floats""#, !=r"!!str");
+        expect! (receiver, (2, 30, 31), data, node, scalar, r#"".inf""#, !=r"!!float");
+        expect! (receiver, (2, 30, 32), data, node, scalar, r#""-.Inf""#, !=r"!!float");
+        expect! (receiver, (2, 30, 33), data, node, scalar, r#""+.INF""#, !=r"!!float");
+        expect! (receiver, (2, 30, 34), data, node, scalar, r#"".NAN""#, !=r"!!float");
+        expect! (receiver, (1, 3, 30), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 3), data, node, mapping, !=r"!!map");
         expect! (receiver, (0, 0, 35), doc, end);
 
         the_end! (receiver);
@@ -7110,20 +7520,22 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"=", !=r"!!value");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 3, 4), node, scalar, r"val1");
-        expect! (receiver, (2, 5, 6), node, scalar, r"flow");
-        expect! (receiver, (2, 5, 7), node, scalar, r"sequence");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 8), node, scalar, r"val2");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 12), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"=", !=r"!!value");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"val1");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"flow");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r"sequence");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"val2");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7141,20 +7553,22 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"=");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 3, 4), node, scalar, r"val1");
-        expect! (receiver, (2, 5, 6), node, scalar, r"flow");
-        expect! (receiver, (2, 5, 7), node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"=");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"val1");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"flow");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r"sequence");
         expect! (receiver, (1, 3, 5), node, sequence);
-        expect! (receiver, (1, 3, 8), node, scalar, r"val2");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow", !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 3, 9), node, mapping);
-        expect! (receiver, (1, 3, 12), node, scalar, r"val3");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"val2");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow", !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 3, 9), data, node, mapping);
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7172,20 +7586,22 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"flow");
-        expect! (receiver, (1, 2, 4), node, scalar, r"sequence");
-        expect! (receiver, (0, 0, 2), node, sequence, !=r"!!seq");
-        expect! (receiver, (0, 0, 5), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 5, 6), node, scalar, r"val2");
-        expect! (receiver, (1, 5, 7), node, scalar, r"=", !=r"!!value");
-        expect! (receiver, (1, 5, 8), node, scalar, r"val1");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow", !=r"!!str");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 5, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 5, 12), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"flow");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 2), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (0, 0, 5), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 5, 6), data, node, scalar, r"val2");
+        expect! (receiver, (1, 5, 7), data, node, scalar, r"=", !=r"!!value");
+        expect! (receiver, (1, 5, 8), data, node, scalar, r"val1");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow", !=r"!!str");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 5, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 5, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7203,20 +7619,22 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"flow");
-        expect! (receiver, (1, 2, 4), node, scalar, r"sequence");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"flow");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"sequence");
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (0, 0, 5), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 5, 6), node, scalar, r"val2");
-        expect! (receiver, (1, 5, 7), node, scalar, r"=");
-        expect! (receiver, (1, 5, 8), node, scalar, r"val1");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 5, 9), node, mapping);
-        expect! (receiver, (1, 5, 12), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 5), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 5, 6), data, node, scalar, r"val2");
+        expect! (receiver, (1, 5, 7), data, node, scalar, r"=");
+        expect! (receiver, (1, 5, 8), data, node, scalar, r"val1");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 5, 9), data, node, mapping);
+        expect! (receiver, (1, 5, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7235,23 +7653,25 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"flow", !=r"!!str");
-        expect! (receiver, (1, 2, 4), node, scalar, r"map");
-        expect! (receiver, (0, 0, 2), node, mapping, !=r"!!map");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"flow", !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"map");
+        expect! (receiver, (0, 0, 2), data, node, mapping, !=r"!!map");
 
-        expect! (receiver, (0, 0, 5), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 5, 6), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 5), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 5, 6), data, node, scalar, r"val3");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r"flow");
-        expect! (receiver, (2, 7, 9), node, scalar, r"sequence");
-        expect! (receiver, (1, 5, 7), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 5, 10), node, scalar, r"val2");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"flow");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r"sequence");
+        expect! (receiver, (1, 5, 7), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 5, 10), data, node, scalar, r"val2");
 
-        expect! (receiver, (1, 5, 11), node, scalar, r"=", !=r"!!value");
-        expect! (receiver, (1, 5, 12), node, scalar, r"val1");
+        expect! (receiver, (1, 5, 11), data, node, scalar, r"=", !=r"!!value");
+        expect! (receiver, (1, 5, 12), data, node, scalar, r"val1");
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -7271,23 +7691,25 @@ r#"--- &mydict !!mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (1, 2, 3), node, scalar, r"flow", !=r"!!str");
-        expect! (receiver, (1, 2, 4), node, scalar, r"map");
-        expect! (receiver, (0, 0, 2), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"flow", !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"map");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
 
-        expect! (receiver, (0, 0, 5), block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
-        expect! (receiver, (1, 5, 6), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 5), data, block, map, (0, 0, 2), &=r"mydict", !=r"!!mydict");
+        expect! (receiver, (1, 5, 6), data, node, scalar, r"val3");
 
-        expect! (receiver, (2, 7, 8), node, scalar, r"flow");
-        expect! (receiver, (2, 7, 9), node, scalar, r"sequence");
-        expect! (receiver, (1, 5, 7), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 5, 10), node, scalar, r"val2");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"flow");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r"sequence");
+        expect! (receiver, (1, 5, 7), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 5, 10), data, node, scalar, r"val2");
 
-        expect! (receiver, (1, 5, 11), node, scalar, r"=", !=r"!!value");
-        expect! (receiver, (1, 5, 12), node, scalar, r"val1");
+        expect! (receiver, (1, 5, 11), data, node, scalar, r"=", !=r"!!value");
+        expect! (receiver, (1, 5, 12), data, node, scalar, r"val1");
 
         expect! (receiver, (0, 0, 13), doc, end);
 
@@ -7306,20 +7728,22 @@ r#"--- &mydict
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"=", !=r"!!value");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2), &=r"mydict");
-        expect! (receiver, (1, 3, 4), node, scalar, r"val1");
-        expect! (receiver, (2, 5, 6), node, scalar, r"flow");
-        expect! (receiver, (2, 5, 7), node, scalar, r"sequence");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 8), node, scalar, r"val2");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 12), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"=", !=r"!!value");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2), &=r"mydict");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"val1");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"flow");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r"sequence");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"val2");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7337,20 +7761,22 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"=", !=r"!!value", &=r"myval");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2));
-        expect! (receiver, (1, 3, 4), node, scalar, r"val1");
-        expect! (receiver, (2, 5, 6), node, scalar, r"flow");
-        expect! (receiver, (2, 5, 7), node, scalar, r"sequence");
-        expect! (receiver, (1, 3, 5), node, sequence, !=r"!!seq");
-        expect! (receiver, (1, 3, 8), node, scalar, r"val2");
-        expect! (receiver, (2, 9, 10), node, scalar, r"flow");
-        expect! (receiver, (2, 9, 11), node, scalar, r"map");
-        expect! (receiver, (1, 3, 9), node, mapping, !=r"!!map");
-        expect! (receiver, (1, 3, 12), node, scalar, r"val3");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"=", !=r"!!value", &=r"myval");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2));
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"val1");
+        expect! (receiver, (2, 5, 6), data, node, scalar, r"flow");
+        expect! (receiver, (2, 5, 7), data, node, scalar, r"sequence");
+        expect! (receiver, (1, 3, 5), data, node, sequence, !=r"!!seq");
+        expect! (receiver, (1, 3, 8), data, node, scalar, r"val2");
+        expect! (receiver, (2, 9, 10), data, node, scalar, r"flow");
+        expect! (receiver, (2, 9, 11), data, node, scalar, r"map");
+        expect! (receiver, (1, 3, 9), data, node, mapping, !=r"!!map");
+        expect! (receiver, (1, 3, 12), data, node, scalar, r"val3");
         expect! (receiver, (0, 0, 13), doc, end);
 
         the_end! (receiver);
@@ -7376,30 +7802,32 @@ key2: &a3 !!mydict2
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
-        expect! (receiver, (0, 0, 2), node, scalar, r"key1");
-        expect! (receiver, (0, 0, 3), block, map, (0, 0, 2), &=r"a1", !=r"!!mydict1");
-        expect! (receiver, (1, 3, 4), node, scalar, r"val1", !=r"!!str");
-        expect! (receiver, (1, 3, 5), node, scalar, r"key2");
-        expect! (receiver, (1, 3, 6), node, scalar, r"key3");
-        expect! (receiver, (1, 3, 7), block, map, (1, 3, 6), &=r"a3", !=r"!!mydict2");
-        expect! (receiver, (2, 7, 8), node, scalar, r"val3");
-        expect! (receiver, (2, 7, 9), node, scalar, r"key4");
-        expect! (receiver, (2, 7, 10), node, scalar, r"key5", !=r"!!str", &=r"a5");
-        expect! (receiver, (2, 7, 11), block, map, (2, 7, 10), &=r"a4", !=r"!!mydict3");
-        expect! (receiver, (3, 11, 12), node, scalar, r"val5");
-        expect! (receiver, (3, 11, 13), node, scalar, r"key6");
-        expect! (receiver, (3, 11, 14), node, scalar, r"val6");
-        expect! (receiver, (3, 11, 15), node, scalar, r"key7");
-        expect! (receiver, (3, 11, 16), node, scalar, r"key8");
-        expect! (receiver, (3, 11, 17), block, map, (3, 11, 16), &=r"a7", !=r"!!mydict4");
-        expect! (receiver, (4, 17, 18), node, scalar, r"val8");
-        expect! (receiver, (4, 17, 19), node, scalar, r"key9");
-        expect! (receiver, (4, 17, 20), node, scalar, r"key10", !=r"!!str");
-        expect! (receiver, (4, 17, 21), block, map, (4, 17, 20));
-        expect! (receiver, (5, 21, 22), node, scalar, r"val10");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (0, 0, 2), data, node, scalar, r"key1");
+        expect! (receiver, (0, 0, 3), data, block, map, (0, 0, 2), &=r"a1", !=r"!!mydict1");
+        expect! (receiver, (1, 3, 4), data, node, scalar, r"val1", !=r"!!str");
+        expect! (receiver, (1, 3, 5), data, node, scalar, r"key2");
+        expect! (receiver, (1, 3, 6), data, node, scalar, r"key3");
+        expect! (receiver, (1, 3, 7), data, block, map, (1, 3, 6), &=r"a3", !=r"!!mydict2");
+        expect! (receiver, (2, 7, 8), data, node, scalar, r"val3");
+        expect! (receiver, (2, 7, 9), data, node, scalar, r"key4");
+        expect! (receiver, (2, 7, 10), data, node, scalar, r"key5", !=r"!!str", &=r"a5");
+        expect! (receiver, (2, 7, 11), data, block, map, (2, 7, 10), &=r"a4", !=r"!!mydict3");
+        expect! (receiver, (3, 11, 12), data, node, scalar, r"val5");
+        expect! (receiver, (3, 11, 13), data, node, scalar, r"key6");
+        expect! (receiver, (3, 11, 14), data, node, scalar, r"val6");
+        expect! (receiver, (3, 11, 15), data, node, scalar, r"key7");
+        expect! (receiver, (3, 11, 16), data, node, scalar, r"key8");
+        expect! (receiver, (3, 11, 17), data, block, map, (3, 11, 16), &=r"a7", !=r"!!mydict4");
+        expect! (receiver, (4, 17, 18), data, node, scalar, r"val8");
+        expect! (receiver, (4, 17, 19), data, node, scalar, r"key9");
+        expect! (receiver, (4, 17, 20), data, node, scalar, r"key10", !=r"!!str");
+        expect! (receiver, (4, 17, 21), data, block, map, (4, 17, 20));
+        expect! (receiver, (5, 21, 22), data, node, scalar, r"val10");
 
         expect! (receiver, (0, 0, 23), doc, end);
 
@@ -7416,10 +7844,12 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (1, 2, 3), node, sequence);
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -7436,10 +7866,12 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (1, 2, 3), node, sequence);
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -7475,12 +7907,14 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str" );
-        expect! (receiver, (2, 3, 5), node, scalar !=r"!!str" );
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str" );
+        expect! (receiver, (2, 3, 5), data, node, scalar !=r"!!str" );
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7496,12 +7930,14 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str" );
-        expect! (receiver, (2, 3, 5), node, scalar !=r"!!str" );
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str" );
+        expect! (receiver, (2, 3, 5), data, node, scalar !=r"!!str" );
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7517,12 +7953,14 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str" );
         expect! (receiver, (2, 3, 5), node, null );
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7538,12 +7976,14 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str" );
         expect! (receiver, (2, 3, 5), node, null );
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7559,14 +7999,16 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str" );
-        expect! (receiver, (2, 3, 5), node, scalar !=r"!!str");
-        expect! (receiver, (2, 3, 6), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str" );
+        expect! (receiver, (2, 3, 5), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 3, 6), data, node, scalar !=r"!!str" );
         expect! (receiver, (2, 3, 7), node, null );
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 8), doc, end);
 
         the_end! (receiver);
@@ -7585,7 +8027,7 @@ r#"---
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
+        expect! (receiver, (1, 2, 3), data, node, mapping);
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -7600,10 +8042,12 @@ r#"---
 - !!str"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str" );
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -7619,10 +8063,12 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str" );
         expect! (receiver, (0, 0, 4), doc, end);
 
         the_end! (receiver);
@@ -7638,10 +8084,12 @@ r#"---
 -"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str" );
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str" );
         expect! (receiver, (1, 2, 4), node, null);
 
         expect! (receiver, (0, 0, 5), doc, end);
@@ -7660,12 +8108,14 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7684,12 +8134,14 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
-        expect! (receiver, (2, 4, 5), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
+        expect! (receiver, (2, 4, 5), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7704,11 +8156,13 @@ r#"---
 - !!str :"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7725,11 +8179,13 @@ r#"---
 "#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7746,12 +8202,14 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
-        expect! (receiver, (2, 3, 5), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 3, 5), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7770,12 +8228,14 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
-        expect! (receiver, (2, 3, 5), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 3, 5), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 6), doc, end);
 
         the_end! (receiver);
@@ -7792,11 +8252,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7815,11 +8277,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7835,11 +8299,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7857,11 +8323,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (0, 0, 5), doc, end);
 
         the_end! (receiver);
@@ -7916,11 +8384,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
         expect! (receiver, (1, 2, 5), node, null);
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -7940,11 +8410,13 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 4), block, map, (1, 2, 3));
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 4), data, block, map, (1, 2, 3));
         expect! (receiver, (1, 2, 5), node, null);
         expect! (receiver, (0, 0, 6), doc, end);
 
@@ -7978,54 +8450,56 @@ r#"---
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
 
-        expect! (receiver, (2, 3, 4), node, scalar !=r"!!str");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar !=r"!!str");
         expect! (receiver, (1, 2, 3), node, sequence);
 
-        expect! (receiver, (2, 5, 6), node, scalar !=r"!!str");
+        expect! (receiver, (2, 5, 6), data, node, scalar !=r"!!str");
         expect! (receiver, (1, 2, 5), node, sequence);
 
         expect! (receiver, (1, 2, 7), node, sequence);
 
-        expect! (receiver, (2, 8, 9), node, scalar !=r"!!str");
-        expect! (receiver, (2, 8, 10), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 8), node, mapping);
+        expect! (receiver, (2, 8, 9), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 8, 10), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 8), data, node, mapping);
 
-        expect! (receiver, (2, 11, 12), node, scalar !=r"!!str");
-        expect! (receiver, (2, 11, 13), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 11), node, mapping);
+        expect! (receiver, (2, 11, 12), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 11, 13), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 11), data, node, mapping);
 
-        expect! (receiver, (2, 14, 15), node, scalar !=r"!!str");
+        expect! (receiver, (2, 14, 15), data, node, scalar !=r"!!str");
         expect! (receiver, (2, 14, 16), node, null);
-        expect! (receiver, (1, 2, 14), node, mapping);
+        expect! (receiver, (1, 2, 14), data, node, mapping);
 
-        expect! (receiver, (2, 17, 18), node, scalar !=r"!!str");
+        expect! (receiver, (2, 17, 18), data, node, scalar !=r"!!str");
         expect! (receiver, (2, 17, 19), node, null);
-        expect! (receiver, (1, 2, 17), node, mapping);
+        expect! (receiver, (1, 2, 17), data, node, mapping);
 
-        expect! (receiver, (1, 2, 20), node, mapping);
+        expect! (receiver, (1, 2, 20), data, node, mapping);
 
-        expect! (receiver, (1, 2, 21), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 21), data, node, scalar !=r"!!str");
 
-        expect! (receiver, (1, 2, 22), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 23), block, map, (1, 2, 22));
-        expect! (receiver, (2, 23, 24), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 22), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 23), data, block, map, (1, 2, 22));
+        expect! (receiver, (2, 23, 24), data, node, scalar !=r"!!str");
 
-        expect! (receiver, (1, 2, 25), node, scalar !=r"!!str");
-        expect! (receiver, (1, 2, 26), block, map, (1, 2, 25));
+        expect! (receiver, (1, 2, 25), data, node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 26), data, block, map, (1, 2, 25));
 
-        expect! (receiver, (1, 2, 27), node, mapping);
-        expect! (receiver, (2, 27, 28), node, scalar !=r"!!str");
-        expect! (receiver, (2, 27, 29), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 27), data, node, mapping);
+        expect! (receiver, (2, 27, 28), data, node, scalar !=r"!!str");
+        expect! (receiver, (2, 27, 29), data, node, scalar !=r"!!str");
 
-        expect! (receiver, (1, 2, 30), node, mapping);
-        expect! (receiver, (2, 30, 31), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 30), data, node, mapping);
+        expect! (receiver, (2, 30, 31), data, node, scalar !=r"!!str");
 
-        expect! (receiver, (1, 2, 32), node, mapping);
-        expect! (receiver, (2, 32, 33), node, scalar !=r"!!str");
+        expect! (receiver, (1, 2, 32), data, node, mapping);
+        expect! (receiver, (2, 32, 33), data, node, scalar !=r"!!str");
 
         expect! (receiver, (1, 2, 34), node, null);
 
@@ -8049,17 +8523,19 @@ r#"|
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"foo ");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, "\n");
-        expect! (receiver, (1, 2, 6), literal, "\t bar");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, "\n");
-        expect! (receiver, (1, 2, 9), literal, r"baz");
-        expect! (receiver, (1, 2, 10), literal, "\n");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"foo ");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, "\n");
+        expect! (receiver, (1, 2, 6), data, literal, "\t bar");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, "\n");
+        expect! (receiver, (1, 2, 9), data, literal, r"baz");
+        expect! (receiver, (1, 2, 10), data, literal, "\n");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 11), doc, end);
 
@@ -8081,15 +8557,17 @@ r#"|-
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"trimmed");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, "\n\n\n");
-        expect! (receiver, (1, 2, 6), literal, r"as");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, r"space");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"trimmed");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, "\n\n\n");
+        expect! (receiver, (1, 2, 6), data, literal, r"as");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, r"space");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 9), doc, end);
 
@@ -8111,20 +8589,22 @@ r"|
  What a year!";
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Sammy Sosa completed another");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, r"fine season with great stats.");
-        expect! (receiver, (1, 2, 6), literal, "\n");
-        expect! (receiver, (1, 2, 7), literal, "\n");
-        expect! (receiver, (1, 2, 8), literal, r"  63 Home Runs");
-        expect! (receiver, (1, 2, 9), literal, "\n");
-        expect! (receiver, (1, 2, 10), literal, "  0.288 Batting Average");
-        expect! (receiver, (1, 2, 11), literal, "\n");
-        expect! (receiver, (1, 2, 12), literal, "\n");
-        expect! (receiver, (1, 2, 13), literal, "What a year!");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"Sammy Sosa completed another");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"fine season with great stats.");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
+        expect! (receiver, (1, 2, 7), data, literal, "\n");
+        expect! (receiver, (1, 2, 8), data, literal, r"  63 Home Runs");
+        expect! (receiver, (1, 2, 9), data, literal, "\n");
+        expect! (receiver, (1, 2, 10), data, literal, "  0.288 Batting Average");
+        expect! (receiver, (1, 2, 11), data, literal, "\n");
+        expect! (receiver, (1, 2, 12), data, literal, "\n");
+        expect! (receiver, (1, 2, 13), data, literal, "What a year!");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 14), doc, end);
 
@@ -8143,14 +8623,16 @@ r"--- |
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, block, open);
-        expect! (receiver, (1, 2, 3), literal, r"Mark McGwire's");
-        expect! (receiver, (1, 2, 4), literal, "\n");
-        expect! (receiver, (1, 2, 5), literal, r"year was crippled");
-        expect! (receiver, (1, 2, 6), literal, "\n");
-        expect! (receiver, (1, 2, 7), literal, r"by a knee injury.");
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, literal, r"Mark McGwire's");
+        expect! (receiver, (1, 2, 4), data, literal, "\n");
+        expect! (receiver, (1, 2, 5), data, literal, r"year was crippled");
+        expect! (receiver, (1, 2, 6), data, literal, "\n");
+        expect! (receiver, (1, 2, 7), data, literal, r"by a knee injury.");
         expect! (receiver, (0, 0, 2), node, block, close);
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -8164,11 +8646,13 @@ r"--- |
 r#"? key : value"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, mapping);
-        expect! (receiver, (1, 2, 3), node, scalar, r"key");
-        expect! (receiver, (1, 2, 4), node, scalar, r"value");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"key");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"value");
 
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -8184,11 +8668,13 @@ r#"? key
 : value"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
-        expect! (receiver, (0, 0, 2), node, mapping);
-        expect! (receiver, (1, 2, 3), node, scalar, r"key");
-        expect! (receiver, (1, 2, 4), node, scalar, r"value");
+        expect! (receiver, (0, 0, 2), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (1, 2, 3), data, node, scalar, r"key");
+        expect! (receiver, (1, 2, 4), data, node, scalar, r"value");
 
         expect! (receiver, (0, 0, 5), doc, end);
 
@@ -8205,15 +8691,17 @@ r#"
   ? key2 : value2"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar, r"key1");
-        expect! (receiver, (2, 3, 5), node, scalar, r"value1");
-        expect! (receiver, (2, 3, 6), node, scalar, r"key2");
-        expect! (receiver, (2, 3, 7), node, scalar, r"value2");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"key1");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"value1");
+        expect! (receiver, (2, 3, 6), data, node, scalar, r"key2");
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"value2");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -8232,15 +8720,17 @@ r#"
   : value2"#;
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar, r"key1");
-        expect! (receiver, (2, 3, 5), node, scalar, r"value1");
-        expect! (receiver, (2, 3, 6), node, scalar, r"key2");
-        expect! (receiver, (2, 3, 7), node, scalar, r"value2");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"key1");
+        expect! (receiver, (2, 3, 5), data, node, scalar, r"value1");
+        expect! (receiver, (2, 3, 6), data, node, scalar, r"key2");
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"value2");
 
         expect! (receiver, (0, 0, 8), doc, end);
 
@@ -8259,17 +8749,19 @@ r#"
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar, r"dict1_key");
-        expect! (receiver, (2, 3, 5), block, map, (2, 3, 4));
-        expect! (receiver, (3, 5, 6), node, scalar, r"dict1_val");
-        expect! (receiver, (2, 3, 7), node, scalar, r"dict2_key");
-        expect! (receiver, (2, 3, 8), block, map, (2, 3, 7));
-        expect! (receiver, (3, 8, 9), node, scalar, r"dict2_val");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"dict1_key");
+        expect! (receiver, (2, 3, 5), data, block, map, (2, 3, 4));
+        expect! (receiver, (3, 5, 6), data, node, scalar, r"dict1_val");
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"dict2_key");
+        expect! (receiver, (2, 3, 8), data, block, map, (2, 3, 7));
+        expect! (receiver, (3, 8, 9), data, node, scalar, r"dict2_val");
         expect! (receiver, (0, 0, 10), doc, end);
         the_end! (receiver);
     }
@@ -8288,23 +8780,25 @@ r#"
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
 
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar, r"dict1_key");
-        expect! (receiver, (2, 3, 5), block, map, (2, 3, 4));
-        expect! (receiver, (3, 5, 6), node, scalar, r"dict1_val");
-        expect! (receiver, (2, 3, 7), node, scalar, r"dict2_key");
-        expect! (receiver, (2, 3, 8), block, map, (2, 3, 7));
-        expect! (receiver, (3, 8, 9), node, scalar, r"dict2_val");
-        expect! (receiver, (2, 3, 10), node, scalar, r"dict3_key");
-        expect! (receiver, (2, 3, 11), block, map, (2, 3, 10));
-        expect! (receiver, (3, 11, 12), node, scalar, r"dict3_val");
-        expect! (receiver, (2, 3, 13), node, scalar, r"dict4_key");
-        expect! (receiver, (2, 3, 14), block, map, (2, 3, 13));
-        expect! (receiver, (3, 14, 15), node, scalar, r"dict4_val");
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"dict1_key");
+        expect! (receiver, (2, 3, 5), data, block, map, (2, 3, 4));
+        expect! (receiver, (3, 5, 6), data, node, scalar, r"dict1_val");
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"dict2_key");
+        expect! (receiver, (2, 3, 8), data, block, map, (2, 3, 7));
+        expect! (receiver, (3, 8, 9), data, node, scalar, r"dict2_val");
+        expect! (receiver, (2, 3, 10), data, node, scalar, r"dict3_key");
+        expect! (receiver, (2, 3, 11), data, block, map, (2, 3, 10));
+        expect! (receiver, (3, 11, 12), data, node, scalar, r"dict3_val");
+        expect! (receiver, (2, 3, 13), data, node, scalar, r"dict4_key");
+        expect! (receiver, (2, 3, 14), data, block, map, (2, 3, 13));
+        expect! (receiver, (3, 14, 15), data, node, scalar, r"dict4_val");
         expect! (receiver, (0, 0, 16), doc, end);
         the_end! (receiver);
     }
@@ -8321,15 +8815,17 @@ r#"
 
 
         let receiver = read! (src);
+        let mut data = data! ();
 
         expect! (receiver, (0, 0, 1), doc, start);
         expect! (receiver, (0, 0, 2), node, sequence);
-        expect! (receiver, (1, 2, 3), node, mapping);
-        expect! (receiver, (2, 3, 4), node, scalar, r"dict1_key");
-        expect! (receiver, (2, 3, 5), block, map, (2, 3, 4));
+        expect! (receiver, (1, 2, 3), data, node, mapping);
+        expect! (receiver, (0, 0, 0), datum, data);
+        expect! (receiver, (2, 3, 4), data, node, scalar, r"dict1_key");
+        expect! (receiver, (2, 3, 5), data, block, map, (2, 3, 4));
         expect! (receiver, (3, 5, 6), node, null);
-        expect! (receiver, (2, 3, 7), node, scalar, r"dict2_key");
-        expect! (receiver, (2, 3, 8), block, map, (2, 3, 7));
+        expect! (receiver, (2, 3, 7), data, node, scalar, r"dict2_key");
+        expect! (receiver, (2, 3, 8), data, block, map, (2, 3, 7));
         expect! (receiver, (3, 8, 9), node, null);
         expect! (receiver, (0, 0, 10), doc, end);
         the_end! (receiver);

@@ -1,7 +1,6 @@
 extern crate skimmer;
 
-use self::skimmer::reader::{ Chunk, Read };
-use self::skimmer::symbol::Symbol;
+use self::skimmer::{ Data, Datum, Marker, Read, Rune, Symbol };
 use self::skimmer::scanner::{ scan_one_at, scan_until_at, scan_while_at };
 
 
@@ -17,8 +16,7 @@ use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 
-
-// use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 
 
@@ -110,31 +108,33 @@ impl Block {
 
 #[derive (Debug)]
 pub enum BlockType {
-    Alias (Chunk),
+    Alias (Marker),
 
-    DirectiveTag ( (Chunk, Chunk) ),
+    DirectiveTag ( (Marker, Marker) ),
     DirectiveYaml ( (u8, u8) ),
 
     DocStart,
     DocEnd,
 
-    BlockMap (Id, Option<Chunk>, Option<Chunk>),
-    Literal (Chunk),
+    BlockMap (Id, Option<Marker>, Option<Marker>),
+    Literal (Marker),
+    Rune (Rune, usize),
 
     Node (Node),
 
     Error (Twine, usize),
     Warning (Twine, usize),
 
-    StreamEnd
+    StreamEnd,
+    Datum (Arc<Datum>)
 }
 
 
 
 #[derive (Debug)]
 pub struct Node {
-    pub anchor: Option<Chunk>,
-    pub tag: Option<Chunk>,
+    pub anchor: Option<Marker>,
+    pub tag: Option<Marker>,
     pub content: NodeKind
 }
 
@@ -147,7 +147,7 @@ pub enum NodeKind {
 
     Mapping,
     Null,
-    Scalar (Chunk),
+    Scalar (Marker),
     Sequence
 }
 
@@ -161,7 +161,6 @@ enum ContextKind {
     MappingBlock,
     MappingFlow,
     ScalarBlock,
-    // ScalarBlockLiteral,
     SequenceBlock,
     SequenceFlow
 }
@@ -211,43 +210,32 @@ pub struct Reader {
     line: usize,
     cursor: usize,
     position: usize,
-    tokenizer: Tokenizer,
-    // yielt: Sender<Block>
+    data: Data,
+    tokenizer: Tokenizer
 }
 
 
 
 impl Reader {
-    pub fn new (tokenizer: Tokenizer /*, yielt: Sender<Block> */) -> Reader {
+    pub fn new (tokenizer: Tokenizer) -> Reader {
         Reader {
             index: 0,
             line: 0,
             cursor: 0,
             position: 0,
-            tokenizer: tokenizer,
-            // yielt: yielt
+            data: Data::with_capacity (4),
+            tokenizer: tokenizer
         }
     }
 
 
     fn yield_block (&mut self, block: Block, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
-        // if let Err (_) = self.yielt.send (block) { return Err (ReadError::new ("Cannot yield a block")) };
-
         if let Err (error) = callback (block) {
             Err (ReadError::new (error))
         } else {
             Ok ( () )
         }
     }
-
-
-    /*
-    fn yield_block (&mut self, block: Block) -> Result<(), ReadError> {
-        if let Err (_) = self.yielt.send (block) { return Err (ReadError::new ("Cannot yield a block")) };
-
-        Ok ( () )
-    }
-    */
 
 
     pub fn read<R: Read> (&mut self, mut reader: R, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
@@ -279,10 +267,24 @@ impl Reader {
     }
 
 
-    fn consume<R: Read> (&mut self, reader: &mut R, len: usize, chars: usize) -> Chunk {
+    fn consume<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, len: usize, chars: usize) -> Result<Marker, ReadError> {
         self.cursor += chars;
         self.position += len;
-        reader.consume (len)
+        let marker = reader.consume (len);
+
+        if marker.pos2.0 > self.data.amount () {
+            for i in self.data.amount () .. marker.pos2.0 + 1 {
+                let datum = reader.get_datum (i).unwrap ();
+                self.yield_block (Block::new (Id { level: 0, parent: 0, index: i }, BlockType::Datum (datum.clone ())), callback) ?;
+                self.data.push (reader.get_datum (i).unwrap ());
+            }
+        } else if self.data.amount () == 0 {
+            let datum = reader.get_datum (0).unwrap ();
+            self.yield_block (Block::new (Id { level: 0, parent: 0, index: 0 }, BlockType::Datum (datum.clone ())), callback) ?;
+            self.data.push (datum);
+        }
+
+        Ok (marker)
     }
 
 
@@ -315,7 +317,7 @@ impl Reader {
     }
 
 
-    fn read_layer_propagated<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, anchor: &mut Option<Chunk>, tag: &mut Option<Chunk>) -> Result<(), ReadError> {
+    fn read_layer_propagated<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
         let mut cur_idx = self.index;
         self.read_layer (reader, callback, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
     }
@@ -329,8 +331,8 @@ impl Reader {
         level: usize,
         parent_idx: usize,
         cur_idx: &mut usize,
-        anchor: &mut Option<Chunk>,
-        tag: &mut Option<Chunk>
+        anchor: &mut Option<Marker>,
+        tag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         self.read_layer (reader, callback, ctx, level, parent_idx, cur_idx, 3, anchor, tag)
     }
@@ -345,8 +347,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         mut state: u8,
-        anchor: &mut Option<Chunk>,
-        tag: &mut Option<Chunk>
+        anchor: &mut Option<Marker>,
+        tag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::Layer, self.cursor, level);
 
@@ -667,8 +669,8 @@ impl Reader {
         const ALWAYS_KEEP: u8 = 128; // literal mode
 
         let mut lazy_indent: usize = 0;
-        let mut lazy_nl: Option<Chunk> = None;
-        let mut lazy_tail: Option<(Chunk, usize)> = None;
+        let mut lazy_nl: Option<Marker> = None;
+        let mut lazy_tail: Option<(Marker, usize)> = None;
 
         'top: loop {
             if let Some ( (token, len, chars) ) = if accel.is_none () { self.tokenizer.get_token (reader) } else { accel.take () } {
@@ -702,7 +704,7 @@ impl Reader {
                                 ), callback));
                             }
 
-                            lazy_tail = Some ( (self.consume (reader, len, chars), chars) );
+                            lazy_tail = Some ( (self.consume (reader, callback, len, chars) ?, chars) );
 
                             on (&mut state, KEEPER);
                             off (&mut state, INDENT_PASSED);
@@ -767,12 +769,15 @@ impl Reader {
 
                         _ if lazy_tail.is_some () => {
                             let (_, nls) = lazy_tail.take ().unwrap ();
-                            let mut chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len () * nls);
-                            for _ in 0 .. nls { chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ()); }
+                            // let mut chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len () * nls);
+                            // for _ in 0 .. nls { chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ()); }
+                            
                             let idx = self.get_idx ();
+                            let rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
-                                BlockType::Literal (chunk)
+                                BlockType::Rune (rune, nls)
+                                // BlockType::Literal (chunk)
                             ), callback));
                             off (&mut state, HUNGRY | KEEPER);
                             continue;
@@ -782,20 +787,24 @@ impl Reader {
                         _ if is (state, HUNGRY) => {
                             // TODO: try to take a part of the indentation instead of making a new chunk
 
-                            let mut chunk: Chunk;
+                            // let mut chunk: Chunk;
+                            let rune: Rune;
 
                             if is (state, KEEPER) {
-                                chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len ());
-                                chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ());
+                                // chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len ());
+                                // chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ());
+                                rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
                             } else {
-                                chunk = Chunk::with_capacity (self.tokenizer.spaces[0].len ());
-                                chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
+                                // chunk = Chunk::with_capacity (self.tokenizer.spaces[0].len ());
+                                // chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
+                                rune = Rune::from (self.tokenizer.spaces[0].clone ());
                             }
 
                             let idx = self.get_idx ();
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
-                                BlockType::Literal (chunk)
+                                BlockType::Rune (rune, 1)
+                                // BlockType::Literal (chunk)
                             ), callback));
 
                             off (&mut state, HUNGRY | KEEPER);
@@ -847,11 +856,11 @@ impl Reader {
 
 
                             if len > 0 {
-                                let chunk = self.consume (reader, len, 0);
+                                let marker = self.consume (reader, callback, len, 0) ?;
                                 let idx = self.get_idx ();
                                 try! (self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
-                                    BlockType::Literal (chunk)
+                                    BlockType::Literal (marker)
                                 ), callback));
                             }
 
@@ -860,10 +869,10 @@ impl Reader {
                                 self.nl ();
 
                                 if is (state, INDENT_DEFINED) {
-                                    lazy_nl = Some (self.consume (reader, nl, 0));
+                                    lazy_nl = Some (self.consume (reader, callback, nl, 0) ?);
 
                                     if tail > 0 {
-                                        lazy_tail = Some ( (self.consume (reader, tail, 0), tail_nls) );
+                                        lazy_tail = Some ( (self.consume (reader, callback, tail, 0) ?, tail_nls) );
                                         for _ in 0..tail_nls { self.nl (); }
                                     }
                                 } else {
@@ -905,16 +914,15 @@ impl Reader {
                 let (_, chars) = lazy_tail.take ().unwrap ();
 
                 if is (state, CHOMP_KEEP) && chars > 0 {
-                    let mut chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len () * chars);
-
-                    for _ in 0..chars {
-                        chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ());
-                    }
+                    // let mut chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len () * chars);
+                    // for _ in 0..chars { chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ()); }
 
                     let idx = self.get_idx ();
+                    let rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
                     try! (self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
-                        BlockType::Literal (chunk)
+                        BlockType::Rune (rune, chars)
+                        // BlockType::Literal (chunk)
                     ), callback));
                 }
             }
@@ -933,10 +941,10 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         mut accel: Option<(Token, usize, usize)>,
-        anchor: Option<Chunk>,
-        tag: Option<Chunk>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        anchor: Option<Marker>,
+        tag: Option<Marker>,
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::ScalarBlock, self.cursor, level);
 
@@ -1004,8 +1012,9 @@ impl Reader {
                         }
 
                         Token::Raw if not (state, HEAD_PASSED) && not (state, CHOMP_DEFINED) && not (state, INDENT_DEFINED) => {
-                            let chunk = self.consume (reader, len, chars);
-                            let chunk_slice = &chunk[..];
+                            let marker = self.consume (reader, callback, len, chars) ?;
+                            let chunk = self.data.chunk (&marker);
+                            let chunk_slice = chunk.as_slice ();
 
                             let mut pos: usize = 0;
 
@@ -1241,10 +1250,10 @@ impl Reader {
         level: usize,
         parent_idx: usize,
         indent: usize,
-        anchor: Option<Chunk>,
-        tag: Option<Chunk>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        anchor: Option<Marker>,
+        tag: Option<Marker>,
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::SequenceFlow, self.cursor, level);
 
@@ -1648,10 +1657,10 @@ impl Reader {
         level: usize,
         parent_idx: usize,
         indent: usize,
-        anchor: Option<Chunk>,
-        tag: Option<Chunk>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        anchor: Option<Marker>,
+        tag: Option<Marker>,
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         let ctx = Context::new (ctx, ContextKind::MappingFlow, self.cursor, level);
 
@@ -1786,9 +1795,9 @@ impl Reader {
                     }
                 }
             }).and_then (|(_, len, chars)| {
-                let chunk = self.consume (reader, len, chars);
+                let marker = self.consume (reader, callback, len, chars) ?;
 
-                self.check_yaml_version (callback, level, parent_idx, &chunk)
+                self.check_yaml_version (callback, level, parent_idx, &marker)
                     .and_then (|ver| {
                         let idx = self.get_idx ();
                         self.yield_block (Block::new (
@@ -1819,18 +1828,124 @@ impl Reader {
     }
 
 
-    fn check_yaml_version (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, chunk: &Chunk) -> Result<(u8, u8), ReadError> {
-        let chunk_slice = &chunk[..];
+    fn check_yaml_version (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
+        enum R {
+            Err (Twine),
+            Warn (Twine, (u8, u8))
+        };
 
-        if self.tokenizer.directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
+        let result = {
+            let chunk = self.data.chunk (&marker);
+            let chunk_slice = chunk.as_slice ();
 
-        self.tokenizer.cset.extract_dec (chunk_slice)
+            if self.tokenizer.directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
+
+            if let Some ( (digit_first, digit_first_len) ) = self.tokenizer.cset.extract_dec (chunk_slice) {
+                if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
+                    R::Err (Twine::from ("%YAML major version is not supported"))
+                } else {
+                    if let Some ( (digit_second, digit_second_len) ) = self.tokenizer.cset.extract_dec_at (chunk_slice, digit_first_len + self.tokenizer.cset.full_stop.len ()) {
+                        if chunk_slice.len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
+                            R::Warn (Twine::from ("%YAML minor version is not fully supported"), (digit_first, 3))
+                        } else {
+                            if digit_second == 1 {
+                                R::Warn ( Twine::from (format! (
+                                    "{}. {}.",
+                                    "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
+                                    "This means that non-ASCII line-breaks are considered to be non-break characters"
+                                )), (digit_first, digit_second) )
+                            } else {
+                                R::Err (Twine::from ("%YAML minor version is not supported"))
+                            }
+                        }
+                    } else {
+                        R::Err ( Twine::from ("%YAML version is malformed") )
+                    }
+                }
+            } else {
+                R::Err ( Twine::from ("%YAML version is malformed") )
+            }
+        };
+
+        match result {
+            R::Err (msg) => {
+                let idx = self.get_idx ();
+                Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, msg).unwrap_err ())
+            },
+            R::Warn (msg, res) => {
+                let idx = self.get_idx ();
+                self.yield_warning (callback, Id { level: level, parent: parent_idx, index: idx }, msg) ?;
+                Ok (res)
+            }
+        }
+    }
+
+
+/*
+    fn check_yaml_version (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
+        // let chunk = self.data.chunk (&marker);
+        // let chunk_slice = chunk.as_slice ();
+
+        if self.tokenizer.directive_yaml_version.same_as_slice (self.data.chunk (&marker).as_slice ()) { return Ok ( (1, 2) ) }
+
+        /*
+        if let Some ( (digit_first, digit_first_len) ) = self.tokenizer.cset.extract_dec (chunk_slice) {
+            if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
+                let idx = self.get_idx ();
+                return Err (self.yield_error (
+                    callback,
+                    Id { level: level, parent: parent_idx, index: idx },
+                    Twine::from ("%YAML major version is not supported")
+                ).unwrap_err ())
+            }
+
+            if let Some ( (digit_second, digit_second_len) ) = self.tokenizer.cset.extract_dec_at (chunk_slice, digit_first_len + self.tokenizer.cset.full_stop.len ()) {
+                if chunk_slice.len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
+                    let idx = self.get_idx ();
+                    try! (self.yield_warning (
+                        callback,
+                        Id { level: level, parent: parent_idx, index: idx },
+                        Twine::from ("%YAML minor version is not fully supported")
+                    ));
+
+                    Ok ( (digit_first, 3) )
+                } else {
+                    if digit_second == 1 {
+                        let idx = self.get_idx ();
+                        try! (self.yield_warning (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! (
+                            "{}. {}.",
+                            "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
+                            "This means that non-ASCII line-breaks are considered to be non-break characters"
+                        ))));
+                    } else {
+                        let idx = self.get_idx ();
+                        return Err (self.yield_error (
+                            callback,
+                            Id { level: level, parent: parent_idx, index: idx },
+                            Twine::from ("%YAML minor version is not supported")
+                        ).unwrap_err ())
+                    }
+
+                    Ok ( (digit_first, digit_second) )
+                }
+            } else {
+                let idx = self.get_idx ();
+                Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ())
+            }
+        } else {
+            let idx = self.get_idx ();
+            Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ())
+        }
+        */
+
+
+        self.tokenizer.cset.extract_dec (self.data.chunk (&marker).as_slice ())
             .ok_or_else (|| {
                 let idx = self.get_idx ();
                 self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
             })
-            .and_then (|(digit_first, digit_first_len)| {
-                if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
+            .and_then (move |(digit_first, digit_first_len)| {
+                if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (self.data.chunk (&marker).as_slice (), digit_first_len) {
                     let idx = self.get_idx ();
                     return Err (self.yield_error (
                         callback,
@@ -1839,13 +1954,13 @@ impl Reader {
                     ).unwrap_err ())
                 }
 
-                self.tokenizer.cset.extract_dec_at (chunk_slice, digit_first_len + self.tokenizer.cset.full_stop.len ())
+                self.tokenizer.cset.extract_dec_at (self.data.chunk (&marker).as_slice (), digit_first_len + self.tokenizer.cset.full_stop.len ())
                     .ok_or_else (|| {
                         let idx = self.get_idx ();
                         self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
                     })
                     .and_then (|(digit_second, digit_second_len)| {
-                        if chunk.len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
+                        if self.data.chunk (&marker).as_slice ().len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
                             let idx = self.get_idx ();
                             try! (self.yield_warning (
                                 callback,
@@ -1876,6 +1991,7 @@ impl Reader {
                     })
             })
     }
+*/
 
 
     fn read_directive_tag<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
@@ -1922,7 +2038,7 @@ impl Reader {
                 };
 
                 let (more, _) = scan_until_at (len, reader, &self.tokenizer.anchor_stops);
-                let handle = self.consume (reader, len + more, chars);
+                let handle = self.consume (reader, callback, len + more, chars) ?;
 
                 /* Indent */
                 self.tokenizer.get_token (reader)
@@ -1975,7 +2091,7 @@ impl Reader {
                                 };
 
                                 
-                                let prefix = self.consume (reader, read, rchs);
+                                let prefix = self.consume (reader, callback, read, rchs) ?;
 
                                 let idx = self.get_idx ();
                                 self.yield_block (Block::new (
@@ -2064,8 +2180,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         accel: Option<(Token, usize, usize)>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, true, false, None)
     }
@@ -2080,8 +2196,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         accel: Option<(Token, usize, usize)>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, true, None)
     }
@@ -2096,8 +2212,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         accel: Option<(Token, usize, usize)>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>,
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>,
         orig_indent: usize
     ) -> Result<(), ReadError> {
         self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, Some(orig_indent))
@@ -2113,8 +2229,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         accel: Option<(Token, usize, usize)>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
         self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, None)
     }
@@ -2130,8 +2246,8 @@ impl Reader {
         parent_idx: usize,
         cur_idx: &mut usize,
         mut accel: Option<(Token, usize, usize)>,
-        overanchor: &mut Option<Chunk>,
-        overtag: &mut Option<Chunk>,
+        overanchor: &mut Option<Marker>,
+        overtag: &mut Option<Marker>,
         flow: bool,
         map_block_val: bool,
         _seq_block_indent: Option<usize>
@@ -2147,8 +2263,8 @@ impl Reader {
 
         let mut state: u8 = 0;
 
-        let mut anchor: Option<Chunk> = None;
-        let mut tag: Option<Chunk> = None;
+        let mut anchor: Option<Marker> = None;
+        let mut tag: Option<Marker> = None;
 
         let mut flow_idx: usize = 0;
         let mut flow_opt: Option<Block> = None;
@@ -2238,11 +2354,11 @@ impl Reader {
                                     _ => ()
                                 };
 
-                                let chunk = self.consume (reader, len, chars);
+                                let marker = self.consume (reader, callback, len, chars) ?;
                                 let idx = self.get_idx ();
                                 try! (self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
-                                    BlockType::Literal (chunk)
+                                    BlockType::Literal (marker)
                                 ), callback));
                                 *cur_idx = idx;
                             };
@@ -2289,8 +2405,9 @@ impl Reader {
                             self.skip (reader, len, chars);
 
                             if indent == 0 && not (state, INDENT_PASSED) {
-                                let mut chunk: Chunk = Chunk::with_capacity (self.tokenizer.cset.space.len ());
-                                chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
+                                // let mut chunk: Chunk = Chunk::with_capacity (self.tokenizer.cset.space.len ());
+                                // chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
+                                let rune = Rune::from (self.tokenizer.spaces[0].clone ());
 
                                 match flow_opt {
                                     Some (Block { id, cargo: BlockType::Node (Node {
@@ -2325,7 +2442,8 @@ impl Reader {
                                 let idx = self.get_idx ();
                                 try! (self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
-                                    BlockType::Literal (chunk)
+                                    BlockType::Rune (rune, 1)
+                                    // BlockType::Literal (chunk)
                                 ), callback));
                                 *cur_idx = idx;
                             }
@@ -2399,7 +2517,7 @@ impl Reader {
                             }
 
                             if skip {
-                                self.consume (reader, len, chars);
+                                self.consume (reader, callback, len, chars) ?;
                                 break;
                             }
 
@@ -2436,11 +2554,11 @@ impl Reader {
 
                             match token {
                                 Token::Indent => {
-                                    let chunk = self.consume (reader, len, chars);
+                                    let marker = self.consume (reader, callback, len, chars) ?;
                                     let idx = self.get_idx ();
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
-                                        BlockType::Literal (chunk)
+                                        BlockType::Literal (marker)
                                     ), callback));
                                     *cur_idx = idx;
 
@@ -2448,11 +2566,11 @@ impl Reader {
                                 }
 
                                 Token::Newline => {
-                                    let chunk = self.consume (reader, len, chars);
+                                    let marker = self.consume (reader, callback, len, chars) ?;
                                     let idx = self.get_idx ();
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
-                                        BlockType::Literal (chunk)
+                                        BlockType::Literal (marker)
                                     ), callback));
                                     *cur_idx = idx;
 
@@ -2462,12 +2580,12 @@ impl Reader {
 
                                 Token::Comment => {
                                     let len = self.tokenizer.cset.hashtag.len ();
-                                    let chunk = self.consume (reader, len, 1);
+                                    let marker = self.consume (reader, callback, len, 1) ?;
 
                                     let idx = self.get_idx ();
                                     try! (self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
-                                        BlockType::Literal (chunk)
+                                        BlockType::Literal (marker)
                                     ), callback));
                                     *cur_idx = idx;
 
@@ -2477,13 +2595,15 @@ impl Reader {
 
                                 _ => {
                                     if self.cursor == 0 { // 9.03 - we couldn't spare a space
-                                        let mut chunk: Chunk = Chunk::with_capacity (self.tokenizer.cset.space.len ());
-                                        chunk.push_slice (self.tokenizer.cset.space.as_slice ());
+                                        // let mut chunk: Chunk = Chunk::with_capacity (self.tokenizer.cset.space.len ());
+                                        // chunk.push_slice (self.tokenizer.cset.space.as_slice ());
 
                                         let idx = self.get_idx ();
+                                        let rune = Rune::from (self.tokenizer.cset.space.clone ());
                                         try! (self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
-                                            BlockType::Literal (chunk)
+                                            BlockType::Rune (rune, 1)
+                                            // BlockType::Literal (chunk)
                                         ), callback));
                                         *cur_idx = idx;
                                     }
@@ -2491,9 +2611,9 @@ impl Reader {
                                     let mut chunk = match token {
                                         Token::Directive => {
                                             let (len, _) = scan_until_at (0, reader, &self.tokenizer.raw_stops);
-                                            self.consume (reader, len, 1)
+                                            self.consume (reader, callback, len, 1) ?
                                         }
-                                        _ => self.consume (reader, len, chars)
+                                        _ => self.consume (reader, callback, len, chars) ?
                                     };
                                     
                                     self.rtrim (&mut chunk);
@@ -2772,12 +2892,12 @@ impl Reader {
                         Token::Alias if anchor.is_none () && tag.is_none () => {
                             let ast_len = self.tokenizer.cset.asterisk.len ();
                             self.skip (reader, ast_len, 0);
-                            let chunk = self.consume (reader, len - ast_len, chars);
+                            let marker = self.consume (reader, callback, len - ast_len, chars) ?;
 
                             let idx = self.get_idx ();
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
-                                BlockType::Alias (chunk)
+                                BlockType::Alias (marker)
                             ), callback));
 
                             *cur_idx = idx;
@@ -2789,12 +2909,12 @@ impl Reader {
                         Token::Anchor if anchor.is_none () => {
                             let amp_len = self.tokenizer.cset.ampersand.len ();
                             self.skip (reader, amp_len, 0);
-                            anchor = Some ( self.consume (reader, len - amp_len, chars) );
+                            anchor = Some ( self.consume (reader, callback, len - amp_len, chars) ? );
                         }
 
 
                         Token::TagHandle if tag.is_none () => {
-                            tag = Some ( self.consume (reader, len, chars) );
+                            tag = Some ( self.consume (reader, callback, len, chars) ? );
                         }
 
 
@@ -2847,7 +2967,7 @@ impl Reader {
 
                         Token::StringSingle |
                         Token::StringDouble => {
-                            let chunk = self.consume (reader, len, chars);
+                            let marker = self.consume (reader, callback, len, chars) ?;
                             let idx = self.get_idx ();
 
                             *cur_idx = idx;
@@ -2864,7 +2984,7 @@ impl Reader {
                             return self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                 anchor: anchor,
                                 tag: tag,
-                                content: NodeKind::Scalar (chunk)
+                                content: NodeKind::Scalar (marker)
                             })), callback);
                         }
 
@@ -2917,18 +3037,18 @@ impl Reader {
                             flow_idx = self.get_idx ();
                             *cur_idx = flow_idx;
 
-                            let mut chunk = self.consume (reader, len, chars);
+                            let mut marker = self.consume (reader, callback, len, chars) ?;
 
-                            let blen = chunk.len ();
-                            self.rtrim (&mut chunk);
-                            let alen = chunk.len ();
+                            let blen = self.data.marker_len (&marker);
+                            self.rtrim (&mut marker);
+                            let alen = self.data.marker_len (&marker);
 
                             if blen != alen { on (&mut state, AFTER_SPACE); }
 
                             flow_opt = Some (Block::new (Id { level: level, parent: parent_idx, index: flow_idx }, BlockType::Node (Node {
                                 anchor: None,
                                 tag: None,
-                                content: NodeKind::Scalar (chunk)
+                                content: NodeKind::Scalar (marker)
                             })));
 
                             on (&mut state, INDENT_PASSED);
@@ -2940,18 +3060,18 @@ impl Reader {
                             flow_idx = self.get_idx ();
                             *cur_idx = flow_idx;
 
-                            let mut chunk = self.consume (reader, len, chars);
+                            let mut marker = self.consume (reader, callback, len, chars) ?;
 
-                            let blen = chunk.len ();
-                            self.rtrim (&mut chunk);
-                            let alen = chunk.len ();
+                            let blen = self.data.marker_len (&marker);
+                            self.rtrim (&mut marker);
+                            let alen = self.data.marker_len (&marker);
 
                             if blen != alen { on (&mut state, AFTER_SPACE); }
 
                             flow_opt = Some (Block::new (Id { level: level, parent: parent_idx, index: flow_idx }, BlockType::Node (Node {
                                 anchor: None,
                                 tag: None,
-                                content: NodeKind::Scalar (chunk)
+                                content: NodeKind::Scalar (marker)
                             })));
 
                             on (&mut state, INDENT_PASSED);
@@ -3098,9 +3218,10 @@ impl Reader {
     }
 
 
-    fn rtrim (&self, chunk: &mut Chunk) {
+    fn rtrim (&self, marker: &mut Marker) {
         let rtrimsize: usize = {
-            let chunk_slice = &chunk[..];
+            let chunk = self.data.chunk (marker);;
+            let chunk_slice = chunk.as_slice ();
             let mut ptr = chunk_slice.len ();
 
             'rtop: loop {
@@ -3120,8 +3241,9 @@ impl Reader {
         };
 
         if rtrimsize > 0 {
-            let trlen = chunk.len () - rtrimsize;
-            chunk.truncate (trlen);
+            let trlen = self.data.marker_len (marker) - rtrimsize;
+            
+            *marker = self.data.resize (marker.clone (), trlen);
         }
     }
 
@@ -3291,6 +3413,15 @@ mod tests {
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
 
             if let BlockType::DirectiveYaml ( (1, 2) ) = block.cargo {
@@ -3304,8 +3435,10 @@ mod tests {
             assert_eq! (2, block.id.index);
 
             if let BlockType::DirectiveTag ( (handle, tag) ) = block.cargo {
-                let handle = handle.to_vec ();
-                let tag = tag.to_vec ();
+                let handle = reader.data.chunk (&handle);
+                let tag = reader.data.chunk (&tag);
+                let handle = handle.as_slice ();
+                let tag = tag.as_slice ();
 
                 assert_eq! (3, handle.len ());
                 assert_eq! (handle, "!e!".as_bytes ());
@@ -3453,6 +3586,14 @@ mod tests {
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
 
             if let BlockType::Error (msg, pos) = block.cargo {
@@ -3481,6 +3622,14 @@ mod tests {
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
             .map_or ((), |err| { assert_eq! (expected_message, format! ("{}", err)) });
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
 
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
@@ -3514,6 +3663,15 @@ mod tests {
             .ok ()
             .map_or ((), |err| { assert_eq! (expected_message, format! ("{}", err)) });
 
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
@@ -3545,6 +3703,15 @@ mod tests {
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
             .map_or ((), |err| { assert_eq! (expected_message, format! ("{}", err)) });
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
 
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
@@ -3578,6 +3745,15 @@ mod tests {
             .ok ()
             .map_or ((), |err| { assert_eq! (expected_message, format! ("{}", err)) });
 
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
@@ -3605,6 +3781,15 @@ mod tests {
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3648,6 +3833,15 @@ mod tests {
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3828,6 +4022,15 @@ mod tests {
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
 
             if let BlockType::Error (msg, pos) = block.cargo {
@@ -3856,6 +4059,15 @@ mod tests {
             .ok_or_else (|| { assert! (false, "There must be an error") })
             .ok ()
             .map_or ((), |err| { assert_eq! (expected_message, format! ("{}", err)) });
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3894,6 +4106,15 @@ mod tests {
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
 
             if let BlockType::Error (msg, pos) = block.cargo {
@@ -3921,11 +4142,22 @@ mod tests {
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
+            assert_eq! (0, block.id.index);
+
+            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+        } else { assert! (false, "no datum") }
+
+
+        if let Ok (block) = receiver.try_recv () {
+            assert_eq! (0, block.id.level);
+            assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
 
             if let BlockType::DirectiveTag ( (handle, tag) ) = block.cargo {
-                let handle = handle.to_vec ();
-                let tag = tag.to_vec ();
+                let handle = reader.data.chunk (&handle);
+                let tag = reader.data.chunk (&tag);
+                let handle = handle.as_slice ();
+                let tag = tag.as_slice ();
 
                 assert_eq! (1, handle.len ());
                 assert_eq! (handle, "!".as_bytes ());

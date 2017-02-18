@@ -155,6 +155,13 @@ impl Unicode for UTF8 {
     fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
         Ok ( String::from (String::from_utf8_lossy (bytes)) )
     }
+
+    fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
+        let mut result = Vec::with_capacity (bytes.len () * times);
+        for _ in 0 .. times { result.extend (bytes); }
+
+        if let Ok (string) = String::from_utf8 (result) { Ok (string) } else { Err ( () ) }
+    }
 }
 
 

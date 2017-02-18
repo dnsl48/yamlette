@@ -15,7 +15,8 @@ documentation = "https://docs.rs/yamlette/"
 readme = "README.md"
 
 [dependencies]
-skimmer = "0.0.1"
+# skimmer = "0.0.1"
+skimmer = { path = "../skimmer/skimmer-git" }
 twine = "0.0.1"
 fraction = "0.3.4"
 

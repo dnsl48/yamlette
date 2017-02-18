@@ -64,40 +64,44 @@ pub trait Unicode {
     }
 
 
-    fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
+    fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> { self.bytes_to_string_times (bytes, 1) }
+
+    fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
         let utf8 = UTF8;
 
         let capacity = bytes.len () * self.char_max_bytes_len () as usize;
-        let mut result: Vec<u8> = Vec::with_capacity (capacity);
-
-        let mut sptr = bytes.as_ptr ();
-        let mut slen: usize = 0;
+        let mut result: Vec<u8> = Vec::with_capacity (capacity * times);
 
         let mut rlen: usize = 0;
         let mut rptr = result.as_mut_ptr ();
 
-        loop {
-            if slen >= bytes.len () { break; }
+        for _ in 0 .. times {
+            let mut sptr = bytes.as_ptr ();
+            let mut slen: usize = 0;
 
-            let (code, len) = unsafe { self.to_unicode_ptr (sptr, bytes.len () - slen) };
+            loop {
+                if slen >= bytes.len () { break; }
 
-            if len == 0 { return Err ( () ) }
+                let (code, len) = unsafe { self.to_unicode_ptr (sptr, bytes.len () - slen) };
 
-            slen += len as usize;
-            sptr = unsafe { sptr.offset (len as isize) };
+                if len == 0 { return Err ( () ) }
 
-            let bts = utf8.from_unicode (code);
+                slen += len as usize;
+                sptr = unsafe { sptr.offset (len as isize) };
 
-            if bts[4] == 0 { continue; }
+                let bts = utf8.from_unicode (code);
 
-            rlen += bts[4] as usize;
-            if rlen >= capacity { unreachable! () /* overflow */ }
+                if bts[4] == 0 { continue; }
 
-            unsafe { result.set_len (rlen) };
-            for i in 0 .. bts[4] as usize {
-                unsafe {
-                    *rptr = bts[i];
-                    rptr = rptr.offset (1);
+                rlen += bts[4] as usize;
+                if rlen >= capacity { unreachable! () /* overflow */ }
+
+                unsafe { result.set_len (rlen) };
+                for i in 0 .. bts[4] as usize {
+                    unsafe {
+                        *rptr = bts[i];
+                        rptr = rptr.offset (1);
+                    }
                 }
             }
         }

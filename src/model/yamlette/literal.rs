@@ -27,6 +27,8 @@ impl Literal {
 
     pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> { self.encoding.bytes_to_string (bytes) }
 
+    pub fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> { self.encoding.bytes_to_string_times (bytes, times) }
+
     pub fn string_to_bytes (&self, string: String) -> Vec<u8> { self.encoding.string_to_bytes (string) }
 }
 
