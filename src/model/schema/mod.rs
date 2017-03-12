@@ -5,6 +5,8 @@ use txt::{ CharSet, Encoding, Twine };
 use model::Model;
 use model::style::CommonStyles;
 
+use model::yamlette::literal::Literal;
+
 
 
 pub trait Schema: Send + Sync {
@@ -23,4 +25,6 @@ pub trait Schema: Send + Sync {
     fn look_up_model_callback (&self, &mut (FnMut (&Model) -> bool)) -> Option<&Model>;
 
     fn get_metamodel (&self) -> Option<&Model>;
+
+    fn get_model_literal (&self) -> &Literal;
 }

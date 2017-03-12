@@ -19,7 +19,7 @@ use model::yaml::yaml::YamlFactory;
 use model::yaml::timestamp::TimestampFactory;
 use model::yaml::binary::BinaryFactory;
 
-use model::yamlette::literal::LiteralFactory;
+use model::yamlette::literal::{ Literal, LiteralFactory };
 use model::yamlette::incognitum::IncognitumFactory;
 
 use txt::{ CharSet, Encoding, Twine };
@@ -67,6 +67,10 @@ impl Schema for Core {
             LiteralFactory.build_model (cset),
             IncognitumFactory.build_model (cset)
         ]);
+    }
+
+    fn get_model_literal (&self) -> &Literal {
+        unsafe { self.models.as_ref ().unwrap ().get_unchecked (15).as_ref ().as_any ().downcast_ref::<Literal> ().unwrap () }
     }
 
     fn get_encoding (&self) -> Encoding { self.encoding }
