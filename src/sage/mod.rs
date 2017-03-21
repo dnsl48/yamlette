@@ -1,3 +1,8 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::{ Combo, CopySymbol };
+
+
 mod ant;
 pub mod conveyor;
 
@@ -23,7 +28,12 @@ pub struct Sage {
 
 
 impl Sage {
-    pub fn new<S: Schema + 'static> (cset: CharSet, pipe: Receiver<Block>, schema: S) -> io::Result<Sage> {
+    pub fn new<Char, DoubleChar, S> (cset: CharSet<Char, DoubleChar>, pipe: Receiver<Block>, schema: S) -> io::Result<Sage>
+      where
+        Char: CopySymbol + 'static,
+        DoubleChar: CopySymbol + Combo + 'static,
+        S: Schema<Char, DoubleChar> + 'static
+    {
         let conv = try! (Conveyor::run (cset, pipe, Box::new (schema)));
         Ok (Sage { conv: conv })
     }

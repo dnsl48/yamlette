@@ -1,3 +1,8 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::{ Combo, CopySymbol };
+
+
 use model::{ Rope, Tagged, TaggedValue, Schema };
 use model::renderer::{ EncodedString, Renderer, Node };
 
@@ -73,24 +78,32 @@ impl Play {
 
 
 
-pub struct Performer {
+pub struct Performer<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     id: PerformerId,
     signals_in: Receiver<Signal>,
     cin: Receiver<Gesture>,
     out: SyncSender<(PerformerId, Play)>,
 
-    renderer: Arc<Renderer>,
-    schema: Arc<Box<Schema>>
+    renderer: Arc<Renderer<Char, DoubleChar>>,
+    schema: Arc<Box<Schema<Char, DoubleChar>>>
 }
 
 
 
-impl Performer {
+impl<Char, DoubleChar> Performer<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn run (
         id: PerformerId,
         out: SyncSender<(PerformerId, Play)>,
-        renderer: Arc<Renderer>,
-        schema: Arc<Box<Schema>>
+        renderer: Arc<Renderer<Char, DoubleChar>>,
+        schema: Arc<Box<Schema<Char, DoubleChar>>>
     )
         -> io::Result<(SyncSender<Gesture>, SyncSender<Signal>, JoinHandle<()>)>
     {
@@ -113,8 +126,8 @@ impl Performer {
     }
 
     pub fn execute (self) {
-        let schema: &Schema = self.schema.as_ref ().as_ref ();
-        let renderer: &Renderer = self.renderer.as_ref ();
+        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
+        let renderer: &Renderer<Char, DoubleChar> = self.renderer.as_ref ();
 
         let mut volume_tags: Vec<Option<Arc<Vec<(Twine, Twine)>>>> = Vec::new ();
 
@@ -142,8 +155,8 @@ impl Performer {
 
     fn play_note (
         &self,
-        schema: &Schema,
-        renderer: &Renderer,
+        schema: &Schema<Char, DoubleChar>,
+        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         value: TaggedValue,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
@@ -173,8 +186,8 @@ impl Performer {
 
     fn play_chord (
         &self,
-        schema: &Schema,
-        renderer: &Renderer,
+        schema: &Schema<Char, DoubleChar>,
+        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         value: TaggedValue,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>,
@@ -198,8 +211,8 @@ impl Performer {
 
     fn play_style (
         &self,
-        schema: &Schema,
-        renderer: &Renderer,
+        schema: &Schema<Char, DoubleChar>,
+        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         style: VolumeStyle,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
@@ -257,7 +270,7 @@ impl Performer {
 
     fn render (
         &self,
-        renderer: &Renderer,
+        renderer: &Renderer<Char, DoubleChar>,
         node_list: NodeList,
         string_pointer: StringPointer
     ) {

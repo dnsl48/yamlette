@@ -1,14 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 use txt::{ CharSet, Encoding, Twine };
 
-use model::{ model_issue_rope, EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 
@@ -18,9 +19,11 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Binary {
-    encoding: Encoding,
-
+pub struct Binary<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     tbl: [Char; 64],
     pad: Char,
     line_feed: Char,
@@ -31,116 +34,127 @@ pub struct Binary {
     s_quote: Char,
     d_quote: Char,
 
-    tcl: usize
+    tcl: usize,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Binary {
+impl<Char, DoubleChar> Binary<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Binary {
-        let pad = cset.equal.clone ();
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Binary<Char, DoubleChar> {
+        let pad = cset.equal;
 
         let tbl = [
-            cset.letter_t_a.clone (),
-            cset.letter_t_b.clone (),
-            cset.letter_t_c.clone (),
-            cset.letter_t_d.clone (),
-            cset.letter_t_e.clone (),
-            cset.letter_t_f.clone (),
-            cset.letter_t_g.clone (),
-            cset.letter_t_h.clone (),
-            cset.letter_t_i.clone (),
-            cset.letter_t_j.clone (),
-            cset.letter_t_k.clone (),
-            cset.letter_t_l.clone (),
-            cset.letter_t_m.clone (),
-            cset.letter_t_n.clone (),
-            cset.letter_t_o.clone (),
-            cset.letter_t_p.clone (),
-            cset.letter_t_q.clone (),
-            cset.letter_t_r.clone (),
-            cset.letter_t_s.clone (),
-            cset.letter_t_t.clone (),
-            cset.letter_t_u.clone (),
-            cset.letter_t_v.clone (),
-            cset.letter_t_w.clone (),
-            cset.letter_t_x.clone (),
-            cset.letter_t_y.clone (),
-            cset.letter_t_z.clone (),
+            cset.letter_t_a,
+            cset.letter_t_b,
+            cset.letter_t_c,
+            cset.letter_t_d,
+            cset.letter_t_e,
+            cset.letter_t_f,
+            cset.letter_t_g,
+            cset.letter_t_h,
+            cset.letter_t_i,
+            cset.letter_t_j,
+            cset.letter_t_k,
+            cset.letter_t_l,
+            cset.letter_t_m,
+            cset.letter_t_n,
+            cset.letter_t_o,
+            cset.letter_t_p,
+            cset.letter_t_q,
+            cset.letter_t_r,
+            cset.letter_t_s,
+            cset.letter_t_t,
+            cset.letter_t_u,
+            cset.letter_t_v,
+            cset.letter_t_w,
+            cset.letter_t_x,
+            cset.letter_t_y,
+            cset.letter_t_z,
 
-            cset.letter_a.clone (),
-            cset.letter_b.clone (),
-            cset.letter_c.clone (),
-            cset.letter_d.clone (),
-            cset.letter_e.clone (),
-            cset.letter_f.clone (),
-            cset.letter_g.clone (),
-            cset.letter_h.clone (),
-            cset.letter_i.clone (),
-            cset.letter_j.clone (),
-            cset.letter_k.clone (),
-            cset.letter_l.clone (),
-            cset.letter_m.clone (),
-            cset.letter_n.clone (),
-            cset.letter_o.clone (),
-            cset.letter_p.clone (),
-            cset.letter_q.clone (),
-            cset.letter_r.clone (),
-            cset.letter_s.clone (),
-            cset.letter_t.clone (),
-            cset.letter_u.clone (),
-            cset.letter_v.clone (),
-            cset.letter_w.clone (),
-            cset.letter_x.clone (),
-            cset.letter_y.clone (),
-            cset.letter_z.clone (),
+            cset.letter_a,
+            cset.letter_b,
+            cset.letter_c,
+            cset.letter_d,
+            cset.letter_e,
+            cset.letter_f,
+            cset.letter_g,
+            cset.letter_h,
+            cset.letter_i,
+            cset.letter_j,
+            cset.letter_k,
+            cset.letter_l,
+            cset.letter_m,
+            cset.letter_n,
+            cset.letter_o,
+            cset.letter_p,
+            cset.letter_q,
+            cset.letter_r,
+            cset.letter_s,
+            cset.letter_t,
+            cset.letter_u,
+            cset.letter_v,
+            cset.letter_w,
+            cset.letter_x,
+            cset.letter_y,
+            cset.letter_z,
             
-            cset.digit_0.clone (),
-            cset.digit_1.clone (),
-            cset.digit_2.clone (),
-            cset.digit_3.clone (),
-            cset.digit_4.clone (),
-            cset.digit_5.clone (),
-            cset.digit_6.clone (),
-            cset.digit_7.clone (),
-            cset.digit_8.clone (),
-            cset.digit_9.clone (),
+            cset.digit_0,
+            cset.digit_1,
+            cset.digit_2,
+            cset.digit_3,
+            cset.digit_4,
+            cset.digit_5,
+            cset.digit_6,
+            cset.digit_7,
+            cset.digit_8,
+            cset.digit_9,
 
-            cset.plus.clone (),
-            cset.slash.clone ()
+            cset.plus,
+            cset.slash
         ];
-
-        let mut tbl_chr_len: usize = pad.len ();
-
-        for i in 0 .. tbl.len () {
-            if tbl[i].len () > tbl_chr_len { tbl_chr_len = tbl[i].len (); }
-        }
 
         Binary {
             encoding: cset.encoding,
 
-            line_feed: cset.line_feed.clone (),
-            carriage_return: cset.carriage_return.clone (),
-            space: cset.space.clone (),
-            tab_h: cset.tab_h.clone (),
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
+            space: cset.space,
+            tab_h: cset.tab_h,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
             tbl: tbl,
             pad: pad,
-            tcl: tbl_chr_len
+            tcl: cset.longest_char,
+
+            _dchr: PhantomData
         }
     }
 }
 
 
 
-impl Model for Binary {
-    fn get_tag (&self) -> &Twine { Binary::get_tag () }
+impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self }
 
@@ -154,7 +168,7 @@ impl Model for Binary {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value: BinaryValue = match <TaggedValue as Into<Result<BinaryValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -377,7 +391,7 @@ impl BinaryValue {
 
 
 impl Tagged for BinaryValue {
-    fn get_tag (&self) -> &Twine { Binary::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -405,15 +419,15 @@ impl AsMut<Vec<u8>> for BinaryValue {
 
 
 
+/*
 pub struct BinaryFactory;
 
-
 impl Factory for BinaryFactory {
-    fn get_tag (&self) -> &Twine { Binary::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Binary::new (cset)) }
+    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Binary::new (cset)) }
 }
-
+*/
 
 
 
@@ -421,7 +435,7 @@ impl Factory for BinaryFactory {
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -430,7 +444,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let bin = BinaryFactory.build_model (&get_charset_utf8 ());
+        let bin = Binary::new (&get_charset_utf8 ());
 
         assert_eq! (bin.get_tag (), TAG);
     }
@@ -440,7 +454,7 @@ mod tests {
     #[test]
     fn encode () {
         let renderer = Renderer::new (&get_charset_utf8 ());
-        let bin = BinaryFactory.build_model (&get_charset_utf8 ());
+        let bin = Binary::new (&get_charset_utf8 ());
 
         let pairs = pairs ();
 
@@ -460,7 +474,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let bin = BinaryFactory.build_model (&get_charset_utf8 ());
+        let bin = Binary::new (&get_charset_utf8 ());
 
         let pairs = pairs ();
 
@@ -469,7 +483,7 @@ mod tests {
 
 
             if let Ok (tagged) = bin.decode (true, &p.1.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Binary::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let expected = p.0.as_bytes ();
 
@@ -482,7 +496,7 @@ mod tests {
 
 
         if let Ok (tagged) = bin.decode (true, &"".to_string ().into_bytes ()) {
-            assert_eq! (tagged.get_tag (), Binary::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             let vec: &Vec<u8> = tagged.as_any ().downcast_ref::<BinaryValue> ().unwrap ().as_ref ();
             assert_eq! (0, vec.len ());

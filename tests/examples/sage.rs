@@ -4,8 +4,8 @@ macro_rules! sage {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-
-        let sage = Sage::new (cset, receiver, get_schema ());
+        let schema = Core::new (&cset);
+        let sage = Sage::new (cset, receiver, schema);
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
@@ -24,8 +24,8 @@ macro_rules! sage_with_error {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-
-        let sage = Sage::new (cset, receiver, get_schema ());
+        let schema = Core::new (&cset);
+        let sage = Sage::new (cset, receiver, schema);
 
         reader
             .read (
@@ -51,8 +51,8 @@ macro_rules! sage_bytes {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-
-        let sage = Sage::new (cset, receiver, get_schema ());
+        let schema = Core::new (&cset);
+        let sage = Sage::new (cset, receiver, schema);
 
         reader.read (
             SliceReader::new ($src),
@@ -845,10 +845,6 @@ mod stable {
 
     use std::f64;
     use std::sync::mpsc::channel;
-
-
-
-    fn get_schema () -> Core { Core::new () }
 
 
 

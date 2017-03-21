@@ -1,6 +1,8 @@
 extern crate skimmer;
 
-use self::skimmer::{ Chunk, Data, Datum, Marker, Rune, Symbol };
+use self::skimmer::{ Chunk, Data, Datum, Marker, Rune };
+use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
+
 
 use model::{ Model, TaggedValue, Schema };
 use model::yamlette::literal::{ self, Literal };
@@ -71,13 +73,17 @@ pub enum Signal {
 
 
 
-pub struct Ant {
+pub struct Ant<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     idx: u8,
     cin: Receiver<Message>,
     out: SyncSender<(u8, Clue)>,
 
     data: Data,
-    schema: Arc<Box<Schema>>,
+    schema: Arc<Box<Schema<Char, DoubleChar>>>,
     tag_handles: Vec<Arc<(Twine, Twine)>>,
 
     yaml_version: YamlVersion
@@ -85,11 +91,15 @@ pub struct Ant {
 
 
 
-impl Ant {
+impl<Char, DoubleChar> Ant<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn run (
         idx: u8,
         out: SyncSender<(u8, Clue)>,
-        schema: Arc<Box<Schema>>,
+        schema: Arc<Box<Schema<Char, DoubleChar>>>,
         yaml_version: YamlVersion,
         tag_handles: Vec<Arc<(Twine, Twine)>>
     )
@@ -116,18 +126,18 @@ impl Ant {
 
 
     pub fn execute (mut self) -> () {
-        let schema: &Schema = self.schema.as_ref ().as_ref ();
+        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
 
-        let model_literal_opt: Option<&Model> = schema.look_up_model (literal::TAG);
+        let model_literal_opt: Option<&Model<Char=Char, DoubleChar=DoubleChar>> = schema.look_up_model (literal::TAG);
 
-        let model_literal: &Model = if model_literal_opt.is_some ()
+        let model_literal: &Model<Char=Char, DoubleChar=DoubleChar> = if model_literal_opt.is_some ()
                          && model_literal_opt.as_ref ().unwrap ().is_decodable ()
                          && model_literal_opt.as_ref ().unwrap ().is_encodable ()
             { model_literal_opt.unwrap () }
         else
             { panic! ("Undefined literal model") };
 
-        let model_literal: &Literal = if let Some (model) = model_literal.as_any ().downcast_ref::<Literal> () {
+        let model_literal: &Literal<Char, DoubleChar> = if let Some (model) = model_literal.as_any ().downcast_ref::<Literal<Char, DoubleChar>> () {
             model
         } else { panic! ("Cannot downcast Literal model") };
 
@@ -155,7 +165,7 @@ impl Ant {
     fn handle (
         &self,
         request: Request,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         match request {
             Request::ReadDirectiveTag ( id, shorthand, prefix ) => self.read_directive_tag (id, shorthand, prefix, model_literal),
@@ -167,7 +177,7 @@ impl Ant {
     }
 
 
-    fn decode (&self, model: &Model, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
+    fn decode (&self, model: &Model<Char=Char, DoubleChar=DoubleChar>, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         match self.yaml_version {
             YamlVersion::V1x1 => model.decode11 (explicit, value),
             YamlVersion::V1x2 => model.decode   (explicit, value)
@@ -180,7 +190,7 @@ impl Ant {
         id: Id,
         shorthand: Marker,
         prefix: Marker,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         let shorthand = self.data.chunk (&shorthand);
         let shorthand: Result<String, ()> = model_literal.bytes_to_string (shorthand.as_slice ());
@@ -206,7 +216,7 @@ impl Ant {
         anchor: Option<Marker>,
         tag: Option<Marker>,
         vec: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         self.read_scalar (id, anchor, tag, model_literal, vec)
     }
@@ -215,7 +225,7 @@ impl Ant {
     fn read_block (
         &self,
         block: Block,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         match block.cargo {
             BlockType::Alias ( marker ) => self.read_alias (block.id, marker, model_literal),
@@ -249,7 +259,7 @@ impl Ant {
     }
 
 
-    fn read_alias (&self, id: Id, marker: Marker, model_literal: &Literal) -> Result<(), ()> {
+    fn read_alias (&self, id: Id, marker: Marker, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
         let chunk = self.data.chunk (&marker);
         let alias = model_literal.bytes_to_string (chunk.as_slice ());
 
@@ -262,7 +272,7 @@ impl Ant {
     }
 
 
-    fn read_literal (&self, id: Id, marker: Marker, model_literal: &Literal) -> Result<(), ()> {
+    fn read_literal (&self, id: Id, marker: Marker, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
         let chunk = self.data.chunk (&marker);
         let literal = model_literal.bytes_to_string (chunk.as_slice ());
 
@@ -275,7 +285,7 @@ impl Ant {
     }
 
 
-    fn read_rune (&self, id: Id, model_literal: &Literal, rune: Rune, amount: usize) -> Result<(), ()> {
+    fn read_rune (&self, id: Id, model_literal: &Literal<Char, DoubleChar>, rune: Rune, amount: usize) -> Result<(), ()> {
         let literal = model_literal.bytes_to_string_times (rune.as_slice (), amount);
 
         match literal {
@@ -287,7 +297,7 @@ impl Ant {
     }
 
 
-    fn read_anchor (&self, block_id: Id, model_literal: &Literal, anchor: Option<Marker>) -> Result<Option<String>, ()> {
+    fn read_anchor (&self, block_id: Id, model_literal: &Literal<Char, DoubleChar>, anchor: Option<Marker>) -> Result<Option<String>, ()> {
         if let Some (anchor) = anchor {
             let chunk = self.data.chunk (&anchor);
             let result = model_literal.bytes_to_string (chunk.as_slice ());
@@ -303,7 +313,7 @@ impl Ant {
     }
 
 
-    fn read_tag (&self, block_id: Id, model_literal: &Literal, tag: Option<Marker>) -> Result<Option<String>, ()> {
+    fn read_tag (&self, block_id: Id, model_literal: &Literal<Char, DoubleChar>, tag: Option<Marker>) -> Result<Option<String>, ()> {
         let tag = if let Some (tag) = tag {
             let chunk = self.data.chunk (&tag);
             let result = model_literal.bytes_to_string (chunk.as_slice ());
@@ -321,10 +331,10 @@ impl Ant {
     }
 
 
-    fn read_model<F: FnMut (&Model, bool) -> bool> (&self, tag: Option<String>, block_id: Id, predicate: F) -> Result<&Model, ()> {
+    fn read_model<F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: Option<String>, block_id: Id, predicate: F) -> Result<&Model<Char=Char, DoubleChar=DoubleChar>, ()> {
         let tag = if let Some (tag) = tag { tag } else { String::with_capacity (0) };
 
-        let model: Option<(&Model, bool)> = self.lookup_model (&tag, predicate);
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = self.lookup_model (&tag, predicate);
 
         match model {
             None => {
@@ -343,13 +353,13 @@ impl Ant {
         firstborn_id: Option<Id>,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
         let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
 
 
-        let model: Option<(&Model, bool)> = {
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
@@ -376,12 +386,12 @@ impl Ant {
         block_id: Id,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        model_literal: &Literal
+        model_literal: &Literal<Char, DoubleChar>
     ) -> Result<(), ()> {
         let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
         let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
 
-        let model: Option<(&Model, bool)> = {
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
@@ -403,7 +413,7 @@ impl Ant {
     }
 
 
-    fn read_null (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal) -> Result<(), ()> {
+    fn read_null (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
         let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
         let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
 
@@ -418,7 +428,7 @@ impl Ant {
     }
 
 
-    fn read_scalar (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal, marker: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>) -> Result<(), ()> {
+    fn read_scalar (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal<Char, DoubleChar>, marker: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>) -> Result<(), ()> {
         let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
         let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
 
@@ -447,7 +457,7 @@ impl Ant {
             }
         };
 
-        let model: Option<(&Model, bool)> = {
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
@@ -511,8 +521,8 @@ impl Ant {
     }
 
 
-    fn lookup_model<T: AsRef<str>, F: FnMut (&Model, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model, bool)> {
-        let schema: &Schema = self.schema.as_ref ().as_ref ();
+    fn lookup_model<T: AsRef<str>, F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> {
+        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
 
         let tag = tag.as_ref ();
         let tag = if tag.len () == 0 { "" } else { tag.as_ref () };

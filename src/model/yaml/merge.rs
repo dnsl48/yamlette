@@ -1,15 +1,14 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Word, Symbol };
+use self::skimmer::symbol::{ Combo, CopySymbol };
 
 
 use txt::{ CharSet, Encoding, Twine };
 
-use model::{ EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-
 
 
 
@@ -19,10 +18,14 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Merge {
+pub struct Merge<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     encoding: Encoding,
 
-    marker: Word,
+    marker: DoubleChar,
 
     s_quote: Char,
     d_quote: Char,
@@ -35,29 +38,40 @@ pub struct Merge {
 
 
 
-impl Merge {
+impl<Char, DoubleChar> Merge<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-    pub fn new (cset: &CharSet) -> Merge {
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Merge<Char, DoubleChar> {
         Merge {
             encoding: cset.encoding,
 
-            marker: Word::combine (&[ &cset.less_than, &cset.less_than ]),
+            marker: DoubleChar::combine (&[ cset.less_than, cset.less_than ]),
 
-            s_quote: cset.apostrophe.clone  (),
-            d_quote: cset.quotation.clone  (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            line_feed: cset.line_feed.clone  (),
-            carriage_return: cset.carriage_return.clone  (),
-            space: cset.space.clone  (),
-            tab_h: cset.tab_h.clone  ()
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
+            space: cset.space,
+            tab_h: cset.tab_h
         }
     }
 }
 
 
 
-impl Model for Merge {
+impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -72,7 +86,7 @@ impl Model for Merge {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<MergeValue, TaggedValue>>>::into (value) {
             Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from (self.marker.new_vec ()))) ),
             Err (value) => Err (value)
@@ -157,7 +171,7 @@ pub struct MergeValue;
 
 
 impl Tagged for MergeValue {
-    fn get_tag (&self) -> &Twine { Merge::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -172,16 +186,19 @@ impl AsRef<str> for MergeValue {
 
 
 
-
+/*
 pub struct MergeFactory;
 
-
 impl Factory for MergeFactory {
-    fn get_tag (&self) -> &Twine { Merge::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Merge::new (cset)) }
+    fn build_model<Char, DoubleChar> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>>
+      where
+        Char: CopySymbol + 'static,
+        DoubleChar: CopySymbol + Combo + 'static
+    { Box::new (Merge::new (cset)) }
 }
-
+*/
 
 
 
@@ -189,7 +206,7 @@ impl Factory for MergeFactory {
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -198,7 +215,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let merge = MergeFactory.build_model (&get_charset_utf8 ());
+        let merge = Merge::new (&get_charset_utf8 ());
 
         assert_eq! (merge.get_tag (), TAG);
     }
@@ -219,7 +236,7 @@ mod tests {
         let merge = Merge::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = merge.decode (true, "<<".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Merge::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             if let None = tagged.as_any ().downcast_ref::<MergeValue> () { assert! (false) }
         } else { assert! (false) }

@@ -1,3 +1,8 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::CopySymbol;
+
+
 use std::mem;
 
 
@@ -80,7 +85,7 @@ impl Rope {
     }
 
 
-    pub fn last_line_bytes_len (&self, renderer: &Renderer) -> (usize, bool) {
+    pub fn last_line_bytes_len<Char: CopySymbol, DoubleChar: CopySymbol> (&self, renderer: &Renderer<Char, DoubleChar>) -> (usize, bool) {
         match *self {
             Rope::Empty => (0, false),
             Rope::Node (ref nodes) => self._line_bytes_len (renderer, nodes.iter ()),
@@ -89,7 +94,7 @@ impl Rope {
     }
 
 
-    pub fn first_line_bytes_len (&self, renderer: &Renderer) -> (usize, bool) {
+    pub fn first_line_bytes_len<Char: CopySymbol, DoubleChar: CopySymbol> (&self, renderer: &Renderer<Char, DoubleChar>) -> (usize, bool) {
         match *self {
             Rope::Empty => (0, false),
             Rope::Node (ref nodes) => self._line_bytes_len (renderer, nodes.iter ()),
@@ -97,7 +102,7 @@ impl Rope {
         }
     }
 
-    fn _line_bytes_len<'a, 'b, 'c, Iter: Iterator<Item=&'a Node>> (&'b self, renderer: &'c Renderer, nodes: Iter) -> (usize, bool) {
+    fn _line_bytes_len<'a, 'b, 'c, Iter: Iterator<Item=&'a Node>, Char: CopySymbol, DoubleChar: CopySymbol> (&'b self, renderer: &'c Renderer<Char, DoubleChar>, nodes: Iter) -> (usize, bool) {
         let mut len = 0;
         let mut nl = false;
 
@@ -124,7 +129,7 @@ impl Rope {
     }
 
 
-    pub fn bytes_len (&self, renderer: &Renderer) -> usize {
+    pub fn bytes_len<Char: CopySymbol, DoubleChar: CopySymbol> (&self, renderer: &Renderer<Char, DoubleChar>) -> usize {
         match *self {
             Rope::Empty => 0,
             Rope::Node (ref node) => renderer.node_len (&node[0]),
@@ -137,7 +142,7 @@ impl Rope {
     }
 
 
-    pub fn render (self, renderer: &Renderer) -> Vec<u8> {
+    pub fn render<Char: CopySymbol, DoubleChar: CopySymbol> (self, renderer: &Renderer<Char, DoubleChar>) -> Vec<u8> {
         let mut vec: Vec<u8> = Vec::with_capacity (self.bytes_len (renderer));
 
         match self {
@@ -232,7 +237,7 @@ impl Rope {
     }
 
 
-    pub fn unrope<'a, 'b, 'c> (&'a self, ptr: &'b mut &'a [Node], renderer: &'c Renderer, index: usize, threshold: usize) -> (usize, usize, bool) {
+    pub fn unrope<'a, 'b, 'c, Char: CopySymbol, DoubleChar: CopySymbol> (&'a self, ptr: &'b mut &'a [Node], renderer: &'c Renderer<Char, DoubleChar>, index: usize, threshold: usize) -> (usize, usize, bool) {
         match *self {
             Rope::Empty => {
                 *ptr = &[];

@@ -1,10 +1,15 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::{ CopySymbol, Combo };
+
 use txt::{ CharSet, Twine };
 use txt::encoding::{ Encoding, Unicode };
 
-use model::{ EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 
@@ -14,16 +19,30 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Literal {
-    encoding: Encoding
+pub struct Literal<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    encoding: Encoding,
+    _char: PhantomData<Char>,
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Literal {
+impl<Char, DoubleChar> Literal<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-    pub fn new (cset: &CharSet) -> Literal { Literal { encoding: cset.encoding } }
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Literal<Char, DoubleChar> { Literal {
+        encoding: cset.encoding,
+        _char: PhantomData,
+        _dchr: PhantomData
+    } }
 
     pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> { self.encoding.bytes_to_string (bytes) }
 
@@ -34,7 +53,14 @@ impl Literal {
 
 
 
-impl Model for Literal {
+impl<Char, DoubleChar> Model for Literal<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -52,7 +78,7 @@ impl Model for Literal {
     fn get_default (&self) -> TaggedValue { TaggedValue::from (LiteralValue { value: Twine::from ("") }) }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<LiteralValue, TaggedValue>>>::into (value) {
             Ok (value) => match value.value {
                 Twine::String (s) => Ok (Rope::from (Node::String (EncodedString::from (self.encoding.string_to_bytes (s))))),
@@ -81,7 +107,7 @@ pub struct LiteralValue { value: Twine }
 
 
 impl Tagged for LiteralValue {
-    fn get_tag (&self) -> &Twine { Literal::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -108,17 +134,15 @@ impl AsRef<str> for LiteralValue {
 
 
 
-
+/*
 pub struct LiteralFactory;
 
-
-
 impl Factory for LiteralFactory {
-    fn get_tag (&self) -> &Twine { Literal::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Literal::new (cset)) }
+    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Literal::new (cset)) }
 }
-
+*/
 
 
 
@@ -126,7 +150,7 @@ impl Factory for LiteralFactory {
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -135,7 +159,8 @@ mod tests {
 
     #[test]
     fn tag () {
-        let literal = LiteralFactory.build_model (&get_charset_utf8 ());
+        // let literal = LiteralFactory.build_model (&get_charset_utf8 ());
+        let literal = Literal::new (&get_charset_utf8 ());
 
         assert_eq! (literal.get_tag ().as_ref (), TAG);
     }
@@ -185,7 +210,7 @@ mod tests {
 
         for i in 0 .. ops.len () {
             if let Ok (value) = literal.decode (false, ops[i].0.as_bytes ()) {
-                assert_eq! (value.get_tag (), Literal::get_tag ());
+                assert_eq! (value.get_tag (), &TWINE_TAG);
 
                 let val: &str = value.as_any ().downcast_ref::<LiteralValue> ().unwrap ().as_ref ();
 

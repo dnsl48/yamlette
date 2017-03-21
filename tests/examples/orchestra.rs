@@ -1,9 +1,12 @@
 macro_rules! check {
     ( $expect:ident ; $rules:tt ) => {{
-        let result = yamlette! ( write ; $rules );
+        // let result = yamlette! ( write ; $rules );
 
-        assert! (result.is_ok ());
-        assert_eq! ($expect, result.ok ().unwrap ());
+        let orc = get_orc ();
+        yamlette_compose! ( orchestra ; orc ; $rules );
+        let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
+
+        assert_eq! ($expect, result);
     }};
 }
 
@@ -16,8 +19,9 @@ macro_rules! ex {
             $( use $import; )*
 
             let expect = $expect;
-
-            let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+            let cset = get_charset_utf8 ();
+            let schema = Core::new (&cset);
+            let orc = Orchestra::new (cset, schema).ok ().unwrap ();
 
             yamlette_compose! ( orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
@@ -30,8 +34,9 @@ macro_rules! ex {
         #[test]
         fn $title () {
             let expect = $expect;
-
-            let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+            let cset = get_charset_utf8 ();
+            let schema = Core::new (&cset);
+            let orc = Orchestra::new (cset, schema).ok ().unwrap ();
 
             yamlette_compose! ( orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
@@ -58,7 +63,11 @@ use std::collections::{ BTreeMap, HashMap };
 
 
 
-fn get_schema () -> Core { Core::new () }
+fn get_orc () -> Orchestra {
+    let cset = get_charset_utf8 ();
+    let schema = Core::new (&cset);
+    Orchestra::new (cset, schema).ok ().unwrap ()
+}
 
 
 
@@ -74,7 +83,7 @@ r#"- Mark McGwire
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[ [ mark, sammy, ken ] ]] );
 
@@ -97,7 +106,7 @@ r#"- Mark McGwire
 
     let seq = vec! ["Mark McGwire", "Sammy Sosa", "Ken Griffey"];
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[ seq ]] );
 
@@ -122,7 +131,7 @@ r#"- 'Mark McGwire'
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::yaml::str::ForceQuotes;
 
@@ -149,7 +158,7 @@ r#"- "Mark McGwire"
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::yaml::str::{ ForceQuotes, PreferDoubleQuotes };
 
@@ -173,7 +182,7 @@ r#"[ Mark McGwire, Sammy Sosa, Ken Griffey ]"#;
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::Flow;
 
@@ -204,7 +213,7 @@ r#"[Mark McGwire,Sammy Sosa,Ken Griffey]"#;
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Compact };
 
@@ -232,7 +241,7 @@ r#"[
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Multiline };
 
@@ -260,7 +269,7 @@ r#"[
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Multiline, Indent };
 
@@ -280,7 +289,7 @@ fn extra_01_empty () {
     let should_be = 
 r#"[]"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[
         []
@@ -304,7 +313,7 @@ abcd, abcd ]"#;
 
     let data = "abcd";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, RespectThreshold, Threshold };
 
@@ -332,7 +341,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
     let data = "abcd";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Compact, RespectThreshold, Threshold };
 
@@ -360,7 +369,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
     let data = "abcd";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Compact, RespectThreshold, Threshold };
 
@@ -392,7 +401,7 @@ rbi: 147
     let avg = 0.278;
     let rbi = 147;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[
         {
@@ -455,7 +464,7 @@ avg: 0.278
     map.insert ("avg", "0.278");
     map.insert ("rbi", "147");
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[ map ]] );
 
@@ -472,7 +481,7 @@ avg: 0.278
 
 #[test]
 fn extra_02_empty () {
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[ {} ]] );
     let maybe_music = orc.listen ();
@@ -504,7 +513,7 @@ r#"[
   }
 ]"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Multiline };
 
@@ -536,7 +545,7 @@ fn extra_03_more_emptiness_flow () {
     let should_be = 
 r#"[ {}, [], { {}: {}, {}: [], []: {}, []: [] } ]"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow };
 
@@ -568,7 +577,7 @@ fn extra_03_more_emptiness_flow_compact () {
     let should_be = 
 r#"[{},[],{{}: {},{}: [],[]: {},[]: []}]"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Compact };
 
@@ -604,7 +613,7 @@ g: h, i: j, k: l, m:
 n, o: p, q: r, s: t,
 u: v, w: x, y: z }"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, RespectThreshold, Threshold };
 
@@ -630,7 +639,7 @@ h,i: j,k: l,m: n,o:
 p,q: r,s: t,u: v,w:
 x,y: z}"#;
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ Compact, Flow, RespectThreshold, Threshold };
 
@@ -662,7 +671,7 @@ r#"%YAML 1.2
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
 
     yamlette_compose! ( orchestra ; orc ; [ % YAML => [
@@ -701,7 +710,7 @@ r#"- Mark McGwire
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
 
     yamlette_compose! ( orchestra ; orc ; [
@@ -745,7 +754,7 @@ r#"- Mark McGwire
     let mark = "Mark McGwire";
     let sammy = "Sammy Sosa";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [
         [
@@ -772,7 +781,7 @@ r#"- Mark McGwire
 
     let mark = "Mark McGwire";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [
         [
@@ -804,7 +813,7 @@ r#"%TAG !aloha! http://yamlette.org,2015:aloha/
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [[ % (TAG ; "!aloha!", "http://yamlette.org,2015:aloha/") => [ mark, sammy, ken ] ]] );
 
@@ -845,7 +854,7 @@ r#"%YAML 1.2
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     yamlette_compose! ( orchestra ; orc ; [ % YAML , (TAG ; "!test!", "http://yamlette.org,2015:test/") =>
         [ % (TAG ; "!aloha!", "http://yamlette.org,2015:aloha/") => [ mark, sammy, ken ] ],
@@ -875,7 +884,7 @@ r#"!!seq
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ IssueTag };
 
@@ -902,7 +911,7 @@ r#"!!seq
     let sammy = "Sammy Sosa";
     let ken = "Ken Griffey";
 
-    let orc = Orchestra::new (get_charset_utf8 (), get_schema ()).ok ().unwrap ();
+    let orc = get_orc ();
 
     use yamlette::model::style::{ IssueTag };
     use yamlette::model::yaml::str::{ ForceQuotes, PreferDoubleQuotes };
@@ -1231,6 +1240,7 @@ r#"---
 
     check! (should_be ; [[ # IssueTag (true) => % BORDER_TOP, NO_BORDER_BOT => omap ]]);
 }
+
 
 
 ex! (

@@ -3,7 +3,8 @@ macro_rules! savant {
         let cset = get_charset_utf8 ();
 
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let mut savant = Savant::new (cset, get_schema ());
+        let schema = Core::new (&cset);
+        let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
         reader.read (
@@ -25,7 +26,8 @@ macro_rules! savant_with_error {
         let cset = get_charset_utf8 ();
 
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let mut savant = Savant::new (cset, get_schema ());
+        let schema = Core::new (&cset);
+        let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
         reader
@@ -54,7 +56,8 @@ macro_rules! savant_bytes {
         let cset = get_charset_utf8 ();
 
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let mut savant = Savant::new (cset, get_schema ());
+        let schema = Core::new (&cset);
+        let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
         reader.read (
@@ -861,9 +864,6 @@ mod stable {
     use self::yamlette::model::yamlette::incognitum::IncognitumValue;
 
     use std::f64;
-
-
-    fn get_schema () -> Core { Core::new () }
 
 
     #[test]

@@ -1,15 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
 use txt::{ CharSet, Encoding, Twine };
 
-use model::{ EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-
+use std::marker::PhantomData;
 
 
 
@@ -19,36 +19,55 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Value {
-    encoding: Encoding,
-
+pub struct Value<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     marker: Char,
 
     s_quote: Char,
-    d_quote: Char
+    d_quote: Char,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Value {
+impl<Char, DoubleChar> Value<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Value {
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Value<Char, DoubleChar> {
         Value {
             encoding: cset.encoding,
 
-            marker: cset.equal.clone (),
+            marker: cset.equal,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone ()
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
+
+            _dchr: PhantomData
         }
     }
 }
 
 
 
-impl Model for Value {
+impl<Char, DoubleChar> Model for Value<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -62,7 +81,7 @@ impl Model for Value {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<ValueValue, TaggedValue>>>::into (value) {
             Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from (self.marker.new_vec ()))) ),
             Err (value) => Err (value)
@@ -114,7 +133,7 @@ pub struct ValueValue;
 
 
 impl Tagged for ValueValue {
-    fn get_tag (&self) -> &Twine { Value::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -129,17 +148,15 @@ impl AsRef<str> for ValueValue {
 
 
 
-
+/*
 pub struct ValueFactory;
 
-
-
 impl Factory for ValueFactory {
-    fn get_tag (&self) -> &Twine { Value::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Value::new (cset)) }
+    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Value::new (cset)) }
 }
-
+*/
 
 
 
@@ -147,7 +164,7 @@ impl Factory for ValueFactory {
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -156,7 +173,8 @@ mod tests {
 
     #[test]
     fn tag () {
-        let value = ValueFactory.build_model (&get_charset_utf8 ());
+        // let value = ValueFactory.build_model (&get_charset_utf8 ());
+        let value = Value::new (&get_charset_utf8 ());
 
         assert_eq! (value.get_tag (), TAG);
     }
@@ -181,7 +199,7 @@ mod tests {
         let value = Value::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = value.decode (true, "=".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Value::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             if let None = tagged.as_any ().downcast_ref::<ValueValue> () { assert! (false) }
         } else { assert! (false) }

@@ -4,8 +4,8 @@ macro_rules! sage {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-
-        let sage = Sage::new (cset, receiver, get_schema ());
+        let schema = Core::new (&cset);
+        let sage = Sage::new (cset, receiver, schema);
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
@@ -23,8 +23,8 @@ macro_rules! sage11 {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-
-        let sage = Sage::new (cset, receiver, get_schema ()).and_then (|sg| {
+        let schema = Core::new (&cset);
+        let sage = Sage::new (cset, receiver, schema).and_then (|sg| {
             sg.set_yaml_version (YamlVersion::V1x1).ok ();
             Ok ( sg )
         });
@@ -68,11 +68,6 @@ mod stable {
     use self::yamlette::tokenizer::Tokenizer;
     use self::yamlette::txt::{ Twine, get_charset_utf8 };
     use std::sync::mpsc::channel;
-
-
-
-    fn get_schema () -> Core { Core::new () }
-
 
 
     #[test]

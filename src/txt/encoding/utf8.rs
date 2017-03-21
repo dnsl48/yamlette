@@ -9,13 +9,69 @@ pub struct UTF8;
 
 
 impl Unicode for UTF8 {
-    fn char_max_bytes_len (&self) -> u8 { 4 }
+    #[inline (always)]
+    fn char_max_bytes_len (self) -> u8 { 4 }
 
 
-    fn check_bom (&self, bom: &[u8]) -> bool { bom == &[0xEF, 0xBB, 0xBF] }
+    fn check_bom (self, bom: &[u8]) -> bool { bom == &[0xEF, 0xBB, 0xBF] }
 
 
-    unsafe fn to_unicode_ptr (&self, mut ptr: *const u8, len: usize) -> (u32, u8) {
+    fn check_is_flo_num (self, stream: &[u8]) -> bool {
+        if stream.len () == 0 { return false }
+        let n = stream[0];
+        if n > 47 && n < 58 { return true }  // [0-9]
+        else if (n == 43 || n == 45 || n == 46) && stream.len () > 1 { // [+-.]
+            true
+        } else { false }
+    }
+
+
+    fn check_is_dec_num (self, stream: &[u8]) -> bool {
+        if stream.len () == 0 { return false }
+        let n = stream[0];
+        (n > 47 && n < 58) || ((n == 43 || n == 45 ) && stream.len () > 1)  // [0-9] || [+-]
+    }
+
+
+    fn extract_bin_digit (self, stream: &[u8]) -> Option<(u8, u8)> {
+        if stream.len () == 0 { None } else {
+            let n = stream[0];
+            if n > 47 && n < 50 { Some ( (n - 48, 1) ) } else { None }
+        }
+    }
+
+
+    fn extract_dec_digit (self, stream: &[u8]) -> Option<(u8, u8)> {
+        if stream.len () == 0 { None } else {
+            let n = stream[0];
+            if n > 47 && n < 58 { Some ( (n - 48, 1) ) } else { None }
+        }
+    }
+
+
+    fn extract_oct_digit (self, stream: &[u8]) -> Option<(u8, u8)> {
+        if stream.len () == 0 { None } else {
+            let n = stream[0];
+            if n > 47 && n < 56 { Some ( (n - 48, 1) ) } else { None }
+        }
+    }
+
+
+    fn extract_hex_digit (self, stream: &[u8]) -> Option<(u8, u8)> {
+        if stream.len () == 0 { None } else {
+            let n = stream[0];
+            if n > 47 && n < 58 {
+                Some ( (n - 48, 1) )
+            } else if n > 64 && n < 71 {
+                Some ( (n - 55, 1) )
+            } else if n > 96 && n < 103 {
+                Some ( (n - 87, 1) )
+            } else { None }
+        }
+    }
+
+
+    unsafe fn to_unicode_ptr (self, mut ptr: *const u8, len: usize) -> (u32, u8) {
         let (code, len) = if len > 0 {
             if *ptr & 0x80 == 0 {
                 ( (*ptr as u8) as u32, 1 )
@@ -60,7 +116,7 @@ impl Unicode for UTF8 {
     }
 
 
-    fn to_unicode (&self, stream: &[u8]) -> (u32, u8) {
+    fn to_unicode (self, stream: &[u8]) -> (u32, u8) {
         let slen = stream.len ();
 
         let (code, len) = if slen > 0 && stream[0] & 0x80 == 0 {
@@ -115,7 +171,7 @@ impl Unicode for UTF8 {
     }
 
 
-    fn from_unicode (&self, code: u32) -> [u8; 5] {
+    fn from_unicode (self, code: u32) -> [u8; 5] {
         match code {
             0x0000 ... 0x007F => [ code as u8, 0, 0, 0, 1 ],
 
@@ -148,15 +204,15 @@ impl Unicode for UTF8 {
     }
 
 
-    fn str_to_bytes<'a, 'b> (&'a self, string: &'b str) -> Result<&'b [u8], Vec<u8>> { Ok (string.as_bytes ()) }
+    fn str_to_bytes<'a> (self, string: &'a str) -> Result<&'a [u8], Vec<u8>> { Ok (string.as_bytes ()) }
 
-    fn string_to_bytes (&self, string: String) -> Vec<u8> { string.into_bytes () }
 
-    fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
-        Ok ( String::from (String::from_utf8_lossy (bytes)) )
-    }
+    #[inline (always)]
+    fn string_to_bytes (self, string: String) -> Vec<u8> { string.into_bytes () }
 
-    fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
+    fn bytes_to_string (self, bytes: &[u8]) -> Result<String, ()> { Ok ( String::from (String::from_utf8_lossy (bytes)) ) }
+
+    fn bytes_to_string_times (self, bytes: &[u8], times: usize) -> Result<String, ()> {
         let mut result = Vec::with_capacity (bytes.len () * times);
         for _ in 0 .. times { result.extend (bytes); }
 

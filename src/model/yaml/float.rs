@@ -8,12 +8,12 @@ use self::fraction::{ Fraction, BigFraction, Sign };
 use self::num::{ BigUint, ToPrimitive };
 use self::num::traits::Signed;
 
-use self::skimmer::symbol::{ Char, Word, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::{ CharSet, Encoding, Unicode, Twine };
 
-use model::{ model_issue_rope, EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 
@@ -23,6 +23,7 @@ use std::fmt;
 use std::mem;
 use std::ops::{ AddAssign, DivAssign, MulAssign, Neg };
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 
@@ -191,17 +192,11 @@ impl fmt::Display for Mint {
 
 
 
-pub struct Float {
-    encoding: Encoding,
-
-    nan: [Word; 3],
-    inf: [Word; 3],
-
-    _nan: Word,
-    inf_p: Word,
-    inf_n: Word,
-
-    digit: [Char; 10],
+pub struct Float<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     colon: Char,
     dot: Char,
     letter_e: Char,
@@ -217,102 +212,110 @@ pub struct Float {
     s_quote: Char,
     d_quote: Char,
 
-    chr_len: usize
+    letter_n: Char,
+    letter_a: Char,
+    letter_t_n: Char,
+    letter_t_a: Char,
+
+    letter_i: Char,
+    letter_f: Char,
+    letter_t_i: Char,
+    letter_t_f: Char,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Float {
+impl<Char, DoubleChar> Float<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-
-    pub fn new (cset: &CharSet) -> Float {
-        let chars = [&cset.colon, &cset.hyphen_minus, &cset.full_stop, &cset.plus, &cset.low_line, &cset.letter_e,
-                     &cset.letter_t_e, &cset.digit_0, &cset.digit_1, &cset.digit_2, &cset.digit_3, &cset.digit_4,
-                     &cset.digit_5, &cset.digit_6, &cset.digit_7, &cset.digit_8, &cset.digit_9, &cset.line_feed,
-                     &cset.carriage_return, &cset.space, &cset.tab_h];
-
-        let mut char_len = 1;
-
-        for i in 0 .. chars.len () {
-            if chars[i].len () > char_len { char_len = chars[i].len (); }
-        }
-
-
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Float<Char, DoubleChar> {
         Float {
             encoding: cset.encoding,
 
-            nan: [
-                Word::combine (&[&cset.letter_n, &cset.letter_a, &cset.letter_n]),
-                Word::combine (&[&cset.letter_t_n, &cset.letter_a, &cset.letter_t_n]),
-                Word::combine (&[&cset.letter_t_n, &cset.letter_t_a, &cset.letter_t_n])
-            ],
+            letter_n: cset.letter_n,
+            letter_a: cset.letter_a,
+            letter_t_n: cset.letter_t_n,
+            letter_t_a: cset.letter_t_a,
 
-            inf: [
-                Word::combine (&[&cset.letter_i, &cset.letter_n, &cset.letter_f]),
-                Word::combine (&[&cset.letter_t_i, &cset.letter_n, &cset.letter_f]),
-                Word::combine (&[&cset.letter_t_i, &cset.letter_t_n, &cset.letter_t_f])
-            ],
+            letter_i: cset.letter_i,
+            letter_f: cset.letter_f,
+            letter_t_i: cset.letter_t_i,
+            letter_t_f: cset.letter_t_f,
 
-            _nan: Word::combine (&[
-                &cset.full_stop,
-                &cset.letter_n,
-                &cset.letter_a,
-                &cset.letter_n
-            ]),
+            colon: cset.colon,
+            dot: cset.full_stop,
+            letter_e: cset.letter_e,
+            letter_t_e: cset.letter_t_e,
+            minus: cset.hyphen_minus,
+            plus: cset.plus,
+            underscore: cset.low_line,
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
+            space: cset.space,
+            tab_h: cset.tab_h,
 
-            inf_p: Word::combine (&[
-                &cset.full_stop,
-                &cset.letter_i,
-                &cset.letter_n,
-                &cset.letter_f
-            ]),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            inf_n: Word::combine (&[
-                &cset.hyphen_minus,
-                &cset.full_stop,
-                &cset.letter_i,
-                &cset.letter_n,
-                &cset.letter_f
-            ]),
-
-            digit: [
-                cset.digit_0.clone (),
-                cset.digit_1.clone (),
-                cset.digit_2.clone (),
-                cset.digit_3.clone (),
-                cset.digit_4.clone (),
-                cset.digit_5.clone (),
-                cset.digit_6.clone (),
-                cset.digit_7.clone (),
-                cset.digit_8.clone (),
-                cset.digit_9.clone ()
-            ],
-
-            colon: cset.colon.clone (),
-            dot: cset.full_stop.clone (),
-            letter_e: cset.letter_e.clone (),
-            letter_t_e: cset.letter_t_e.clone (),
-            minus: cset.hyphen_minus.clone (),
-            plus: cset.plus.clone (),
-            underscore: cset.low_line.clone (),
-            line_feed: cset.line_feed.clone (),
-            carriage_return: cset.carriage_return.clone (),
-            space: cset.space.clone (),
-            tab_h: cset.tab_h.clone (),
-
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone (),
-
-            chr_len: char_len
+            _dchr: PhantomData
         }
     }
 
 
-    #[inline]
+    fn inf (&self, value: &[u8], ptr: usize) -> usize {
+        if self.letter_i.contained_at (value, ptr) &&
+           self.letter_n.contained_at (value, ptr + self.letter_i.len ()) &&
+           self.letter_f.contained_at (value, ptr + self.letter_i.len () + self.letter_n.len ())
+        {
+            self.letter_i.len () + self.letter_n.len () + self.letter_f.len ()
+        } else
+        if self.letter_t_i.contained_at (value, ptr) {
+            if self.letter_n.contained_at (value, ptr + self.letter_t_i.len ()) &&
+               self.letter_f.contained_at (value, ptr + self.letter_t_i.len () + self.letter_n.len ())
+            {
+                self.letter_t_i.len () + self.letter_n.len () + self.letter_f.len ()
+            } else
+            if self.letter_t_n.contained_at (value, ptr + self.letter_t_i.len ()) &&
+               self.letter_t_f.contained_at (value, ptr + self.letter_t_i.len () + self.letter_t_n.len ())
+            {
+                self.letter_t_i.len () + self.letter_t_n.len () + self.letter_t_f.len ()
+            } else { 0 }
+        } else { 0 }
+    }
+
+
+    fn nan (&self, value: &[u8], ptr: usize) -> usize {
+        if self.letter_n.contained_at (value, ptr) &&
+           self.letter_a.contained_at (value, ptr + self.letter_n.len ()) &&
+           self.letter_n.contained_at (value, ptr + self.letter_n.len () + self.letter_a.len ())
+        {
+            self.letter_n.len () + self.letter_a.len () + self.letter_n.len ()
+        } else
+        if self.letter_t_n.contained_at (value, ptr) {
+            if self.letter_a.contained_at (value, ptr + self.letter_t_n.len ()) &&
+               self.letter_t_n.contained_at (value, ptr + self.letter_t_n.len () + self.letter_a.len ())
+            {
+                self.letter_t_n.len () + self.letter_a.len () + self.letter_t_n.len ()
+            } else
+            if self.letter_t_a.contained_at (value, ptr + self.letter_t_n.len ()) &&
+               self.letter_t_n.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_a.len ())
+            {
+                self.letter_t_n.len () + self.letter_t_a.len () + self.letter_t_n.len ()
+            } else { 0 }
+        } else { 0 }
+    }
+
+
     fn base_decode (&self, explicit: bool, value: &[u8], base60: bool, optional_dot: bool) -> Result<MaybeBigFraction, ()> {
-        let mut ptr: usize = 0;
-        let mut state: u8 = 0;
+        if !explicit && !self.encoding.check_is_flo_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
         const STATE_SIGN_N: u8 = 3;
@@ -347,11 +350,11 @@ impl Float {
         let mut quote_state = 0; // 1 - single, 2 - double
         let mut actual_num = false;
 
-        let vlen = value.len ();
-
+        let mut ptr: usize = 0;
+        let mut state: u8 = 0;
 
         'top: loop {
-            if ptr >= vlen { break; }
+            if ptr >= value.len () { break; }
 
 
             if quote_state == 1 {
@@ -401,13 +404,13 @@ impl Float {
                     continue;
                 }
 
-                if self.tab_h.contained_at (value, ptr) {
-                    ptr += self.tab_h.len ();
+                if self.line_feed.contained_at (value, ptr) {
+                    ptr += self.line_feed.len ();
                     continue;
                 }
 
-                if self.line_feed.contained_at (value, ptr) {
-                    ptr += self.line_feed.len ();
+                if self.tab_h.contained_at (value, ptr) {
+                    ptr += self.tab_h.len ();
                     continue;
                 }
 
@@ -448,30 +451,23 @@ impl Float {
                 } else if base60 && self.colon.contained_at (value, ptr) {
                     ptr += self.colon.len ();
 
-                    let mut digit: u32 = 0;
+                    let digit: u32;
 
-                    for i in 0 .. 11 {
-                        if i == 10 {
-                            state = state | STATE_END;
-                            continue 'top;
-                        }
-
-                        if self.digit[i].contained_at (value, ptr) {
-                            ptr += self.digit[i].len ();
-                            digit = i as u32;
-                            break;
-                        }
+                    if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                        digit = d as u32;
+                        ptr += l as usize;
+                    } else {
+                        state = state | STATE_END;
+                        continue 'top;
                     }
 
                     let mut digit2: Option<u32> = None;
 
                     if digit < 6u32 {
-                        for i in 0 .. 10 {
-                            if self.digit[i].contained_at (value, ptr) {
-                                ptr += self.digit[i].len ();
-                                digit2 = Some (i as u32);
-                                break;
-                            }
+
+                        if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                            digit2 = Some (d as u32);
+                            ptr += l as usize;
                         }
                     };
 
@@ -482,7 +478,7 @@ impl Float {
                     num *= 60u64;
                     num += n as u64;
 
-                    if vlen == ptr {
+                    if value.len () == ptr {
                         break;
                     } else if self.dot.contained_at (value, ptr) {
                         continue;
@@ -494,22 +490,20 @@ impl Float {
                     }
                 }
             } else if state & STATE_NUM != STATE_NUM {
-                for i in 0 .. self.nan.len () {
-                    if self.nan[i].contained_at (value, ptr) {
-                        ptr += self.nan[i].len ();
-                        nan = true;
-                        state = state | STATE_END;
-                        continue 'top;
-                    }
+                let maybe_nan = self.nan (value, ptr);
+                if maybe_nan > 0 {
+                    ptr += maybe_nan;
+                    nan = true;
+                    state = state | STATE_END;
+                    continue 'top;
                 }
 
-                for i in 0 .. self.inf.len () {
-                    if self.inf[i].contained_at (value, ptr) {
-                        ptr += self.inf[i].len ();
-                        inf = true;
-                        state = state | STATE_END;
-                        continue 'top;
-                    }
+                let maybe_inf = self.inf (value, ptr);
+                if maybe_inf > 0 {
+                    ptr += maybe_inf;
+                    inf = true;
+                    state = state | STATE_END;
+                    continue 'top;
                 }
             }
             state = state | STATE_NUM;
@@ -543,19 +537,14 @@ impl Float {
             }
 
 
-            let mut digit: u32 = 0;
+            let digit: u32;
 
-            for i in 0 .. 11 {
-                if i == 10 {
-                    state = state | STATE_END;
-                    continue 'top;
-                }
-
-                if self.digit[i].contained_at (value, ptr) {
-                    ptr += self.digit[i].len ();
-                    digit = i as u32;
-                    break;
-                }
+            if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                digit = d as u32;
+                ptr += l as usize;
+            } else {
+                state = state | STATE_END;
+                continue 'top;
             }
 
             if state & STATE_E == STATE_E {
@@ -617,7 +606,14 @@ impl Float {
 
 
 
-impl Model for Float {
+impl<Char, DoubleChar> Model for Float<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -632,7 +628,7 @@ impl Model for Float {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value: FloatValue = match <TaggedValue as Into<Result<FloatValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -643,15 +639,25 @@ impl Model for Float {
         let value = value.value;
 
         if value.is_nan () {
-            return Ok ( model_issue_rope (self, Node::String (EncodedString::from (self._nan.new_vec ())), issue_tag, alias, tags) )
+            let value = ".nan";
+            let node = Node::String (match self.encoding.str_to_bytes (value) {
+                Ok (s) => EncodedString::from (s),
+                Err (s) => EncodedString::from (s)
+            });
+            return Ok (model_issue_rope (self, node, issue_tag, alias, tags));
         }
 
         if value.is_infinite () {
-            if value.is_negative () { return Ok (model_issue_rope (self, Node::String (EncodedString::from (self.inf_n.new_vec ())), issue_tag, alias, tags)) }
-            else { return Ok (model_issue_rope (self, Node::String (EncodedString::from (self.inf_p.new_vec ())), issue_tag, alias, tags)) }
+            let value = if value.is_negative () { "-.inf" } else { ".inf" };
+
+            let node = Node::String (match self.encoding.str_to_bytes (value) {
+                Ok (s) => EncodedString::from (s),
+                Err (s) => EncodedString::from (s)
+            });
+            return Ok (model_issue_rope (self, node, issue_tag, alias, tags));
         }
 
-        let src = if let Some (value) = value.format_as_float () {
+        let value = if let Some (value) = value.format_as_float () {
             value
         } else {
             let mut val = FloatValue::from (value);
@@ -661,37 +667,7 @@ impl Model for Float {
             return Err (TaggedValue::from (val) )
         };
 
-        let mut production: Vec<u8> = Vec::with_capacity (src.len () * self.chr_len);
-
-        for bt in src.as_bytes () {
-            let symbol = match *bt {
-                b'0' => &self.digit[0],
-                b'1' => &self.digit[1],
-                b'2' => &self.digit[2],
-                b'3' => &self.digit[3],
-                b'4' => &self.digit[4],
-                b'5' => &self.digit[5],
-                b'6' => &self.digit[6],
-                b'7' => &self.digit[7],
-                b'8' => &self.digit[8],
-                b'9' => &self.digit[9],
-
-                b'.' => &self.dot,
-                b'e' => &self.letter_e,
-                b'-' => &self.minus,
-                b'+' => &self.plus,
-
-                b'E' => &self.letter_t_e,
-                b'_' => &self.underscore,
-
-                _ => unreachable! () // TODO: make sure it's true
-            };
-
-            production.extend (symbol.as_slice ());
-        }
-
-        let node = Node::String (EncodedString::from (production));
-
+        let node = Node::String (EncodedString::from (self.encoding.string_to_bytes (value)));
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
 
@@ -945,7 +921,7 @@ impl<'a> Into<Result<&'a Fraction, &'a FloatValue>> for &'a FloatValue {
 
 
 impl Tagged for FloatValue {
-    fn get_tag (&self) -> &Twine { Float::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -973,20 +949,6 @@ impl ToPrimitive for FloatValue {
 
 
 
-
-pub struct FloatFactory;
-
-
-
-impl Factory for FloatFactory {
-    fn get_tag (&self) -> &Twine { Float::get_tag () }
-
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Float::new (cset)) }
-}
-
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
@@ -995,7 +957,7 @@ mod tests {
     use super::num::traits::Signed;
     use super::num::BigUint;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::f64;
@@ -1028,7 +990,7 @@ mod tests {
     macro_rules! decoded_is_f64 {
         ($coder:expr, $str:expr, $val:expr) => {{
             if let Ok (tagged) = $coder.decode (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Float::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::from ($val));
@@ -1037,7 +999,7 @@ mod tests {
 
         (11, $coder:expr, $str:expr, $val:expr) => {{
             if let Ok (tagged) = $coder.decode11 (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Float::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::from ($val));
@@ -1049,7 +1011,7 @@ mod tests {
     macro_rules! decoded_is_frac {
         ($coder:expr, $str:expr, ($num:expr, $den:expr)) => {{
             if let Ok (tagged) = $coder.decode (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Float::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::new (BigUint::from ($num as u64), BigUint::from ($den as u64)));
@@ -1058,7 +1020,7 @@ mod tests {
 
         (11, $coder:expr, $str:expr, ($num:expr, $den:expr)) => {{
             if let Ok (tagged) = $coder.decode11 (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Float::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::new (BigUint::from ($num as u64), BigUint::from ($den as u64)));
@@ -1070,7 +1032,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
         assert_eq! (float.get_tag (), TAG);
     }
@@ -1079,7 +1041,7 @@ mod tests {
 
     #[test]
     fn encode () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
         encoded_fraction_is! (float, BigFraction::nan (), ".nan");
         encoded_fraction_is! (float, BigFraction::infinity (), ".inf");
@@ -1095,7 +1057,7 @@ mod tests {
 
     #[test]
     fn decode_inf () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = float.decode (true, &".inf".to_string ().into_bytes ()) {
             assert_eq! (tagged.get_tag (), float.get_tag ());
@@ -1142,7 +1104,7 @@ mod tests {
 
     #[test]
     fn decode_nan () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
 
         if let Ok (tagged) = float.decode (true, &".nan".to_string ().into_bytes ()) {
@@ -1180,7 +1142,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
 
         decoded_is_f64! (float, "-.inf", f64::NEG_INFINITY);
@@ -1225,7 +1187,7 @@ mod tests {
 
     #[test]
     fn decode_nl () {
-        let float = FloatFactory.build_model (&get_charset_utf8 ());
+        let float = Float::new (&get_charset_utf8 ());
 
         if let Ok (_) = float.decode (true, &"\n".to_string ().into_bytes ()) {
             assert! (false);

@@ -2,6 +2,7 @@ pub mod yaml;
 pub mod yamlette;
 pub mod schema;
 
+
 pub mod renderer;
 pub mod rope;
 pub mod style;
@@ -11,7 +12,9 @@ pub mod tagged_value;
 
 extern crate skimmer;
 
-use txt::{ CharSet, Twine };
+use self::skimmer::symbol::{ CopySymbol, Combo };
+
+use txt::Twine;
 use txt::encoding::{ Encoding, Unicode };
 
 use std::any::Any;
@@ -29,13 +32,6 @@ pub use self::tagged_value::TaggedValue;
 // TODO: decode/encode Errors&Warnings
 
 
-pub trait Factory : Send {
-    fn get_tag (&self) -> &Twine;
-
-    fn build_model (&self, &CharSet) -> Box<Model>;
-}
-
-
 
 
 pub trait Tagged : Any {
@@ -50,6 +46,10 @@ pub trait Tagged : Any {
 
 
 pub trait Model : Send + Sync {
+    type Char: CopySymbol;
+    type DoubleChar: CopySymbol + Combo;
+
+
     fn get_tag (&self) -> &Twine;
 
     fn as_any (&self) -> &Any;
@@ -87,15 +87,19 @@ pub trait Model : Send + Sync {
     fn decode11 (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> { self.decode (explicit, value) }
 
 
-    fn encode (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
+    fn encode (&self, _renderer: &Renderer<Self::Char, Self::DoubleChar>, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
 
-    fn compose (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
+    fn compose (&self, _renderer: &Renderer<Self::Char, Self::DoubleChar>, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
 }
 
 
 
 
-pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Option<Twine>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
+pub fn model_issue_rope<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, node: Node, issue_tag: bool, alias: Option<Twine>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     if let Some (alias) = alias {
         if issue_tag {
             Rope::from (vec! [model_tag (model, tags), Node::Space, model_alias (model, alias), Node::Space, node])
@@ -113,7 +117,11 @@ pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Opti
 
 
 
-pub fn model_alias (model: &Model, alias: Twine) -> Node {
+pub fn model_alias<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, alias: Twine) -> Node
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     match alias {
         Twine::Static (alias) => _model_alias_static_str (alias, model.get_encoding ()),
         Twine::String (alias) => _model_alias_string (alias, model.get_encoding ())
@@ -135,7 +143,11 @@ fn _model_alias_string (alias: String, encoding: Encoding) -> Node {
 
 
 
-pub fn model_tag (model: &Model, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
+pub fn model_tag<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     match *model.get_tag () {
         Twine::Static (tag) => _model_tag_static_str (tag, model.get_encoding (), tags),
         Twine::String (ref tag) => _model_tag_string (tag, model.get_encoding (), tags)

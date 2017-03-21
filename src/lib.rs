@@ -3,8 +3,7 @@ pub mod tokenizer;
 pub mod txt;
 pub mod model;
 pub mod sage;
+pub mod savant;
 pub mod book;
 pub mod orchestra;
 pub mod face;
-
-pub mod savant;

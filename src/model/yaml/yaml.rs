@@ -1,15 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
 use txt::{ CharSet, Encoding, Twine };
 
-use model::{ EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-
+use std::marker::PhantomData;
 
 
 
@@ -19,40 +19,59 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Yaml {
-    encoding: Encoding,
-
+pub struct Yaml<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     marker_tag: Char,
     marker_alias: Char,
     marker_anchor: Char,
 
     s_quote: Char,
-    d_quote: Char
+    d_quote: Char,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Yaml {
+impl<Char, DoubleChar> Yaml<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Yaml {
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Yaml<Char, DoubleChar> {
         Yaml {
             encoding: cset.encoding,
 
-            marker_tag: cset.exclamation.clone (),
-            marker_alias: cset.asterisk.clone (),
-            marker_anchor: cset.ampersand.clone (),
+            marker_tag: cset.exclamation,
+            marker_alias: cset.asterisk,
+            marker_anchor: cset.ampersand,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone ()
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
+
+            _dchr: PhantomData
         }
     }
 }
 
 
 
-impl Model for Yaml {
+impl<Char, DoubleChar> Model for Yaml<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -66,7 +85,7 @@ impl Model for Yaml {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<YamlValue, TaggedValue>>>::into (value) {
             Ok (yp) => Ok (Rope::from (Node::String (EncodedString::from (match yp {
                 YamlValue::Alias => self.marker_alias.new_vec (),
@@ -134,7 +153,7 @@ pub enum YamlValue {
 
 
 impl Tagged for YamlValue {
-    fn get_tag (&self) -> &Twine { Yaml::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -155,17 +174,15 @@ impl AsRef<str> for YamlValue {
 
 
 
-
+/*
 pub struct YamlFactory;
 
-
-
 impl Factory for YamlFactory {
-    fn get_tag (&self) -> &Twine { Yaml::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Yaml::new (cset)) }
+    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Yaml::new (cset)) }
 }
-
+*/
 
 
 
@@ -173,7 +190,7 @@ impl Factory for YamlFactory {
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -182,7 +199,8 @@ mod tests {
 
     #[test]
     fn tag () {
-        let yaml = YamlFactory.build_model (&get_charset_utf8 ());
+        // let yaml = YamlFactory.build_model (&get_charset_utf8 ());
+        let yaml = Yaml::new (&get_charset_utf8 ());
 
         assert_eq! (yaml.get_tag (), TAG);
     }
@@ -207,19 +225,19 @@ mod tests {
 
 
         if let Ok (tagged) = yaml.decode (true, "!".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Yaml::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
             if let Some (&YamlValue::Tag) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 
 
         if let Ok (tagged) = yaml.decode (true, "*".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Yaml::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
             if let Some (&YamlValue::Alias) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 
 
         if let Ok (tagged) = yaml.decode (true, "&".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Yaml::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
             if let Some (&YamlValue::Anchor) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 

@@ -1,6 +1,7 @@
 extern crate skimmer;
 
 use self::skimmer::{ Datum, Marker, Rune };
+use self::skimmer::symbol::{ Combo, CopySymbol };
 
 use model::Schema;
 use reader::{ Block, BlockType, Node, NodeKind };
@@ -64,12 +65,15 @@ macro_rules! _conveyor_signal {
 
 
 impl Conveyor {
-    pub fn run (
-        cset: CharSet,
+    pub fn run<Char, DoubleChar> (
+        cset: CharSet<Char, DoubleChar>,
         pipe: Receiver<Block>,
-        mut schema: Box<Schema>
+        mut schema: Box<Schema<Char, DoubleChar>>
     )
         -> io::Result<(JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>)>
+      where
+        Char: CopySymbol + 'static,
+        DoubleChar: CopySymbol + Combo + 'static
     {
         let (ex_to_me, ex_cin) = sync_channel (2);
         let (idea_sdr, idea_rvr) = channel ();

@@ -1,21 +1,21 @@
 extern crate skimmer;
 
-
-use self::skimmer::symbol::{ Char, Word, Symbol };
-
+use self::skimmer::symbol::{ CopySymbol };
 
 use txt::encoding::Encoding;
-use txt::encoding::UTF8;
 
+pub mod utf8;
+
+pub use self::utf8::get_charset_utf8;
 
 
 
 #[derive (Clone)]
-pub struct CharSet {
-    pub encoding: Encoding,
-
-    pub crlf: Word, // \r\n
-
+pub struct CharSet<Char, DoubleChar>
+  where
+    Char: CopySymbol,
+    DoubleChar: CopySymbol
+{
     pub line_feed: Char, // \n
     pub carriage_return: Char,  // \r
 
@@ -64,8 +64,8 @@ pub struct CharSet {
     pub escape: Char, // \e
 
     pub nbspace: Char, // 0xA0
-    pub line_separator: Char, // 0x2028
-    pub paragraph_separator: Char, // 0x2029
+    // pub line_separator: Char, // 0x2028
+    // pub paragraph_separator: Char, // 0x2029
 
     pub digit_0: Char, // 0
     pub digit_1: Char, // 1
@@ -136,11 +136,21 @@ pub struct CharSet {
     pub bell: Char, // 0x7
     pub backspace: Char, // 0x8
     pub nextline: Char, // 0x85 == \N
+
+    pub crlf: DoubleChar, // \r\n
+
+    pub encoding: Encoding,
+
+    pub longest_char: usize
 }
 
 
 
-impl CharSet {
+impl<Char, DoubleChar> CharSet<Char, DoubleChar>
+  where
+    Char: CopySymbol,
+    DoubleChar: CopySymbol
+{
     pub fn extract_hex (&self, src: &[u8]) -> Option<(u8, usize)> { self.extract_hex_at (src, 0) }
 
 
@@ -188,133 +198,6 @@ impl CharSet {
 }
 
 
-
-pub fn get_charset_utf8 () -> CharSet {
-    CharSet {
-        encoding: Encoding::UTF8 (UTF8),
-
-        crlf: Word::combine (&[&Char::new (&[0xD]), &Char::new (&[0xA])]),
-
-        commercial_at: Char::new (&[b'@']), // @
-
-        backslash: Char::new (&[b'\\']), // \
-
-        greater_than: Char::new (&[b'>']),
-        less_than: Char::new (&[b'<']),
-
-        bracket_curly_right: Char::new (&[b'}']),
-        bracket_curly_left: Char::new (&[b'{']),
-
-        paren_right: Char::new (&[b')']),
-        paren_left: Char::new (&[b'(']),
-
-        bracket_square_right: Char::new (&[b']']),
-        bracket_square_left: Char::new (&[b'[']),
-
-        ampersand: Char::new (&[b'&']),
-        asterisk: Char::new (&[b'*']),
-        colon: Char::new (&[b':']),
-        comma: Char::new (&[b',']),
-        hyphen_minus: Char::new (&[b'-']),
-        full_stop: Char::new (&[b'.']),
-        equal: Char::new (&[b'=']),
-        exclamation: Char::new (&[b'!']),
-        grave_accent: Char::new (&[b'`']),
-        hashtag: Char::new (&[b'#']),
-        line_feed: Char::new (&[0xA]), // \n
-        percent: Char::new (&[b'%']),
-        plus: Char::new (&[b'+']),
-        vertical_bar: Char::new (&[b'|']),
-        question: Char::new (&[b'?']),
-        tilde: Char::new (&[b'~']),
-        low_line: Char::new (&[b'_']),
-
-        quotation: Char::new (&[b'"']),
-        apostrophe: Char::new (&[b'\'']),
-
-        carriage_return: Char::new (&[0xD]), // \r
-        semicolon: Char::new (&[b';']),
-        slash: Char::new (&[b'/']),
-        space: Char::new (&[b' ']),
-        tab_h: Char::new (&[0x9]), // \t
-        tab_v: Char::new (&[0xB]), // \v
-        form_feed: Char::new (&[0xC]), // \f
-        escape: Char::new (&[0x1B]), // \e
-        nbspace: Char::new (&[0xA0]),
-        line_separator: Char::new (&[0xE2, 0x80, 0xA8]), // \x2028
-        paragraph_separator: Char::new (&[0xE2, 0x80, 0xA9]), // \x2029
-
-        digit_0: Char::new (&[b'0']),
-        digit_1: Char::new (&[b'1']),
-        digit_2: Char::new (&[b'2']),
-        digit_3: Char::new (&[b'3']),
-        digit_4: Char::new (&[b'4']),
-        digit_5: Char::new (&[b'5']),
-        digit_6: Char::new (&[b'6']),
-        digit_7: Char::new (&[b'7']),
-        digit_8: Char::new (&[b'8']),
-        digit_9: Char::new (&[b'9']),
-
-        letter_a: Char::new (&[b'a']),
-        letter_b: Char::new (&[b'b']),
-        letter_c: Char::new (&[b'c']),
-        letter_d: Char::new (&[b'd']),
-        letter_e: Char::new (&[b'e']),
-        letter_f: Char::new (&[b'f']),
-        letter_g: Char::new (&[b'g']),
-        letter_h: Char::new (&[b'h']),
-        letter_i: Char::new (&[b'i']),
-        letter_j: Char::new (&[b'j']),
-        letter_k: Char::new (&[b'k']),
-        letter_l: Char::new (&[b'l']),
-        letter_m: Char::new (&[b'm']),
-        letter_n: Char::new (&[b'n']),
-        letter_o: Char::new (&[b'o']),
-        letter_p: Char::new (&[b'p']),
-        letter_q: Char::new (&[b'q']),
-        letter_r: Char::new (&[b'r']),
-        letter_s: Char::new (&[b's']),
-        letter_t: Char::new (&[b't']),
-        letter_u: Char::new (&[b'u']),
-        letter_v: Char::new (&[b'v']),
-        letter_w: Char::new (&[b'w']),
-        letter_x: Char::new (&[b'x']),
-        letter_y: Char::new (&[b'y']),
-        letter_z: Char::new (&[b'z']),
-
-        letter_t_a: Char::new (&[b'A']),
-        letter_t_b: Char::new (&[b'B']),
-        letter_t_c: Char::new (&[b'C']),
-        letter_t_d: Char::new (&[b'D']),
-        letter_t_e: Char::new (&[b'E']),
-        letter_t_f: Char::new (&[b'F']),
-        letter_t_g: Char::new (&[b'G']),
-        letter_t_h: Char::new (&[b'H']),
-        letter_t_i: Char::new (&[b'I']),
-        letter_t_j: Char::new (&[b'J']),
-        letter_t_k: Char::new (&[b'K']),
-        letter_t_l: Char::new (&[b'L']),
-        letter_t_m: Char::new (&[b'M']),
-        letter_t_n: Char::new (&[b'N']),
-        letter_t_o: Char::new (&[b'O']),
-        letter_t_p: Char::new (&[b'P']),
-        letter_t_q: Char::new (&[b'Q']),
-        letter_t_r: Char::new (&[b'R']),
-        letter_t_s: Char::new (&[b'S']),
-        letter_t_t: Char::new (&[b'T']),
-        letter_t_u: Char::new (&[b'U']),
-        letter_t_v: Char::new (&[b'V']),
-        letter_t_w: Char::new (&[b'W']),
-        letter_t_x: Char::new (&[b'X']),
-        letter_t_y: Char::new (&[b'Y']),
-        letter_t_z: Char::new (&[b'Z']),
-
-        null: Char::new (&[0x0]),
-        bell: Char::new (&[0x7]),
-        backspace: Char::new (&[0x8]),
-        nextline: Char::new (&[0x85]), // \N
-    }
-}
 
 
 

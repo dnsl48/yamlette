@@ -1,3 +1,8 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::{ Combo, CopySymbol };
+
+
 mod composer;
 mod conductor;
 mod performer;
@@ -29,7 +34,12 @@ pub struct Orchestra {
 
 
 impl Orchestra {
-    pub fn new<S: Schema + 'static> (cset: CharSet, schema: S) -> io::Result<Orchestra> {
+    pub fn new<Char, DoubleChar, S> (cset: CharSet<Char, DoubleChar>, schema: S) -> io::Result<Orchestra>
+      where
+        Char: CopySymbol + 'static,
+        DoubleChar: CopySymbol + Combo + 'static,
+        S: Schema<Char, DoubleChar> + 'static
+    {
         let (sender, receiver) = sync_channel (32);
 
         let styles = schema.get_common_styles ();

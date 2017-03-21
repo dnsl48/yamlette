@@ -1,18 +1,19 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
 use txt::{ CharSet, Twine };
 use txt::encoding::{ Encoding, Unicode, UTF8 };
 
-use model::{ model_issue_rope, Factory, Model, Rope, Tagged, TaggedValue };
+use model::{ model_issue_rope, Model, Rope, Tagged, TaggedValue };
 use model::renderer::{ EncodedString, Node, Renderer };
 use model::style::{ CommonStyles, Style };
 
 use std::any::Any;
 use std::mem;
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 pub const TAG: &'static str = "tag:yaml.org,2002:str";
@@ -22,9 +23,11 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 // TODO: do warnings for incorrect escapes on decode (and encode)
 
 
-pub struct Str {
-    encoding: Encoding,
-
+pub struct Str<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     s_quote: Char,
     d_quote: Char,
 
@@ -39,6 +42,7 @@ pub struct Str {
     underscore: Char,
 
     digit_0: Char,
+/*
     digit_1: Char,
     digit_2: Char,
     digit_3: Char,
@@ -48,11 +52,11 @@ pub struct Str {
     digit_7: Char,
     digit_8: Char,
     digit_9: Char,
-
+*/
     letter_a: Char,
     letter_b: Char,
-    letter_c: Char,
-    letter_d: Char,
+    // letter_c: Char,
+    // letter_d: Char,
     letter_e: Char,
     letter_f: Char,
     letter_n: Char,
@@ -62,79 +66,92 @@ pub struct Str {
     letter_v: Char,
     letter_x: Char,
 
-    letter_t_a: Char,
-    letter_t_b: Char,
-    letter_t_c: Char,
-    letter_t_d: Char,
-    letter_t_e: Char,
-    letter_t_f: Char,
+    // letter_t_a: Char,
+    // letter_t_b: Char,
+    // letter_t_c: Char,
+    // letter_t_d: Char,
+    // letter_t_e: Char,
+    // letter_t_f: Char,
     letter_t_l: Char,
     letter_t_n: Char,
     letter_t_p: Char,
-    letter_t_u: Char
+    letter_t_u: Char,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Str {
+impl<Char, DoubleChar> Str<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Str {
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Str<Char, DoubleChar> {
         Str {
             encoding: cset.encoding,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            backslash: cset.backslash.clone (),
+            backslash: cset.backslash,
 
-            line_feed: cset.line_feed.clone (),
-            carriage_return: cset.carriage_return.clone (),
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
 
-            slash: cset.slash.clone (),
-            space: cset.space.clone (),
-            tab: cset.tab_h.clone (),
-            underscore: cset.low_line.clone (),
+            slash: cset.slash,
+            space: cset.space,
+            tab: cset.tab_h,
+            underscore: cset.low_line,
 
-            digit_0: cset.digit_0.clone (),
-            digit_1: cset.digit_1.clone (),
-            digit_2: cset.digit_2.clone (),
-            digit_3: cset.digit_3.clone (),
-            digit_4: cset.digit_4.clone (),
-            digit_5: cset.digit_5.clone (),
-            digit_6: cset.digit_6.clone (),
-            digit_7: cset.digit_7.clone (),
-            digit_8: cset.digit_8.clone (),
-            digit_9: cset.digit_9.clone (),
+            digit_0: cset.digit_0,
+/*
+            digit_1: cset.digit_1,
+            digit_2: cset.digit_2,
+            digit_3: cset.digit_3,
+            digit_4: cset.digit_4,
+            digit_5: cset.digit_5,
+            digit_6: cset.digit_6,
+            digit_7: cset.digit_7,
+            digit_8: cset.digit_8,
+            digit_9: cset.digit_9,
+*/
+            letter_a: cset.letter_a,
+            letter_b: cset.letter_b,
+            // letter_c: cset.letter_c,
+            // letter_d: cset.letter_d,
+            letter_e: cset.letter_e,
+            letter_f: cset.letter_f,
+            letter_n: cset.letter_n,
+            letter_r: cset.letter_r,
+            letter_t: cset.letter_t,
+            letter_u: cset.letter_u,
+            letter_v: cset.letter_v,
+            letter_x: cset.letter_x,
 
-            letter_a: cset.letter_a.clone (),
-            letter_b: cset.letter_b.clone (),
-            letter_c: cset.letter_c.clone (),
-            letter_d: cset.letter_d.clone (),
-            letter_e: cset.letter_e.clone (),
-            letter_f: cset.letter_f.clone (),
-            letter_n: cset.letter_n.clone (),
-            letter_r: cset.letter_r.clone (),
-            letter_t: cset.letter_t.clone (),
-            letter_u: cset.letter_u.clone (),
-            letter_v: cset.letter_v.clone (),
-            letter_x: cset.letter_x.clone (),
+/*
+            letter_t_a: cset.letter_t_a,
+            letter_t_b: cset.letter_t_b,
+            letter_t_c: cset.letter_t_c,
+            letter_t_d: cset.letter_t_d,
+            letter_t_e: cset.letter_t_e,
+            letter_t_f: cset.letter_t_f,
+*/
+            letter_t_l: cset.letter_t_l,
+            letter_t_n: cset.letter_t_n,
+            letter_t_p: cset.letter_t_p,
+            letter_t_u: cset.letter_t_u,
 
-            letter_t_a: cset.letter_t_a.clone (),
-            letter_t_b: cset.letter_t_b.clone (),
-            letter_t_c: cset.letter_t_c.clone (),
-            letter_t_d: cset.letter_t_d.clone (),
-            letter_t_e: cset.letter_t_e.clone (),
-            letter_t_f: cset.letter_t_f.clone (),
-            letter_t_l: cset.letter_t_l.clone (),
-            letter_t_n: cset.letter_t_n.clone (),
-            letter_t_p: cset.letter_t_p.clone (),
-            letter_t_u: cset.letter_t_u.clone ()
+            _dchr: PhantomData
         }
     }
 
-
+/*
     fn extract_hex_at (&self, src: &[u8], at: usize) -> Option<(u8, usize)> {
         // TODO: effective specialisations for UTF-8, UTF-16 and UTF-32
         // TODO: or keep a charset copy and just use it here?
@@ -166,6 +183,7 @@ impl Str {
 
         else { None }
     }
+*/
 
 
     unsafe fn encode_auto_quoted (&self, mut value: StrValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
@@ -510,7 +528,14 @@ impl Str {
 
 
 
-impl Model for Str {
+impl<Char, DoubleChar> Model for Str<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -529,7 +554,7 @@ impl Model for Str {
     fn get_default (&self) -> TaggedValue { TaggedValue::from (StrValue::from (String::new ())) }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let value: StrValue = match <TaggedValue as Into<Result<StrValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -541,15 +566,6 @@ impl Model for Str {
 
     fn decode (&self, _explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         let mut ptr: usize = 0;
-
-        let utf8 = UTF8;
-        let clen = match self.encoding { Encoding::UTF8 (_) => 1 };
-
-
-        let mut buffer: Vec<u8> = Vec::with_capacity (value.len () * clen);
-        let mut result: Vec<u8> = Vec::with_capacity (value.len () * clen);
-
-
         let mut state: u8 = 0;
 
         const STATE_SPACE: u8 = 1;
@@ -558,6 +574,10 @@ impl Model for Str {
 
 
         if self.d_quote.contained_at (value, ptr) {
+            let utf8 = UTF8;
+            let mut buffer: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+            let mut result: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+
             ptr += self.d_quote.len ();
 
             loop {
@@ -634,7 +654,6 @@ impl Model for Str {
 
                     continue;
                 } else { (0, 0) };
-
 
 
                 if state & STATE_SPACE == STATE_SPACE {
@@ -728,9 +747,16 @@ impl Model for Str {
                     if self.letter_x.contained_at (value, ptr) {
                         let ptr = ptr + self.letter_x.len ();
 
+                        /*
                         self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
                         self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
                             Some ( ((d1 * 16 + d2) as u32, (self.backslash.len () + self.letter_x.len () + l1 + l2) as u8) )
+                        })
+                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
+                        */
+                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
+                            Some ( ((d1 as u32 * 16 + d2 as u32) as u32, (self.backslash.len () as u8 + self.letter_x.len () as u8 + l1 + l2) as u8) )
                         })
                         }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
 
@@ -738,7 +764,7 @@ impl Model for Str {
 
                     if self.letter_u.contained_at (value, ptr) {
                         let ptr = ptr + self.letter_u.len ();
-
+/*
                         self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
                         self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
                         self.extract_hex_at (value, ptr + l1 + l2).and_then (|(d3, l3)| {
@@ -751,12 +777,26 @@ impl Model for Str {
                         })
                         })
                         }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
+*/
+                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize ..]).and_then (|(d3, l3)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize ..]).and_then (|(d4, l4)| {
+                            Some ( (
+                                (d4 as u16 + (d3 as u16 * 16) + (d2 as u16 * 16 * 16) + (d1 as u16 * 16 * 16 * 16)) as u32,
+                                (self.backslash.len () as u8 + self.letter_u.len () as u8 + l1 + l2 + l3 + l4) as u8
+                            ) )
+                        })
+                        })
+                        })
+                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
 
                     } else
 
                     if self.letter_t_u.contained_at (value, ptr) {
                         let ptr = ptr + self.letter_t_u.len ();
 
+                        /*
                         self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
                         self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
                         self.extract_hex_at (value, ptr + l1 + l2).and_then (|(d3, l3)| {
@@ -775,6 +815,34 @@ impl Model for Str {
                                 d2 as u32 * 16 * 16 * 16 * 16 * 16 * 16 +
                                 d1 as u32 * 16 * 16 * 16 * 16 * 16 * 16 * 16,
                                 (self.backslash.len () + self.letter_t_u.len () + l1 + l2 + l3 + l4 + l5 + l6 + l7 + l8) as u8
+                            ) )
+                        })
+                        })
+                        })
+                        })
+                        })
+                        })
+                        })
+                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
+                        */
+                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize ..]).and_then (|(d3, l3)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize ..]).and_then (|(d4, l4)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize ..]).and_then (|(d5, l5)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize ..]).and_then (|(d6, l6)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize + l6 as usize ..]).and_then (|(d7, l7)| {
+                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize + l6 as usize + l7 as usize ..]).and_then (|(d8, l8)| {
+                            Some ( (
+                                d8 as u32 +
+                                d7 as u32 * 16 +
+                                d6 as u32 * 16 * 16 +
+                                d5 as u32 * 16 * 16 * 16 +
+                                d4 as u32 * 16 * 16 * 16 * 16 +
+                                d3 as u32 * 16 * 16 * 16 * 16 * 16 +
+                                d2 as u32 * 16 * 16 * 16 * 16 * 16 * 16 +
+                                d1 as u32 * 16 * 16 * 16 * 16 * 16 * 16 * 16,
+                                (self.backslash.len () as u8 + self.letter_t_u.len () as u8 + l1 + l2 + l3 + l4 + l5 + l6 + l7 + l8) as u8
                             ) )
                         })
                         })
@@ -804,7 +872,16 @@ impl Model for Str {
                 result.extend (&bs[.. bs[4] as usize]);
             }
 
+            let s = String::from_utf8 (result);
+
+            if s.is_err () { Err ( () ) }
+            else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
+
         } else if self.s_quote.contained_at (value, ptr) {
+            let utf8 = UTF8;
+            let mut buffer: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+            let mut result: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+
             ptr += self.s_quote.len ();
 
             loop {
@@ -919,7 +996,18 @@ impl Model for Str {
                 let bs = utf8.from_unicode (code);
                 result.extend (&bs[.. bs[4] as usize]);
             }
+
+            let s = String::from_utf8 (result);
+
+            if s.is_err () { Err ( () ) }
+            else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
+
         } else {
+            match self.encoding.bytes_to_string (value) {
+                Err ( () ) => Err ( () ),
+                Ok (string) => Ok ( TaggedValue::from (StrValue::from (string)) )
+            }
+            /*
             loop {
                 if ptr >= value.len () { break; }
 
@@ -930,13 +1018,9 @@ impl Model for Str {
                 let bs = utf8.from_unicode (code);
                 result.extend (&bs[.. bs[4] as usize]);
             }
+            */
         }
 
-
-        let s = String::from_utf8 (result);
-
-        if s.is_err () { Err ( () ) }
-        else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
     }
 }
 
@@ -1018,7 +1102,7 @@ impl StrValue {
 
 
 impl Tagged for StrValue {
-    fn get_tag (&self) -> &Twine { Str::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -1057,24 +1141,11 @@ impl AsRef<str> for StrValue {
 
 
 
-pub struct StrFactory;
-
-
-
-impl Factory for StrFactory {
-    fn get_tag (&self) -> &Twine { Str::get_tag () }
-
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Str::new (cset)) }
-}
-
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -1083,7 +1154,8 @@ mod tests {
 
     #[test]
     fn tag () {
-        let str = StrFactory.build_model (&get_charset_utf8 ());
+        // let str = StrFactory.build_model (&get_charset_utf8 ());
+        let str = Str::new (&get_charset_utf8 ());
 
         assert_eq! (str.get_tag (), TAG);
     }
@@ -1134,7 +1206,7 @@ mod tests {
 
         for i in 0 .. ops.len () {
             if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), Str::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
 
@@ -1178,7 +1250,7 @@ to a line feed, or 	\
 
         for i in 0 .. ops.len () {
             if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), Str::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
 

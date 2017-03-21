@@ -1,3 +1,8 @@
+extern crate skimmer;
+
+use self::skimmer::symbol::{ Combo, CopySymbol };
+
+
 use model::{ Rope, TaggedValue, Schema };
 use model::renderer::{ Renderer, Node };
 use txt::{ CharSet, Twine };
@@ -490,7 +495,11 @@ impl Volume {
 
 const PERFORMERS_NUMBER: usize = 3;
 
-pub struct Conductor {
+pub struct Conductor<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pipe: Receiver<Message>,
     cin: Receiver<(PerformerId, Play)>,
 
@@ -500,16 +509,20 @@ pub struct Conductor {
     msgs: usize,
     buff: Option<Play>,
 
-    renderer: Arc<Renderer>
+    renderer: Arc<Renderer<Char, DoubleChar>>
 }
 
 
-impl Conductor {
+impl<Char, DoubleChar> Conductor<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn run (
-        cset: CharSet,
+        cset: CharSet<Char, DoubleChar>,
         pipe: Receiver<Message>,
-        renderer: Renderer,
-        mut schema: Box<Schema>
+        renderer: Renderer<Char, DoubleChar>,
+        mut schema: Box<Schema<Char, DoubleChar>>
     )
         -> io::Result<(JoinHandle<Result<(), OrchError>>, Receiver<Vec<u8>>)>
     {
@@ -728,7 +741,7 @@ impl Conductor {
 
         let mut str_ptr: *mut u8 = music.as_mut_ptr ();
 
-        let renderer: &Renderer = &self.renderer;
+        let renderer: &Renderer<Char, DoubleChar> = &self.renderer;
 
         for vol in vols.iter () {
             let mut rec_ptr: usize = 0;

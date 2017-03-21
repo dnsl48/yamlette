@@ -4,8 +4,8 @@ use sage::Idea;
 
 use book::word::Word;
 
-use model::yaml::seq::Seq;
-use model::yaml::map::Map;
+use model::yaml::seq;
+use model::yaml::map;
 
 use txt::Twine;
 
@@ -80,11 +80,11 @@ impl Volume {
             Idea::NodeScalar (id, alias, value) => self.gist.push ((alias, id.level, Word::extract_scalar (value))),
 
             Idea::NodeSequence (id, alias, tag) => self.gist.push ((alias, id.level, Word::Seq (Twine::from (tag)))),
-            Idea::NodeMetaSeq (id, alias, None) => self.gist.push ((alias, id.level, Word::Seq (Seq::get_tag ().clone ()))),
+            Idea::NodeMetaSeq (id, alias, None) => self.gist.push ((alias, id.level, Word::Seq (seq::TWINE_TAG.clone ()))),
             Idea::NodeMetaSeq (id, alias, Some (tag)) => self.gist.push ((alias, id.level, Word::Seq (Twine::from (tag)))),
 
             Idea::NodeDictionary (id, alias, _, firstborn_id) => {
-                self.gist.push ((alias, id.level, Word::Map (Map::get_tag ().clone ())));
+                self.gist.push ((alias, id.level, Word::Map (map::TWINE_TAG.clone ())));
 
                 if firstborn_id.is_some () {
                     // TODO: check whether it's ALWAYS the previous node?
@@ -99,7 +99,7 @@ impl Volume {
                 if let Some (tag) = tag {
                     self.gist.push ((alias, id.level, Word::Map (Twine::from (tag))));
                 } else {
-                    self.gist.push ((alias, id.level, Word::Map (Map::get_tag ().clone ())));
+                    self.gist.push ((alias, id.level, Word::Map (map::TWINE_TAG.clone ())));
                 }
 
                 if firstborn_id.is_some () {

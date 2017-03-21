@@ -1,7 +1,10 @@
 extern crate skimmer;
 
-use self::skimmer::{ Data, Datum, Marker, Read, Rune, Symbol };
-use self::skimmer::scanner::{ scan_one_at, scan_until_at, scan_while_at };
+// extern crate gauger;
+// use self::gauger::sample::{ Sample, Timer };
+
+use self::skimmer::{ Data, Datum, Marker, Read, Rune };
+use self::skimmer::symbol::{ Combo, CopySymbol };
 
 
 use tokenizer::{ Token, Tokenizer };
@@ -21,19 +24,15 @@ use std::sync::Arc;
 
 
 
-#[inline]
 fn is<T: BitAnd<Output=T> + Eq + Copy> (state: T, val: T) -> bool { val == state & val }
 
 
-#[inline]
 fn not<T: BitAnd<Output=T> + Eq + Copy> (state: T, val: T) -> bool { !is (state, val) }
 
 
-#[inline]
 fn on<T: BitOr<Output=T> + Copy> (state: &mut T, val: T) { *state = *state | val; }
 
 
-#[inline]
 fn off<T: BitAnd<Output=T> + Eq + BitXor<Output=T> + Copy> (state: &mut T, val: T) { *state = *state ^ (val & *state) }
 
 
@@ -205,61 +204,85 @@ impl<'a> Context<'a> {
 
 
 
-pub struct Reader {
+pub struct Reader<Char, DoubleChar>
+  where
+    Char: CopySymbol,
+    DoubleChar: CopySymbol
+{
     index: usize,
     line: usize,
     cursor: usize,
     position: usize,
     data: Data,
-    tokenizer: Tokenizer
+    pub tokenizer: Tokenizer<Char, DoubleChar>,
+
+    // pub timer: Timer
 }
 
 
 
-impl Reader {
-    pub fn new (tokenizer: Tokenizer) -> Reader {
+impl<Char, DoubleChar> Reader<Char, DoubleChar>
+  where
+    Char: CopySymbol + Into<Rune>,
+    DoubleChar: CopySymbol + Combo
+{
+    pub fn new (tokenizer: Tokenizer<Char, DoubleChar>) -> Reader<Char, DoubleChar> {
         Reader {
             index: 0,
             line: 0,
             cursor: 0,
             position: 0,
             data: Data::with_capacity (4),
-            tokenizer: tokenizer
+            tokenizer: tokenizer,
+
+            // timer: Timer::new ()
         }
     }
 
 
+    #[inline (always)]
     fn yield_block (&mut self, block: Block, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
+        // self.timer.stamp ("reader->yblock");
         if let Err (error) = callback (block) {
+            // self.timer.stamp ("reader->yblock");
             Err (ReadError::new (error))
         } else {
+            // self.timer.stamp ("reader->yblock");
             Ok ( () )
         }
     }
 
 
     pub fn read<R: Read> (&mut self, mut reader: R, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
+        // self.timer.stamp ("reader");
+
         let ctx = Context::zero ();
 
         let mut cur_idx = self.index;
         let result = self.read_layer (&mut reader, callback, &ctx, 0, 0, &mut cur_idx, 0, &mut None, &mut None);
         self.yield_stream_end (callback).ok ();
+
+        // self.timer.stamp ("reader");
+
         result
     }
 
 
+    #[inline (always)]
     fn get_idx (&mut self) -> usize {
         self.index += 1;
         self.index
     }
 
 
+    #[inline (always)]
     fn nl (&mut self) {
         self.line += 1;
         self.cursor = 0;
     }
 
 
+    #[inline (always)]
     fn skip<R: Read> (&mut self, reader: &mut R, len: usize, chars: usize) {
         self.cursor += chars;
         self.position += len;
@@ -289,10 +312,16 @@ impl Reader {
 
 
     fn yield_stream_end (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>) -> Result<(), ReadError> {
+        self.index = 0;
+        self.line = 0;
+        self.cursor = 0;
+        self.position = 0;
+        self.data.clear ();
         self.yield_block (Block::new (Id { level: 0, parent: 0, index: 0 }, BlockType::StreamEnd), callback)
     }
 
 
+    #[inline (always)]
     fn yield_null (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
@@ -303,6 +332,7 @@ impl Reader {
     }
 
 
+    #[inline (always)]
     fn yield_error (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Error (message.clone (), pos)), callback) ?;
@@ -311,18 +341,21 @@ impl Reader {
     }
 
 
+    #[inline (always)]
     fn yield_warning (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Warning (message.clone (), pos)), callback)
     }
 
 
+    #[inline (always)]
     fn read_layer_propagated<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
         let mut cur_idx = self.index;
         self.read_layer (reader, callback, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
     }
 
 
+    #[inline (always)]
     fn read_layer_expected<R: Read> (
         &mut self,
         reader: &mut R,
@@ -368,7 +401,9 @@ impl Reader {
 
 
         'top: loop {
+            // self.timer.stamp ("reader->get_token");
             if let Some ( (token, len, chars) ) = self.tokenizer.get_token (reader) {
+                // self.timer.stamp ("reader->get_token");
                 loop {
                     match token {
                         Token::BOM32BE |
@@ -490,14 +525,17 @@ impl Reader {
 
 
                         Token::Indent /*if not (state, INDENT_PASSED)*/ => {
-                            if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
-                                let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
-                                self.skip (reader, len + ilen, chars + bchrs);
+                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
+                            let ilen = self.tokenizer.scan_one_line_breaker (reader, len);
+                            if ilen > 0 {
+                                // let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
+                                self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            // if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            if reader.contains_copy_at (self.tokenizer.cset.hashtag, len) {
                                 self.skip (reader, len, chars);
                                 break;
                             }
@@ -631,6 +669,7 @@ impl Reader {
                     break;
                 }
             } else {
+                // self.timer.stamp ("reader->get_token");
                 if level == 0 && parent_idx == 0 && self.index > 0 && is (state, DIRS_PASSED) {
                     try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
                     self.index = 0;
@@ -729,7 +768,7 @@ impl Reader {
                             if chars < indent { break 'top; }
 
                             /* Do not skip more than indent in here! */
-                            let slen = self.tokenizer.spaces[0].len ();
+                            let slen = self.tokenizer.cset.space.len ();
                             self.skip (reader, slen * indent, indent);
 
                             on (&mut state, INDENT_PASSED);
@@ -773,7 +812,7 @@ impl Reader {
                             // for _ in 0 .. nls { chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ()); }
                             
                             let idx = self.get_idx ();
-                            let rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
+                            let rune: Rune = self.tokenizer.cset.line_feed.into ();
                             try! (self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Rune (rune, nls)
@@ -793,11 +832,11 @@ impl Reader {
                             if is (state, KEEPER) {
                                 // chunk = Chunk::with_capacity (self.tokenizer.cset.line_feed.len ());
                                 // chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ());
-                                rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
+                                rune = self.tokenizer.cset.line_feed.into ();
                             } else {
                                 // chunk = Chunk::with_capacity (self.tokenizer.spaces[0].len ());
                                 // chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
-                                rune = Rune::from (self.tokenizer.spaces[0].clone ());
+                                rune = self.tokenizer.cset.space.into ();
                             }
 
                             let idx = self.get_idx ();
@@ -815,10 +854,12 @@ impl Reader {
 
                         _ => {
                             let len = self.tokenizer.line (reader);
-
+                            let nl = self.tokenizer.scan_one_line_breaker (reader, len);
+                            /*
                             let nl = if let Some ( (_, len) ) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
                                 len
                             } else { 0 };
+                            */
 
                             let mut tail: usize = 0;
                             let mut tail_nls: usize = 0;
@@ -830,14 +871,16 @@ impl Reader {
                                 let mut spaces_add_chars: usize = 0;
 
                                 loop {
-                                    if let Some ( (idx, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &self.tokenizer.spaces) {
-                                        spaces_add_bytes += len;
-                                        spaces_add_chars += self.tokenizer.spaces[idx].len_chars ();
+                                    // if let Some ( (idx, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &[self.tokenizer.cset.space]) {
+                                    if reader.contains_copy_at (self.tokenizer.cset.space, len + nl + tail + spaces_add_bytes) {
+                                        spaces_add_bytes += self.tokenizer.cset.space.len ();
+                                        spaces_add_chars += self.tokenizer.cset.space.len_chars ();
                                         continue;
                                     }
 
-
-                                    if let Some ( (_, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &self.tokenizer.line_breakers) {
+                                    // if let Some ( (_, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &self.tokenizer.line_breakers) {
+                                    let len = self.tokenizer.scan_one_line_breaker (reader, len + nl + tail + spaces_add_bytes);
+                                    if len > 0 {
                                         if spaces_add_chars > indent {
                                             break;
                                         } else {
@@ -918,7 +961,7 @@ impl Reader {
                     // for _ in 0..chars { chunk.push_slice (self.tokenizer.cset.line_feed.as_slice ()); }
 
                     let idx = self.get_idx ();
-                    let rune = Rune::from (self.tokenizer.cset.line_feed.clone ());
+                    let rune: Rune = self.tokenizer.cset.line_feed.into ();
                     try! (self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
                         BlockType::Rune (rune, chars)
@@ -987,9 +1030,9 @@ impl Reader {
                         Token::Indent if not (state, HEAD_PASSED) => self.skip (reader, len, chars),
 
                         Token::Newline if not (state, HEAD_PASSED) => {
-                            if let Some ((_, ilen)) = scan_one_at (0, reader, &self.tokenizer.line_breakers) {
-                                self.skip (reader, ilen, 1);
-                            }
+                            // if let Some ((_, ilen)) = scan_one_at (0, reader, &self.tokenizer.line_breakers) {
+                            let ilen = self.tokenizer.scan_one_line_breaker (reader, 0);
+                            if ilen > 0 { self.skip (reader, ilen, 1); }
 
                             self.nl ();
 
@@ -1076,7 +1119,8 @@ impl Reader {
                             } else { 0 } | 128,
                             if is (state, INDENT_DEFINED) { indent } else { default_indent }
                         ).and_then (| () | {
-                            let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                 (anchor, tag)
                             } else {
                                 (
@@ -1107,7 +1151,8 @@ impl Reader {
                             } else { 0 },
                             if is (state, INDENT_DEFINED) { indent } else { default_indent }
                         ).and_then (| () | {
-                            let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                 (anchor, tag)
                             } else {
                                 (
@@ -1169,14 +1214,18 @@ impl Reader {
                             // TODO: check for a newline right after the indent and continue in that case
                             // scan_one_at
 
-                            if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
-                                let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
-                                self.skip (reader, len + ilen, chars + bchrs);
+                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
+                            let ilen = self.tokenizer.scan_one_line_breaker (reader, len);
+                            if ilen > 0 {
+                                // let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
+                                // let bchrs = 1;
+                                self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            // if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            if reader.contains_copy_at (self.tokenizer.cset.hashtag, len) {
                                 self.skip (reader, len, chars);
                                 break;
                             }
@@ -1281,7 +1330,8 @@ impl Reader {
                         Token::SequenceEnd => {
                             self.skip (reader, len, chars);
 
-                            let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                 (anchor, tag)
                             } else {
                                 (
@@ -1373,7 +1423,8 @@ impl Reader {
 
 
                         Token::Colon if not (state, MAP_KEY_PASSED) && not (state, NODE_PASSED) && not (state, COLON_IS_RAW) => {
-                            if let None = scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers) {
+                            // if let None = scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers) {
+                            if self.tokenizer.scan_one_spaces_and_line_breakers (reader, len) == 0 {
                                 on (&mut state, COLON_IS_RAW);
                                 continue;
                             }
@@ -1415,11 +1466,12 @@ impl Reader {
         Ok ( () )
     }
 
-
+    #[inline (always)]
     fn read_map_block_explicit<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 1, accel, None)
     }
 
+    #[inline (always)]
     fn read_map_block_implicit<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 15, accel, Some (indent))
     }
@@ -1464,14 +1516,17 @@ impl Reader {
 
                         Token::Indent if not (state, INDENT_PASSED) => {
                             // TODO: check for a newline right after the indent and continue in that case
-                            if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
-                                let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
-                                self.skip (reader, len + ilen, chars + bchrs);
+                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &self.tokenizer.line_breakers) {
+                            let ilen = self.tokenizer.scan_one_line_breaker (reader, len);
+                            if ilen > 0 {
+                                // let bchrs = self.tokenizer.line_breakers[idx].len_chars ();
+                                self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            // if let Some (_) = self.tokenizer.cset.hashtag.read_at (len, reader) {
+                            if reader.contains_copy_at (self.tokenizer.cset.hashtag, len) {
                                 self.skip (reader, len, chars);
                                 break;
                             }
@@ -1504,13 +1559,23 @@ impl Reader {
 
                         Token::Colon if is (state, KEY_PASSED) && not (state, SEP_PASSED) => {
                             if is (state, QST_EXPLICIT) && qst_explicit_line == self.line {
-                                let (len_, _) = scan_while_at (len, reader, &self.tokenizer.spaces_and_tabs);
-                                let (len__, idx) = scan_until_at (len + len_, reader, &self.tokenizer.colon_and_line_breakers);
+                                // let (len_, _) = scan_while_at (len, reader, &self.tokenizer.spaces_and_tabs);
+                                let len_ = self.tokenizer.scan_while_spaces_and_tabs (reader, len);
+                                // let (len__, idx) = scan_until_at (len + len_, reader, &self.tokenizer.colon_and_line_breakers);
+                                let len__ = self.tokenizer.scan_until_colon_and_line_breakers (reader, len + len_);
 
-                                if let Some ( (idx, _) ) = idx {
-                                    if idx > 0 {
-                                        let (len___, _) = scan_while_at (len + len_ + len__, reader, &self.tokenizer.spaces_and_line_breakers);
-                                        if let Some ( (0, _) ) = scan_one_at (len + len_ + len__ + len___, reader, &self.tokenizer.colon_and_line_breakers) {
+                                // println! ("LEN IS: {}, idx is {:?}", len__, idx);
+                                println! ("len_ is {}", len_);
+                                println! ("len__ is {}", len__);
+
+                                // if let Some ( (idx, _) ) = idx {
+                                if reader.has (len + len_ + len__ + 1) {
+                                    // if idx > 0 {
+                                    if !reader.contains_copy_at (self.tokenizer.cset.colon, len + len_ + len__) {
+                                        // let (len___, _) = scan_while_at (len + len_ + len__, reader, &self.tokenizer.spaces_and_line_breakers);
+                                        let len___ = self.tokenizer.scan_while_spaces_and_line_breakers (reader, len + len_ + len__);
+                                        // if let Some ( (0, _) ) = scan_one_at (len + len_ + len__ + len___, reader, &self.tokenizer.colon_and_line_breakers) {
+                                        if reader.contains_copy_at (self.tokenizer.cset.colon, len + len_ + len__ + len___) {
                                             self.skip (reader, len + len_, chars);
 
                                             let idx = self.get_idx ();
@@ -1596,19 +1661,26 @@ impl Reader {
 
                             try! (self.read_node_mblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                             off (&mut state, VAL_PASSED);
-                            if self.tokenizer.cset.colon.read (reader).is_some () { on (&mut state, QST_PASSED); }
+                            // if self.tokenizer.cset.colon.read (reader).is_some () { on (&mut state, QST_PASSED); }
+                            if reader.contains_copy_at_start (self.tokenizer.cset.colon) { on (&mut state, QST_PASSED); }
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
 
                             if lid < self.line { break; }
 
                             'inliner: loop {
-                                if let Some (len1_colon) = self.tokenizer.cset.colon.read (reader) {
-                                    let (len2_space, _) = scan_while_at (len1_colon, reader, &self.tokenizer.spaces_and_tabs);
-                                    let (_, idx) = scan_until_at (len1_colon + len2_space, reader, &self.tokenizer.question_and_line_breakers);
+                                // if let Some (len1_colon) = self.tokenizer.cset.colon.read (reader) {
+                                if reader.contains_copy_at_start (self.tokenizer.cset.colon) {
+                                    // let (len2_space, _) = scan_while_at (self.tokenizer.cset.colon.len (), reader, &self.tokenizer.spaces_and_tabs);
+                                    let len2_space = self.tokenizer.scan_while_spaces_and_tabs (reader, self.tokenizer.cset.colon.len ());
+                                    // let (_, idx) = scan_until_at (self.tokenizer.cset.colon.len () + len2_space, reader, &self.tokenizer.question_and_line_breakers);
+                                    let len2_question = self.tokenizer.scan_until_question_and_line_breakers (reader, self.tokenizer.cset.colon.len () + len2_space);
 
-                                    if let Some ( (idx, _) ) = idx {
-                                        if idx > 0 {
-                                            self.skip (reader, len1_colon + len2_space, 0);
+                                    // if let Some ( (idx, _) ) = idx {
+                                    if reader.has (self.tokenizer.cset.colon.len () + len2_space + len2_question + 1) {
+                                        // if idx > 0 {
+                                        if !reader.contains_copy_at (self.tokenizer.cset.question, self.tokenizer.cset.colon.len () + len2_space + len2_question) {
+                                            let slen = self.tokenizer.cset.colon.len () + len2_space;
+                                            self.skip (reader, slen, 0);
 
                                             let idx = self.get_idx ();
 
@@ -1694,7 +1766,8 @@ impl Reader {
                             try! (self.yield_null (callback, level + 1, idx));
                         }
 
-                        let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                        // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                        let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                             (anchor, tag)
                         } else {
                             (
@@ -1838,7 +1911,14 @@ impl Reader {
             let chunk = self.data.chunk (&marker);
             let chunk_slice = chunk.as_slice ();
 
-            if self.tokenizer.directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
+            // if self.tokenizer.directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
+            if chunk_slice.len () == self.tokenizer.cset.digit_1.len () + self.tokenizer.cset.full_stop.len () + self.tokenizer.cset.digit_2.len () &&
+               self.tokenizer.cset.digit_1.contained_at (chunk_slice, 0) &&
+               self.tokenizer.cset.full_stop.contained_at (chunk_slice, self.tokenizer.cset.digit_1.len ()) &&
+               self.tokenizer.cset.digit_2.contained_at (chunk_slice, self.tokenizer.cset.digit_1.len () + self.tokenizer.cset.full_stop.len ())
+            {
+                return Ok ( (1, 2) )
+            }
 
             if let Some ( (digit_first, digit_first_len) ) = self.tokenizer.cset.extract_dec (chunk_slice) {
                 if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
@@ -1879,119 +1959,6 @@ impl Reader {
             }
         }
     }
-
-
-/*
-    fn check_yaml_version (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
-        // let chunk = self.data.chunk (&marker);
-        // let chunk_slice = chunk.as_slice ();
-
-        if self.tokenizer.directive_yaml_version.same_as_slice (self.data.chunk (&marker).as_slice ()) { return Ok ( (1, 2) ) }
-
-        /*
-        if let Some ( (digit_first, digit_first_len) ) = self.tokenizer.cset.extract_dec (chunk_slice) {
-            if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (chunk_slice, digit_first_len) {
-                let idx = self.get_idx ();
-                return Err (self.yield_error (
-                    callback,
-                    Id { level: level, parent: parent_idx, index: idx },
-                    Twine::from ("%YAML major version is not supported")
-                ).unwrap_err ())
-            }
-
-            if let Some ( (digit_second, digit_second_len) ) = self.tokenizer.cset.extract_dec_at (chunk_slice, digit_first_len + self.tokenizer.cset.full_stop.len ()) {
-                if chunk_slice.len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
-                    let idx = self.get_idx ();
-                    try! (self.yield_warning (
-                        callback,
-                        Id { level: level, parent: parent_idx, index: idx },
-                        Twine::from ("%YAML minor version is not fully supported")
-                    ));
-
-                    Ok ( (digit_first, 3) )
-                } else {
-                    if digit_second == 1 {
-                        let idx = self.get_idx ();
-                        try! (self.yield_warning (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! (
-                            "{}. {}.",
-                            "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
-                            "This means that non-ASCII line-breaks are considered to be non-break characters"
-                        ))));
-                    } else {
-                        let idx = self.get_idx ();
-                        return Err (self.yield_error (
-                            callback,
-                            Id { level: level, parent: parent_idx, index: idx },
-                            Twine::from ("%YAML minor version is not supported")
-                        ).unwrap_err ())
-                    }
-
-                    Ok ( (digit_first, digit_second) )
-                }
-            } else {
-                let idx = self.get_idx ();
-                Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ())
-            }
-        } else {
-            let idx = self.get_idx ();
-            Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ())
-        }
-        */
-
-
-        self.tokenizer.cset.extract_dec (self.data.chunk (&marker).as_slice ())
-            .ok_or_else (|| {
-                let idx = self.get_idx ();
-                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
-            })
-            .and_then (move |(digit_first, digit_first_len)| {
-                if digit_first != 1 || !self.tokenizer.cset.full_stop.contained_at (self.data.chunk (&marker).as_slice (), digit_first_len) {
-                    let idx = self.get_idx ();
-                    return Err (self.yield_error (
-                        callback,
-                        Id { level: level, parent: parent_idx, index: idx },
-                        Twine::from ("%YAML major version is not supported")
-                    ).unwrap_err ())
-                }
-
-                self.tokenizer.cset.extract_dec_at (self.data.chunk (&marker).as_slice (), digit_first_len + self.tokenizer.cset.full_stop.len ())
-                    .ok_or_else (|| {
-                        let idx = self.get_idx ();
-                        self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("%YAML version is malformed")).unwrap_err ()
-                    })
-                    .and_then (|(digit_second, digit_second_len)| {
-                        if self.data.chunk (&marker).as_slice ().len () > digit_first_len + digit_second_len + self.tokenizer.cset.full_stop.len () {
-                            let idx = self.get_idx ();
-                            try! (self.yield_warning (
-                                callback,
-                                Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from ("%YAML minor version is not fully supported")
-                            ));
-
-                            Ok ( (digit_first, 3) )
-                        } else {
-                            if digit_second == 1 {
-                                let idx = self.get_idx ();
-                                try! (self.yield_warning (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! (
-                                    "{}. {}.",
-                                    "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
-                                    "This means that non-ASCII line-breaks are considered to be non-break characters"
-                                ))));
-                            } else {
-                                let idx = self.get_idx ();
-                                return Err (self.yield_error (
-                                    callback,
-                                    Id { level: level, parent: parent_idx, index: idx },
-                                    Twine::from ("%YAML minor version is not supported")
-                                ).unwrap_err ())
-                            }
-
-                            Ok ( (digit_first, digit_second) )
-                        }
-                    })
-            })
-    }
-*/
 
 
     fn read_directive_tag<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
@@ -2037,7 +2004,8 @@ impl Reader {
                     }
                 };
 
-                let (more, _) = scan_until_at (len, reader, &self.tokenizer.anchor_stops);
+                // let (more, _) = scan_until_at (len, reader, &self.tokenizer.anchor_stops);
+                let more = self.tokenizer.anchor_stops (reader, len);
                 let handle = self.consume (reader, callback, len + more, chars) ?;
 
                 /* Indent */
@@ -2077,7 +2045,8 @@ impl Reader {
                                 match token {
                                     Token::TagHandle => (),
                                     Token::Raw => {
-                                        let (more, _) = scan_until_at (len, reader, &self.tokenizer.anchor_stops);
+                                        // let (more, _) = scan_until_at (len, reader, &self.tokenizer.anchor_stops);
+                                        let more = self.tokenizer.anchor_stops (reader, len);
                                         read += more;
                                     },
                                     _ => {
@@ -2104,6 +2073,7 @@ impl Reader {
     }
 
 
+    #[inline (always)]
     fn emit_doc_border (&mut self, callback: &mut FnMut (Block) -> Result<(), Twine>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (
@@ -2114,7 +2084,7 @@ impl Reader {
 
 
     fn read_seq_block_item<R: Read> (&mut self, reader: &mut R, callback: &mut FnMut (Block) -> Result<(), Twine>, ctx: &Context, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
-        let prev_indent: usize = *indent;
+        // let prev_indent: usize = *indent;
         if let Some ( (token, len, chars) ) = if accel.is_none () { self.tokenizer.get_token (reader) } else { accel.take () } {
             match token {
                 Token::Dash => {
@@ -2156,7 +2126,7 @@ impl Reader {
                     _ => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_sblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None, prev_indent));
+                        try! (self.read_node_sblockval (reader, callback, &ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
                         break 'top;
                     }
                 };
@@ -2170,6 +2140,7 @@ impl Reader {
     }
 
 
+    #[inline (always)]
     fn read_node_flow<R: Read> (
         &mut self,
         reader: &mut R,
@@ -2183,9 +2154,11 @@ impl Reader {
         overanchor: &mut Option<Marker>,
         overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, true, false, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, true, false)
     }
 
+
+    #[inline (always)]
     fn read_node_mblockval<R: Read> (
         &mut self,
         reader: &mut R,
@@ -2199,9 +2172,11 @@ impl Reader {
         overanchor: &mut Option<Marker>,
         overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, true, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, true)
     }
 
+
+    #[inline (always)]
     fn read_node_sblockval<R: Read> (
         &mut self,
         reader: &mut R,
@@ -2213,12 +2188,13 @@ impl Reader {
         cur_idx: &mut usize,
         accel: Option<(Token, usize, usize)>,
         overanchor: &mut Option<Marker>,
-        overtag: &mut Option<Marker>,
-        orig_indent: usize
+        overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, Some(orig_indent))
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false)
     }
 
+
+    #[inline (always)]
     fn read_node<R: Read> (
         &mut self,
         reader: &mut R,
@@ -2232,7 +2208,7 @@ impl Reader {
         overanchor: &mut Option<Marker>,
         overtag: &mut Option<Marker>
     ) -> Result<(), ReadError> {
-        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false, None)
+        self.read_node_ (reader, callback, ctx, indent, level, parent_idx, cur_idx, accel, overanchor, overtag, false, false)
     }
 
 
@@ -2250,9 +2226,16 @@ impl Reader {
         overtag: &mut Option<Marker>,
         flow: bool,
         map_block_val: bool,
-        _seq_block_indent: Option<usize>
+        // _seq_block_indent: Option<usize>
     ) -> Result<(), ReadError> {
+        // self.timer.stamp ("rn");
+
+        // self.timer.stamp ("rn->context");
         let ctx = Context::new (ctx, ContextKind::Node, self.cursor, level);
+        // self.timer.stamp ("rn->context");
+
+        // self.timer.stamp ("rn->vars");
+
         const ALIAS_READ: u8 = 4;
 
         const NEWLINE_PASSED: u8 = 8;
@@ -2278,6 +2261,10 @@ impl Reader {
                 _ => false
             }
         } else { false };
+
+        // self.timer.stamp ("rn->vars");
+
+        // self.timer.stamp ("rn->loop");
 
         'top: loop {
             if let Some ( (token, len, chars) ) = if accel.is_none () { self.tokenizer.get_token (reader) } else { accel.take () } {
@@ -2319,9 +2306,11 @@ impl Reader {
 
 
                         Token::Colon if flow_idx > 0 => {
-                            if scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers).is_some () {
+                            // if scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers).is_some () {
+                            if self.tokenizer.scan_one_spaces_and_line_breakers (reader, len) > 0 {
                                 break 'top;
-                            } else if flow && self.tokenizer.cset.comma.read_at (len, reader).is_some () {
+                            // } else if flow && self.tokenizer.cset.comma.read_at (len, reader).is_some () {
+                            } else if flow && reader.contains_copy_at (self.tokenizer.cset.comma, len) {
                                 break 'top;
                             } else {
                                 match flow_opt {
@@ -2407,7 +2396,7 @@ impl Reader {
                             if indent == 0 && not (state, INDENT_PASSED) {
                                 // let mut chunk: Chunk = Chunk::with_capacity (self.tokenizer.cset.space.len ());
                                 // chunk.push_slice (self.tokenizer.spaces[0].as_slice ());
-                                let rune = Rune::from (self.tokenizer.spaces[0].clone ());
+                                let rune: Rune = self.tokenizer.cset.space.into ();
 
                                 match flow_opt {
                                     Some (Block { id, cargo: BlockType::Node (Node {
@@ -2475,13 +2464,16 @@ impl Reader {
                             // skip only one space
 
                             let len_ =
-                                if len >= self.tokenizer.cset.crlf.len () && self.tokenizer.cset.crlf.read (reader).is_some () {
+                                // if len >= self.tokenizer.cset.crlf.len () && self.tokenizer.cset.crlf.read (reader).is_some () {
+                                if len >= self.tokenizer.cset.crlf.len () && reader.contains_copy_at_start (self.tokenizer.cset.crlf) {
                                     self.tokenizer.cset.crlf.len ()
                                 }
-                                else if len >= self.tokenizer.cset.line_feed.len () && self.tokenizer.cset.line_feed.read (reader).is_some () {
+                                // else if len >= self.tokenizer.cset.line_feed.len () && self.tokenizer.cset.line_feed.read (reader).is_some () {
+                                else if len >= self.tokenizer.cset.line_feed.len () && reader.contains_copy_at_start (self.tokenizer.cset.line_feed) {
                                     self.tokenizer.cset.line_feed.len ()
                                 }
-                                else if len >= self.tokenizer.cset.carriage_return.len () && self.tokenizer.cset.carriage_return.read (reader).is_some () {
+                                // else if len >= self.tokenizer.cset.carriage_return.len () && self.tokenizer.cset.carriage_return.read (reader).is_some () {
+                                else if len >= self.tokenizer.cset.carriage_return.len () && reader.contains_copy_at_start (self.tokenizer.cset.carriage_return) {
                                     self.tokenizer.cset.carriage_return.len ()
                                 } else { len };
 
@@ -2505,10 +2497,12 @@ impl Reader {
 
                                 match ctxptr.kind {
                                     ContextKind::SequenceFlow => {
-                                        skip = self.check_next_is_right_square (reader, 0, false);
+                                        // skip = self.check_next_is_right_square (reader, 0, false);
+                                        skip = self.check_next_is_char (self.tokenizer.cset.bracket_square_right, reader, 0, false);
                                     }
                                     ContextKind::MappingFlow => {
-                                        skip = self.check_next_is_right_curly (reader, 0, false);
+                                        // skip = self.check_next_is_right_curly (reader, 0, false);
+                                        skip = self.check_next_is_char (self.tokenizer.cset.bracket_curly_right, reader, 0, false);
                                     }
                                     _ => { continue }
                                 };
@@ -2599,7 +2593,7 @@ impl Reader {
                                         // chunk.push_slice (self.tokenizer.cset.space.as_slice ());
 
                                         let idx = self.get_idx ();
-                                        let rune = Rune::from (self.tokenizer.cset.space.clone ());
+                                        let rune: Rune = self.tokenizer.cset.space.into ();
                                         try! (self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Rune (rune, 1)
@@ -2610,7 +2604,8 @@ impl Reader {
 
                                     let mut chunk = match token {
                                         Token::Directive => {
-                                            let (len, _) = scan_until_at (0, reader, &self.tokenizer.raw_stops);
+                                            // let (len, _) = scan_until_at (0, reader, &self.tokenizer.raw_stops);
+                                            let len = self.tokenizer.raw_stops (reader);
                                             self.consume (reader, callback, len, 1) ?
                                         }
                                         _ => self.consume (reader, callback, len, chars) ?
@@ -2655,7 +2650,8 @@ impl Reader {
 
 
                         Token::Indent if is (state, LINE_BREAK) => {
-                            let is_hyphen = self.tokenizer.cset.hyphen_minus.read_at (len, reader).is_some ();
+                            // let is_hyphen = self.tokenizer.cset.hyphen_minus.read_at (len, reader).is_some ();
+                            let is_hyphen = reader.contains_copy_at (self.tokenizer.cset.hyphen_minus, len);
                             let yes = if float_start {
                                 if is_hyphen {
                                     if indent == 0 { true } else {
@@ -2677,9 +2673,11 @@ impl Reader {
                                         }
                                         result
                                     }
-                                } else if self.tokenizer.cset.vertical_bar.read_at (len, reader).is_some () {
+                                // } else if self.tokenizer.cset.vertical_bar.read_at (len, reader).is_some () {
+                                } else if reader.contains_copy_at (self.tokenizer.cset.vertical_bar, len) {
                                     true 
-                                } else if self.tokenizer.cset.greater_than.read_at (len, reader).is_some () {
+                                // } else if self.tokenizer.cset.greater_than.read_at (len, reader).is_some () {
+                                } else if reader.contains_copy_at (self.tokenizer.cset.greater_than, len) {
                                     true
                                 } else {
                                     if ctx.parent.is_some () {
@@ -2730,7 +2728,8 @@ impl Reader {
 
                                     *cur_idx = idx;
 
-                                    let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                    let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                         (anchor, tag)
                                     } else {
                                         (
@@ -2753,7 +2752,8 @@ impl Reader {
 
                                 *cur_idx = idx;
 
-                                let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                     (anchor, tag)
                                 } else {
                                     (
@@ -2848,7 +2848,8 @@ impl Reader {
 
                                     *cur_idx = idx;
 
-                                    let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                    let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                         (anchor, tag)
                                     } else {
                                         (
@@ -2871,7 +2872,8 @@ impl Reader {
 
                                 *cur_idx = idx;
 
-                                let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                                let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                     (anchor, tag)
                                 } else {
                                     (
@@ -2972,7 +2974,8 @@ impl Reader {
 
                             *cur_idx = idx;
 
-                            let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                 (anchor, tag)
                             } else {
                                 (
@@ -3023,7 +3026,8 @@ impl Reader {
 
 
                         Token::Colon if map_block_val && !map_block_val_pass => {
-                            if scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers).is_some () {
+                            // if scan_one_at (len, reader, &self.tokenizer.spaces_and_line_breakers).is_some () {
+                            if self.tokenizer.scan_one_spaces_and_line_breakers (reader, len) > 0 {
                                 break 'top;
                             }
 
@@ -3084,7 +3088,8 @@ impl Reader {
 
                             *cur_idx = idx;
 
-                            let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                            let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                                 (anchor, tag)
                             } else {
                                 (
@@ -3118,7 +3123,8 @@ impl Reader {
 
                     *cur_idx = idx;
 
-                    let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                    let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                         (anchor, tag)
                     } else {
                         (
@@ -3137,16 +3143,23 @@ impl Reader {
                 break;
             }
         }
+        // self.timer.stamp ("rn->loop");
 
+        // self.timer.stamp ("rn->flopt");
         match flow_opt {
             Some (Block { id, cargo: BlockType::Node (Node {
                 anchor: _,
                 tag: _,
                 content: NodeKind::Scalar (mut chunk)
             }) }) => {
+                // self.timer.stamp ("rn->flopt<-scalar");
+                // self.timer.stamp ("rn->flopt<-scalar->rtrim");
                 self.rtrim (&mut chunk);
+                // self.timer.stamp ("rn->flopt<-scalar->rtrim");
 
-                let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                // self.timer.stamp ("rn->flopt<-scalar->cnis");
+                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                     (anchor, tag)
                 } else {
                     (
@@ -3154,6 +3167,7 @@ impl Reader {
                         if tag.is_none () { overtag.take () } else { tag }
                     )
                 };
+                // self.timer.stamp ("rn->flopt<-scalar->cnis");
 
                 *cur_idx = id.index;
 
@@ -3162,6 +3176,7 @@ impl Reader {
                     tag: tag,
                     content: NodeKind::Scalar (chunk)
                 })), callback));
+                // self.timer.stamp ("rn->flopt<-scalar");
             }
 
             Some (Block { id, cargo: BlockType::Node (Node {
@@ -3169,8 +3184,9 @@ impl Reader {
                 tag: _,
                 content: NodeKind::LiteralBlockClose
             }) }) => {
-
-                let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                // self.timer.stamp ("rn->flopt<-block");
+                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                     (anchor, tag)
                 } else {
                     (
@@ -3186,17 +3202,20 @@ impl Reader {
                     tag: tag,
                     content: NodeKind::LiteralBlockClose
                 })), callback));
+                // self.timer.stamp ("rn->flopt<-block");
             }
 
             Some (_) => unreachable! (),
 
             None => {
+                // self.timer.stamp ("rn->flopt<-none");
                 if tag.is_some () || anchor.is_some () {
                     let idx = self.get_idx ();
 
                     *cur_idx = idx;
 
-                    let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
+                    let (anchor, tag) = if self.check_next_is_char (self.tokenizer.cset.colon, reader, indent, false) {
                         (anchor, tag)
                     } else {
                         (
@@ -3211,8 +3230,12 @@ impl Reader {
                         content: NodeKind::Null
                     })), callback);
                 }
+                // self.timer.stamp ("rn->flopt<-none");
             }
         };
+        // self.timer.stamp ("rn->flopt");
+
+        // self.timer.stamp ("rn");
 
         Ok ( () )
     }
@@ -3225,12 +3248,60 @@ impl Reader {
             let mut ptr = chunk_slice.len ();
 
             'rtop: loop {
+                /*
+                [
+                Result::Ok (cset.space),
+                Result::Ok (cset.tab_h),
+                Result::Err (cset.crlf),
+                Result::Ok (cset.line_feed),
+                Result::Ok (cset.carriage_return)
+                ]
+                */
+
+                /*
                 for word in self.tokenizer.spaces_and_line_breakers.iter () {
                     if word.len () > ptr { continue; }
 
                     if word.contained_at (chunk_slice, ptr - word.len ()) {
                         ptr -= word.len ();
                         continue 'rtop;
+                    }
+                }
+                */
+
+                {
+                    if self.tokenizer.cset.space.len () <= ptr {
+                        if self.tokenizer.cset.space.contained_at (chunk_slice, ptr - self.tokenizer.cset.space.len ()) {
+                            ptr -= self.tokenizer.cset.space.len ();
+                            continue 'rtop;
+                        }
+                    }
+                }
+
+                {
+                    if self.tokenizer.cset.line_feed.len () <= ptr {
+                        if self.tokenizer.cset.line_feed.contained_at (chunk_slice, ptr - self.tokenizer.cset.line_feed.len ()) {
+                            ptr -= self.tokenizer.cset.line_feed.len ();
+                            continue 'rtop;
+                        }
+                    }
+                }
+
+                {
+                    if self.tokenizer.cset.tab_h.len () <= ptr {
+                        if self.tokenizer.cset.tab_h.contained_at (chunk_slice, ptr - self.tokenizer.cset.tab_h.len ()) {
+                            ptr -= self.tokenizer.cset.tab_h.len ();
+                            continue 'rtop;
+                        }
+                    }
+                }
+
+                {
+                    if self.tokenizer.cset.carriage_return.len () <= ptr {
+                        if self.tokenizer.cset.carriage_return.contained_at (chunk_slice, ptr - self.tokenizer.cset.carriage_return.len ()) {
+                            ptr -= self.tokenizer.cset.carriage_return.len ();
+                            continue 'rtop;
+                        }
                     }
                 }
 
@@ -3248,124 +3319,45 @@ impl Reader {
     }
 
 
-    fn check_next_is_colon<R: Read> (&mut self, reader: &mut R, indent: usize, mut newlined: bool) -> bool {
+    fn check_next_is_char<R: Read> (&self, chr: Char, reader: &mut R, indent: usize, mut newlined: bool) -> bool {
         let mut pos = 0;
         let mut ind = 0;
 
         loop {
-            if let Some (_) = self.tokenizer.cset.colon.read_at (pos, reader) {
+            if reader.contains_copy_at (chr, pos) {
                 if newlined { return ind >= indent; }
-
                 return true;
             }
 
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.spaces) {
-                pos += self.tokenizer.spaces[idx].len ();
+            if reader.contains_copy_at (self.tokenizer.cset.space, pos) {
+                pos += self.tokenizer.cset.space.len ();
                 ind += 1;
 
                 continue;
             }
 
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.line_breakers) {
-                pos += self.tokenizer.line_breakers[idx].len ();
+            if reader.contains_copy_at (self.tokenizer.cset.crlf, pos) {
+                pos += self.tokenizer.cset.crlf.len ();
                 ind = 0;
                 newlined = true;
-
                 continue;
-            }
-
-            if let Some (add) = self.tokenizer.cset.hashtag.read_at (pos, reader) {
-                pos += add;
-
-                let (skept, _) = scan_until_at (pos, reader, &self.tokenizer.line_breakers);
-                pos += skept;
+            } else if reader.contains_copy_at (self.tokenizer.cset.line_feed, pos) {
+                pos += self.tokenizer.cset.line_feed.len ();
                 ind = 0;
                 newlined = true;
-
                 continue;
-            }
-
-            break;
-        }
-
-        false
-    }
-
-
-    fn check_next_is_right_curly<R: Read> (&mut self, reader: &mut R, indent: usize, mut newlined: bool) -> bool {
-        let mut pos = 0;
-        let mut ind = 0;
-
-        loop {
-            if let Some (_) = self.tokenizer.cset.bracket_curly_right.read_at (pos, reader) {
-                if newlined { return ind >= indent; }
-
-                return true;
-            }
-
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.spaces) {
-                pos += self.tokenizer.spaces[idx].len ();
-                ind += 1;
-
-                continue;
-            }
-
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.line_breakers) {
-                pos += self.tokenizer.line_breakers[idx].len ();
+            } else if reader.contains_copy_at (self.tokenizer.cset.carriage_return, pos) {
+                pos += self.tokenizer.cset.carriage_return.len ();
                 ind = 0;
                 newlined = true;
-
                 continue;
             }
 
-            if let Some (add) = self.tokenizer.cset.hashtag.read_at (pos, reader) {
-                pos += add;
+            if reader.contains_copy_at (self.tokenizer.cset.hashtag, pos) {
+                pos += self.tokenizer.cset.hashtag.len ();
 
-                let (skept, _) = scan_until_at (pos, reader, &self.tokenizer.line_breakers);
-                pos += skept;
-                ind = 0;
-                newlined = true;
-
-                continue;
-            }
-
-            break;
-        }
-
-        false
-    }
-
-
-    fn check_next_is_right_square<R: Read> (&mut self, reader: &mut R, indent: usize, mut newlined: bool) -> bool {
-        let mut pos = 0;
-        let mut ind = 0;
-
-        loop {
-            if let Some (_) = self.tokenizer.cset.bracket_square_right.read_at (pos, reader) {
-                if newlined { return ind >= indent; }
-
-                return true;
-            }
-
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.spaces) {
-                pos += self.tokenizer.spaces[idx].len ();
-                ind += 1;
-
-                continue;
-            }
-
-            if let Some ( (idx, _) ) = scan_one_at (pos, reader, &self.tokenizer.line_breakers) {
-                pos += self.tokenizer.line_breakers[idx].len ();
-                ind = 0;
-                newlined = true;
-
-                continue;
-            }
-
-            if let Some (add) = self.tokenizer.cset.hashtag.read_at (pos, reader) {
-                pos += add;
-
-                let (skept, _) = scan_until_at (pos, reader, &self.tokenizer.line_breakers);
+                // let (skept, _) = scan_until_at (pos, reader, &self.tokenizer.line_breakers);
+                let skept = self.tokenizer.line_at (reader, pos);
                 pos += skept;
                 ind = 0;
                 newlined = true;
@@ -3403,6 +3395,7 @@ mod tests {
 
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
+        let mut data = Data::with_capacity (16);
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
@@ -3415,7 +3408,7 @@ mod tests {
             assert_eq! (0, block.id.parent);
             assert_eq! (0, block.id.index);
 
-            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+            if let BlockType::Datum (datum) = block.cargo { data.push (datum); } else { assert! (false, "unexpected cargo") }
         } else { assert! (false, "no datum") }
 
 
@@ -3435,8 +3428,8 @@ mod tests {
             assert_eq! (2, block.id.index);
 
             if let BlockType::DirectiveTag ( (handle, tag) ) = block.cargo {
-                let handle = reader.data.chunk (&handle);
-                let tag = reader.data.chunk (&tag);
+                let handle = data.chunk (&handle);
+                let tag = data.chunk (&tag);
                 let handle = handle.as_slice ();
                 let tag = tag.as_slice ();
 
@@ -3796,7 +3789,7 @@ mod tests {
             assert_eq! (0, block.id.level);
             assert_eq! (0, block.id.parent);
             assert_eq! (1, block.id.index);
-
+            
             if let BlockType::Warning (msg, pos) = block.cargo {
                 assert_eq! (expected_message, msg);
                 assert_eq! (10, pos);
@@ -4130,6 +4123,7 @@ mod tests {
     fn test_directive_tag_ex_2_24 () {
         let src = "%TAG ! tag:clarkevans.com,2002:\n---\n";
 
+        let mut data = Data::with_capacity (16);
         let (sender, receiver) = channel ();
         let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
 
@@ -4144,7 +4138,7 @@ mod tests {
             assert_eq! (0, block.id.parent);
             assert_eq! (0, block.id.index);
 
-            if let BlockType::Datum (..) = block.cargo {} else { assert! (false, "unexpected cargo") }
+            if let BlockType::Datum (datum) = block.cargo { data.push (datum); } else { assert! (false, "unexpected cargo") }
         } else { assert! (false, "no datum") }
 
 
@@ -4154,8 +4148,8 @@ mod tests {
             assert_eq! (1, block.id.index);
 
             if let BlockType::DirectiveTag ( (handle, tag) ) = block.cargo {
-                let handle = reader.data.chunk (&handle);
-                let tag = reader.data.chunk (&tag);
+                let handle = data.chunk (&handle);
+                let tag = data.chunk (&tag);
                 let handle = handle.as_slice ();
                 let tag = tag.as_slice ();
 

@@ -1,4 +1,4 @@
-mod charset;
+pub mod charset;
 mod twine;
 pub mod encoding;
 

@@ -1,19 +1,31 @@
-use txt::encoding::utf8::UTF8;
+// use txt::encoding::utf8::UTF8;
 
 
 pub trait Unicode {
-    fn char_max_bytes_len (&self) -> u8;
+    fn char_max_bytes_len (self) -> u8;
 
-    fn check_bom (&self, bom: &[u8]) -> bool;
+    fn check_bom (self, bom: &[u8]) -> bool;
 
-    unsafe fn to_unicode_ptr (&self, ptr: *const u8, len: usize) -> (u32, u8);
+    unsafe fn to_unicode_ptr (self, ptr: *const u8, len: usize) -> (u32, u8);
 
-    fn to_unicode (&self, stream: &[u8]) -> (u32, u8);
+    fn to_unicode (self, stream: &[u8]) -> (u32, u8);
 
-    fn from_unicode (&self, point: u32) -> [u8; 5];
+    fn from_unicode (self, point: u32) -> [u8; 5];
+
+    fn check_is_dec_num (self, stream: &[u8]) -> bool;
+
+    fn check_is_flo_num (self, stream: &[u8]) -> bool;
+
+    fn extract_bin_digit (self, &[u8]) -> Option<(u8, u8)>;
+
+    fn extract_dec_digit (self, &[u8]) -> Option<(u8, u8)>;
+
+    fn extract_oct_digit (self, &[u8]) -> Option<(u8, u8)>;
+
+    fn extract_hex_digit (self, &[u8]) -> Option<(u8, u8)>;
 
 
-    fn str_to_bytes<'a, 'b> (&'a self, string: &'b str) -> Result<&'b [u8], Vec<u8>> {
+    fn str_to_bytes<'a> (self, string: &'a str) -> Result<&'a [u8], Vec<u8>>; /* {
         let utf8 = UTF8;
 
         let bytes = string.as_bytes ();
@@ -53,20 +65,20 @@ pub trait Unicode {
         }
 
         Err (result)
-    }
+    } */
 
 
-    fn string_to_bytes (&self, string: String) -> Vec<u8> {
+    fn string_to_bytes (self, string: String) -> Vec<u8>; /* {
         match self.str_to_bytes (string.as_ref ()) {
             Ok (_) => string.into_bytes (),
             Err (vec) => vec
         }
-    }
+    } */
 
 
-    fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> { self.bytes_to_string_times (bytes, 1) }
+    fn bytes_to_string (self, bytes: &[u8]) -> Result<String, ()>; /* { self.bytes_to_string_times (bytes, 1) } */
 
-    fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
+    fn bytes_to_string_times (self, bytes: &[u8], times: usize) -> Result<String, ()>; /* {
         let utf8 = UTF8;
 
         let capacity = bytes.len () * self.char_max_bytes_len () as usize;
@@ -109,5 +121,5 @@ pub trait Unicode {
         let string = unsafe { String::from_utf8_unchecked (result) };
 
         Ok (string)
-    }
+    } */
 }

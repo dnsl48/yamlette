@@ -4,19 +4,20 @@ extern crate num;
 
 
 use self::fraction::{ Fraction, BigFraction };
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 use self::num::BigUint;
 
 
 use txt::{ CharSet, Encoding, Twine };
 
-use model::{ EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use model::yaml::float::FloatValue;
 
 use std::any::Any;
 use std::i32;
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 
@@ -27,10 +28,11 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Timestamp {
-    encoding: Encoding,
-
-    dgt: [Char; 10],
+pub struct Timestamp<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     colon: Char,
     minus: Char,
     dot: Char,
@@ -45,58 +47,59 @@ pub struct Timestamp {
     s_quote: Char,
     d_quote: Char,
 
-    chr_len: usize
+    dgt: [Char; 10],
+
+    encoding: Encoding,
+
+    chr_len: usize,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Timestamp {
+impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Timestamp {
-        let chars = [&cset.colon, &cset.hyphen_minus, &cset.full_stop, &cset.letter_t, &cset.letter_t_t, &cset.letter_z,
-                     &cset.letter_t_z, &cset.plus, &cset.space, &cset.tab_h, &cset.digit_0, &cset.digit_1,
-                     &cset.digit_2, &cset.digit_3, &cset.digit_4, &cset.digit_5, &cset.digit_6, &cset.digit_7,
-                     &cset.digit_8, &cset.digit_9];
-
-        let mut char_len = 1;
-
-        for i in 0 .. chars.len () {
-            if chars[i].len () > char_len { char_len = chars[i].len (); }
-        }
-
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Timestamp<Char, DoubleChar> {
         Timestamp {
             encoding: cset.encoding,
 
             dgt: [
-                cset.digit_0.clone (),
-                cset.digit_1.clone (),
-                cset.digit_2.clone (),
-                cset.digit_3.clone (),
-                cset.digit_4.clone (),
-                cset.digit_5.clone (),
-                cset.digit_6.clone (),
-                cset.digit_7.clone (),
-                cset.digit_8.clone (),
-                cset.digit_9.clone ()
+                cset.digit_0,
+                cset.digit_1,
+                cset.digit_2,
+                cset.digit_3,
+                cset.digit_4,
+                cset.digit_5,
+                cset.digit_6,
+                cset.digit_7,
+                cset.digit_8,
+                cset.digit_9
             ],
 
-            colon: cset.colon.clone (),
-            minus: cset.hyphen_minus.clone (),
-            dot: cset.full_stop.clone (),
-            letter_t: cset.letter_t.clone (),
-            letter_t_t: cset.letter_t_t.clone (),
-            letter_z: cset.letter_z.clone (),
-            letter_t_z: cset.letter_t_z.clone (),
-            plus: cset.plus.clone (),
-            space: cset.space.clone (),
-            tab: cset.tab_h.clone (),
+            colon: cset.colon,
+            minus: cset.hyphen_minus,
+            dot: cset.full_stop,
+            letter_t: cset.letter_t,
+            letter_t_t: cset.letter_t_t,
+            letter_z: cset.letter_z,
+            letter_t_z: cset.letter_t_z,
+            plus: cset.plus,
+            space: cset.space,
+            tab: cset.tab_h,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            chr_len: char_len
+            chr_len: cset.longest_char,
+
+            _dchr: PhantomData
         }
     }
 
@@ -181,7 +184,14 @@ impl Timestamp {
 
 
 
-impl Model for Timestamp {
+impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -195,7 +205,7 @@ impl Model for Timestamp {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let value: TimestampValue = match <TaggedValue as Into<Result<TimestampValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -624,7 +634,7 @@ impl TimestampValue {
 
 
 impl Tagged for TimestampValue {
-    fn get_tag (&self) -> &Twine { Timestamp::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -633,17 +643,15 @@ impl Tagged for TimestampValue {
 
 
 
-
+/*
 pub struct TimestampFactory;
 
-
-
 impl Factory for TimestampFactory {
-    fn get_tag (&self) -> &Twine { Timestamp::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Timestamp::new (cset)) }
+    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Timestamp::new (cset)) }
 }
-
+*/
 
 
 
@@ -656,7 +664,7 @@ mod tests {
 
     use super::fraction::Fraction;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use model::yaml::float::FloatValue;
     use txt::get_charset_utf8;
 
@@ -666,7 +674,8 @@ mod tests {
 
     #[test]
     fn tag () {
-        let ts_coder = TimestampFactory.build_model (&get_charset_utf8 ());
+        // let ts_coder = TimestampFactory.build_model (&get_charset_utf8 ());
+        let ts_coder = Timestamp::new (&get_charset_utf8 ());
 
         assert_eq! (ts_coder.get_tag (), TAG);
     }
@@ -711,7 +720,7 @@ mod tests {
         let ts_coder = Timestamp::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = ts_coder.decode (true, "2016-01-16".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), Timestamp::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             if let Some (decoded) = tagged.as_any ().downcast_ref::<TimestampValue> () {
                 assert! (decoded.year.is_some ());
@@ -734,7 +743,7 @@ mod tests {
 
 
         if let Ok (tagged) = ts_coder.decode (true, "23:59:11".as_bytes ())  {
-            assert_eq! (tagged.get_tag (), Timestamp::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             if let Some (decoded) = tagged.as_any ().downcast_ref::<TimestampValue> () {
                 assert! (decoded.year.is_none ());
@@ -758,7 +767,7 @@ mod tests {
 
 
         if let Ok (tagged) = ts_coder.decode (true, "2016-06-03T23:59:11.0045-12:25".as_bytes ())  {
-            assert_eq! (tagged.get_tag (), Timestamp::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             if let Some (decoded) = tagged.as_any ().downcast_ref::<TimestampValue> () {
                 assert! (decoded.year.is_some ());

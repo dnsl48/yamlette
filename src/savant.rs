@@ -3,31 +3,44 @@ extern crate skimmer;
 use model::schema::Schema;
 use model::{ Model, TaggedValue };
 
-use txt::{ CharSet, Twine };
+use txt::Twine;
 
 use sage::{ Idea, YamlVersion, SageError };
 
-use self::skimmer::{ Chunk, Data, Marker, Rune, Symbol };
+use self::skimmer::{ Chunk, Data, Marker, Rune };
+use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
 
 use reader::{ Block, BlockType, Node, NodeKind };
 
+use std::marker::PhantomData;
 
 
 
-pub struct Savant<S> {
+pub struct Savant<Char, DoubleChar, S>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static,
+    S: Schema<Char, DoubleChar>
+{
     yaml_version: YamlVersion,
     data: Data,
     schema: S,
     tag_handles: Vec<(Twine, Twine)>,
     buf_literal_block: Option<(usize, Vec<Result<Marker, (Rune, usize)>>)>,
+
+    _char: PhantomData<Char>,
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl<S: Schema> Savant<S> {
-    pub fn new (cset: CharSet, mut schema: S) -> Savant<S> {
-        schema.init (&cset);
-
+impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static,
+    S: Schema<Char, DoubleChar>
+{
+    pub fn new (schema: S) -> Savant<Char, DoubleChar, S> {
         let mut tag_handles: Vec<(Twine, Twine)>;
 
         {
@@ -42,13 +55,18 @@ impl<S: Schema> Savant<S> {
             schema: schema,
             tag_handles: tag_handles,
             buf_literal_block: None,
+            _char: PhantomData,
+            _dchr: PhantomData
         }
     }
 
 
     pub fn think (&mut self, block: Block) -> Result<Option<Idea>, SageError> {
         match block.cargo {
-            BlockType::StreamEnd => Ok (Some (Idea::Done)),
+            BlockType::StreamEnd => {
+                self.data.clear ();
+                Ok (Some (Idea::Done))
+            }
 
             BlockType::Datum (datum) => {
                 self.data.push (datum);
@@ -63,9 +81,9 @@ impl<S: Schema> Savant<S> {
                 self.reg_tag_handle (s, h)
             }
 
-            BlockType::DocStart => return Ok (Some (Idea::Dawn)),
+            BlockType::DocStart => Ok (Some (Idea::Dawn)),
 
-            BlockType::DocEnd => return Ok (Some (Idea::Dusk)),
+            BlockType::DocEnd => Ok (Some (Idea::Dusk)),
 
             BlockType::Error (message, position) => Ok (Some (Idea::ReadError (block.id, position, message))),
 
@@ -218,8 +236,8 @@ impl<S: Schema> Savant<S> {
         tag: Option<Marker>,
         marker: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>
     ) -> Result<(Option<String>, TaggedValue), SageError> {
-        let anchor: Option<String> = try! (self.read_anchor (anchor));
-        let tag: Option<String> = try! (self.read_tag (tag));
+        let anchor: Option<String> = self.read_anchor (anchor) ?;
+        let tag: Option<String> = self.read_tag (tag) ?;
 
         let mut decoded: Result<TaggedValue, ()> = Err ( () );
 
@@ -245,16 +263,23 @@ impl<S: Schema> Savant<S> {
                 Chunk::from (v)
             }
         };
+        let chunk = chunk.as_slice ();
 
-        let model: Option<(&Model, bool)> = {
-            let empty = String::with_capacity (0);
-            let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
+            if let Some (ref tag) = tag {
+                self.lookup_model (tag, |m, e| {
+                    if !m.is_decodable () { return false }
+                    decoded = self.decode (m, e, chunk);
+                    decoded.is_ok ()
+                })
+            } else {
+                if let Some (v) = match self.yaml_version {
+                    YamlVersion::V1x1 => self.schema.try_decodable_models_11 (chunk),
+                    YamlVersion::V1x2 => self.schema.try_decodable_models (chunk)
+                } { decoded = Ok (v) };
 
-            self.lookup_model (&tag, |m, e| {
-                if !m.is_decodable () { return false }
-                decoded = self.decode (m, e, chunk.as_slice ());
-                decoded.is_ok ()
-            })
+                None
+            }
         };
 
         let node = if decoded.is_ok () {
@@ -262,7 +287,7 @@ impl<S: Schema> Savant<S> {
         } else {
             match model {
                 Some ( (model, explicit) ) => {
-                    match self.decode (model, explicit, chunk.as_slice ()) {
+                    match self.decode (model, explicit, chunk) {
                         Ok ( v ) => v,
                         Err ( () ) => return Err ( SageError::Error (Twine::from ("Could not decode value")) )
                     }
@@ -277,7 +302,7 @@ impl<S: Schema> Savant<S> {
                         meta = m.meta_init (
                             anchor.clone (),
                             self.resolve_tag (&tag),
-                            chunk.as_slice ()
+                            chunk
                         );
                     }
 
@@ -303,18 +328,20 @@ impl<S: Schema> Savant<S> {
 
 
     fn read_map (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Twine, Option<String>), (Option<String>, Option<String>)>, SageError> {
-        let anchor: Option<String> = try! (self.read_anchor (anchor));
-        let tag: Option<String> = try! (self.read_tag (tag));
+        let anchor: Option<String> = self.read_anchor (anchor) ?;
+        let tag: Option<String> = self.read_tag (tag) ?;
 
-        let (ftag, found): (Twine, bool) = {
-            let empty = String::with_capacity (0);
-            let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
+        let (ftag, found): (Twine, bool) = if let Some (ref tag) = tag {
+            // let empty = String::with_capacity (0);
+            // let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
-            if let Some ( (m, f) ) = self.lookup_model (&tag, |m, _| { m.is_dictionary () }) {
+            if let Some ( (m, f) ) = self.lookup_model (tag, |m, _| { m.is_dictionary () }) {
                 (m.get_tag ().clone (), f)
             } else {
                 (Twine::empty (), false)
             }
+        } else {
+            (self.schema.get_tag_model_map ().clone (), true)
         };
 
         if found {
@@ -326,18 +353,20 @@ impl<S: Schema> Savant<S> {
 
 
     fn read_seq (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Twine, Option<String>), (Option<String>, Option<String>)>, SageError> {
-        let anchor: Option<String> = try! (self.read_anchor (anchor));
-        let tag: Option<String> = try! (self.read_tag (tag));
+        let anchor: Option<String> = self.read_anchor (anchor) ?;
+        let tag: Option<String> = self.read_tag (tag) ?;
 
-        let (ftag, found): (Twine, bool) = {
-            let empty = String::with_capacity (0);
-            let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
+        let (ftag, found): (Twine, bool) = if let Some (ref tag) = tag {
+            // let empty = String::with_capacity (0);
+            // let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
-            if let Some ( (m, f) ) = self.lookup_model (&tag, |m, _| { m.is_sequence () }) {
+            if let Some ( (m, f) ) = self.lookup_model (tag, |m, _| { m.is_sequence () }) {
                 (m.get_tag ().clone (), f)
             } else {
                 (Twine::empty (), false)
             }
+        } else {
+            (self.schema.get_tag_model_seq ().clone (), true)
         };
 
         if found {
@@ -350,12 +379,15 @@ impl<S: Schema> Savant<S> {
 
 
     fn read_null (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<(Option<String>, TaggedValue), SageError> {
-       let anchor: Option<String> = self.read_anchor (anchor) ?;
+        let anchor: Option<String> = self.read_anchor (anchor) ?;
         let tag: Option<String> = self.read_tag (tag) ?;
 
-        let model = self.read_model (tag, |m, _| { !m.is_collection () && m.has_default () }) ?;
-
-        let tagged_value = model.get_default ();
+        let tagged_value = if let Some (tag) = tag {
+            let model = self.read_model (tag, |m, _| { !m.is_collection () && m.has_default () }) ?;
+            model.get_default ()
+        } else {
+            self.schema.get_model_null ().get_default ()
+        };
 
         Ok ((anchor, tagged_value))
     }
@@ -420,10 +452,8 @@ impl<S: Schema> Savant<S> {
     }
 
 
-    fn read_model<F: FnMut (&Model, bool) -> bool> (&self, tag: Option<String>, predicate: F) -> Result<&Model, SageError> {
-        let tag = if let Some (tag) = tag { tag } else { String::with_capacity (0) };
-
-        let model: Option<(&Model, bool)> = self.lookup_model (&tag, predicate);
+    fn read_model<F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: String, predicate: F) -> Result<&Model<Char=Char, DoubleChar=DoubleChar>, SageError> {
+        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = self.lookup_model (&tag, predicate);
 
         match model {
             Some ( (model, _) ) => Ok (model),
@@ -433,17 +463,14 @@ impl<S: Schema> Savant<S> {
     }
 
 
-    fn lookup_model<T: AsRef<str>, F: FnMut (&Model, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model, bool)> {
+    fn lookup_model<T: AsRef<str>, F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> {
         let tag = tag.as_ref ();
-        let tag = if tag.len () == 0 { "" } else { tag.as_ref () };
 
         if tag.starts_with ("!<") && tag.ends_with (">") {
             let tag: &str = &tag[2 .. tag.len () - 1];
 
             if tag.len () > 0 {
-                if let Some (m) = self.schema.look_up_model (tag) {
-                    return Some ( (m, true) )
-                }
+                if let Some (m) = self.schema.look_up_model (tag) { return Some ( (m, true) ) }
             }
         } else {
             let mut result: bool = false;
@@ -534,7 +561,7 @@ impl<S: Schema> Savant<S> {
     }
 
 
-    fn decode (&self, model: &Model, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
+    fn decode (&self, model: &Model<Char=Char, DoubleChar=DoubleChar>, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         match self.yaml_version {
             YamlVersion::V1x1 => model.decode11 (explicit, value),
             YamlVersion::V1x2 => model.decode   (explicit, value)

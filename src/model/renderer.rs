@@ -1,6 +1,6 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Rune, Symbol };
+use self::skimmer::symbol::CopySymbol;
 
 use txt::CharSet;
 
@@ -156,8 +156,12 @@ impl Node {
 
 
 #[derive(Clone)]
-pub struct Renderer {
-    newline: Rune,
+pub struct Renderer<Char, DoubleChar>
+  where
+    Char: CopySymbol,
+    DoubleChar: CopySymbol
+{
+    newline: Result<Char, DoubleChar>,
 
     ampersand: Char,
     asterisk: Char,
@@ -186,34 +190,38 @@ pub struct Renderer {
 }
 
 
-impl Renderer {
-    pub fn new (cset: &CharSet) -> Renderer {
+impl<Char, DoubleChar> Renderer<Char, DoubleChar>
+  where
+    Char: CopySymbol,
+    DoubleChar: CopySymbol
+{
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
         Renderer {
-            newline: Rune::from (cset.line_feed.clone ()),
-            ampersand: cset.ampersand.clone (),
-            asterisk: cset.asterisk.clone (),
-            gt: cset.greater_than.clone (),
-            lt: cset.less_than.clone (),
-            exclamation: cset.exclamation.clone (),
-            hyphen: cset.hyphen_minus.clone (),
-            dot: cset.full_stop.clone (),
-            apostrophe: cset.apostrophe.clone (),
-            quotation: cset.quotation.clone (),
-            question: cset.question.clone (),
-            space: cset.space.clone (),
-            comma: cset.comma.clone (),
-            colon: cset.colon.clone (),
-            square_bracket_open: cset.bracket_square_left.clone (),
-            square_bracket_close: cset.bracket_square_right.clone (),
-            curly_bracket_open: cset.bracket_curly_left.clone (),
-            curly_bracket_close: cset.bracket_curly_right.clone ()
+            newline: Result::Ok (cset.line_feed),
+            ampersand: cset.ampersand,
+            asterisk: cset.asterisk,
+            gt: cset.greater_than,
+            lt: cset.less_than,
+            exclamation: cset.exclamation,
+            hyphen: cset.hyphen_minus,
+            dot: cset.full_stop,
+            apostrophe: cset.apostrophe,
+            quotation: cset.quotation,
+            question: cset.question,
+            space: cset.space,
+            comma: cset.comma,
+            colon: cset.colon,
+            square_bracket_open: cset.bracket_square_left,
+            square_bracket_close: cset.bracket_square_right,
+            curly_bracket_open: cset.bracket_curly_left,
+            curly_bracket_close: cset.bracket_curly_right
         }
     }
 
 
-    pub fn new_crlf (cset: &CharSet) -> Renderer {
+    pub fn new_crlf (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
         let mut renderer = Renderer::new (cset);
-        renderer.newline = Rune::from (cset.crlf.clone ());
+        renderer.newline = Result::Err (cset.crlf);
         renderer
     }
 

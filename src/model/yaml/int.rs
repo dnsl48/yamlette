@@ -2,18 +2,18 @@ extern crate num;
 extern crate skimmer;
 
 use self::num::{ BigInt, BigUint, ToPrimitive };
-use self::skimmer::symbol::{ Char, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::{ CharSet, Encoding, Unicode, Twine }; 
 
-use model::{ model_issue_rope, EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
 use std::fmt;
 use std::ops::{ AddAssign, MulAssign, Neg };
 use std::iter::Iterator;
-
+use std::marker::PhantomData;
 
 
 
@@ -135,9 +135,13 @@ impl fmt::Display for Mint {
 
 
 
-pub struct Int {
-    encoding: Encoding,
-    tbl: [Char; 22],
+pub struct Int<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    digit_0: Char,
+
     colon: Char,
     minus: Char,
     plus: Char,
@@ -153,80 +157,48 @@ pub struct Int {
     s_quote: Char,
     d_quote: Char,
 
-    char_len: usize
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Int {
+impl<Char, DoubleChar> Int<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-
-    pub fn new (cset: &CharSet) -> Int {
-        let chars = [&cset.colon, &cset.hyphen_minus, &cset.plus, &cset.low_line, &cset.letter_b, &cset.letter_o, &cset.letter_x,
-                     &cset.digit_0, &cset.digit_1, &cset.digit_2, &cset.digit_3, &cset.digit_4, &cset.digit_5,
-                     &cset.digit_6, &cset.digit_7, &cset.digit_8, &cset.digit_9, &cset.letter_a, &cset.letter_b,
-                     &cset.letter_c, &cset.letter_d, &cset.letter_e, &cset.letter_f, &cset.letter_t_a, &cset.letter_t_b,
-                     &cset.letter_t_c, &cset.letter_t_d, &cset.letter_t_e, &cset.letter_t_f, &cset.line_feed,
-                     &cset.carriage_return, &cset.space, &cset.tab_h];
-
-        let mut char_len = 1;
-
-        for i in 0 .. chars.len () {
-            if chars[i].len () > char_len { char_len = chars[i].len (); }
-        }
-
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Int<Char, DoubleChar> {
         Int {
             encoding: cset.encoding,
 
-            char_len: char_len,
+            colon: cset.colon,
+            minus: cset.hyphen_minus,
+            plus: cset.plus,
+            underscore: cset.low_line,
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
+            space: cset.space,
+            tab_h: cset.tab_h,
+            letter_b: cset.letter_b,
+            letter_o: cset.letter_o,
+            letter_x: cset.letter_x,
 
-            colon: cset.colon.clone (),
-            minus: cset.hyphen_minus.clone (),
-            plus: cset.plus.clone (),
-            underscore: cset.low_line.clone (),
-            line_feed: cset.line_feed.clone (),
-            carriage_return: cset.carriage_return.clone (),
-            space: cset.space.clone (),
-            tab_h: cset.tab_h.clone (),
-            letter_b: cset.letter_b.clone (),
-            letter_o: cset.letter_o.clone (),
-            letter_x: cset.letter_x.clone (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone (),
+            digit_0: cset.digit_0,
 
-            tbl: [
-                cset.digit_0.clone (),
-                cset.digit_1.clone (),
-                cset.digit_2.clone (),
-                cset.digit_3.clone (),
-                cset.digit_4.clone (),
-                cset.digit_5.clone (),
-                cset.digit_6.clone (),
-                cset.digit_7.clone (),
-                cset.digit_8.clone (),
-                cset.digit_9.clone (),
-                cset.letter_a.clone (),
-                cset.letter_b.clone (),
-                cset.letter_c.clone (),
-                cset.letter_d.clone (),
-                cset.letter_e.clone (),
-                cset.letter_f.clone (),
-                cset.letter_t_a.clone (),
-                cset.letter_t_b.clone (),
-                cset.letter_t_c.clone (),
-                cset.letter_t_d.clone (),
-                cset.letter_t_e.clone (),
-                cset.letter_t_f.clone ()
-            ]
+            _dchr: PhantomData
         }
     }
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], sexagesimals: bool, shortocts: bool) -> Result<Mint, ()> {
-        let mut val = Mint::new ();
-        let mut state: u8 = 0;
+        if !explicit && !self.encoding.check_is_dec_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
         const STATE_SIGN_N: u8 = 3;
@@ -238,20 +210,21 @@ impl Int {
         const STATE_DEC: u8 = 4 + 64;
         const STATE_END: u8 = 4 + 128;
 
+        let mut quote_state: u8 = 0; // 1 - single, 2 - double
+        let mut state: u8 = 0;
 
-        let vlen: usize = value.len ();
         let mut ptr: usize = 0;
-
-        let mut quote_state = 0; // 1 - single, 2 - double
-
+        let mut val = Mint::new ();
 
         'top: loop {
-            if ptr >= vlen { break; }
+            if ptr >= value.len () { break; }
 
 
             if quote_state == 1 {
                 if self.s_quote.contained_at (value, ptr) {
-                    if ptr == self.s_quote.len () { return Err ( () ) }
+                    if ptr == self.s_quote.len () {
+                        return Err ( () )
+                    }
                     ptr += self.s_quote.len ();
                     quote_state = 0;
                     state = state | STATE_END;
@@ -333,9 +306,9 @@ impl Int {
 
 
             if state & STATE_NUM == 0 {
-                if self.tbl[0].contained_at (value, ptr) {
+                if self.digit_0.contained_at (value, ptr) {
                     state = state | STATE_NUM;
-                    ptr += self.tbl[0].len ();
+                    ptr += self.digit_0.len ();
 
                     if self.letter_b.contained_at (value, ptr) {
                         state = state | STATE_BIN;
@@ -355,53 +328,8 @@ impl Int {
                         continue;
                     }
 
-                    if self.tbl[0].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[1].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[2].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[3].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[4].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[5].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[6].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[7].contained_at (value, ptr) {
-                        state = state | if shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    if self.tbl[8].contained_at (value, ptr) {
-                        state = state | STATE_DEC;
-                        continue;
-                    }
-
-                    if self.tbl[9].contained_at (value, ptr) {
-                        state = state | STATE_DEC;
+                    if let Some ( (d, _) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                        state = state | if d < 8 && shortocts { STATE_OCT } else { STATE_DEC };
                         continue;
                     }
 
@@ -410,23 +338,16 @@ impl Int {
                 }
 
                 state = state | STATE_DEC;
-                continue;
             }
 
             if state & STATE_BIN == STATE_BIN {
                 'bin: loop {
-                    if ptr >= vlen { break 'top; }
+                    if ptr >= value.len () { break 'top; }
 
-                    if self.tbl[0].contained_at (value, ptr) {
+                    if let Some ( (d, l) ) = self.encoding.extract_bin_digit (&value[ptr ..]) {
                         val *= 2;
-                        ptr += self.tbl[0].len ();
-                        continue;
-                    }
-
-                    if self.tbl[1].contained_at (value, ptr) {
-                        val *= 2;
-                        val += 1;
-                        ptr += self.tbl[1].len ();
+                        val += d as i64;
+                        ptr += l as usize;
                         continue;
                     }
 
@@ -443,22 +364,18 @@ impl Int {
 
             if state & STATE_OCT == STATE_OCT {
                 'oct: loop {
-                    if ptr >= vlen { break 'top; }
+                    if ptr >= value.len () { break 'top; }
 
-                    for idx in 0 .. 8 {
-                        if self.tbl[idx].contained_at (value, ptr) {
-                            val *= 8;
-                            if idx > 0 {
-                                val += idx as i64;
-                            }
-                            ptr += self.tbl[idx].len ();
-                            continue 'oct;
-                        }
+                    if let Some ( (d, l) ) = self.encoding.extract_oct_digit (&value[ptr ..]) {
+                        val *= 8;
+                        val += d as i64;
+                        ptr += l as usize;
+                        continue 'oct;
                     }
 
                     if self.underscore.contained_at (value, ptr) {
                         ptr += self.underscore.len ();
-                        continue;
+                        continue 'oct;
                     }
 
                     state = state | STATE_END;
@@ -469,22 +386,18 @@ impl Int {
 
             if state & STATE_HEX == STATE_HEX {
                 'hex: loop {
-                    if ptr >= vlen { break 'top; }
+                    if ptr >= value.len () { break 'top; }
 
-                    for idx in 0 .. 22 {
-                        if self.tbl[idx].contained_at (value, ptr) {
-                            val *= 16;
-                            if idx > 0 {
-                                val += if idx > 15 { idx - 6 } else { idx } as i64;
-                            }
-                            ptr += self.tbl[idx].len ();
-                            continue 'hex;
-                        }
+                    if let Some ( (d, l) ) = self.encoding.extract_hex_digit (&value[ptr ..]) {
+                        val *= 16;
+                        val += d as i64;
+                        ptr += l as usize;
+                        continue 'hex;
                     }
 
                     if self.underscore.contained_at (value, ptr) {
                         ptr += self.underscore.len ();
-                        continue;
+                        continue 'hex;
                     }
 
                     state = state | STATE_END;
@@ -494,22 +407,18 @@ impl Int {
 
             if state & STATE_DEC == STATE_DEC {
                 'dec: loop {
-                    if ptr >= vlen { break 'top; }
+                    if ptr >= value.len () { break 'top; }
 
-                    for idx in 0 .. 10 {
-                        if self.tbl[idx].contained_at (value, ptr) {
-                            val *= 10;
-                            if idx > 0 {
-                                val += idx as i64;
-                            }
-                            ptr += self.tbl[idx].len ();
-                            continue 'dec;
-                        }
+                    if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                        val *= 10;
+                        val += d as i64;
+                        ptr += l as usize;
+                        continue 'dec;
                     }
 
                     if self.underscore.contained_at (value, ptr) {
                         ptr += self.underscore.len ();
-                        continue;
+                        continue 'dec;
                     }
 
                     if sexagesimals && self.colon.contained_at (value, ptr) {
@@ -517,12 +426,10 @@ impl Int {
 
                         let digit: i64;
                         'dig1: loop {
-                            for idx in 0 .. 10 {
-                                if self.tbl[idx].contained_at (value, ptr) {
-                                    ptr += self.tbl[idx].len ();
-                                    digit = idx as i64;
-                                    break 'dig1;
-                                }
+                            if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                                digit = d as i64;
+                                ptr += l as usize;
+                                break 'dig1;
                             }
 
                             return Err ( () )
@@ -532,13 +439,12 @@ impl Int {
 
                         if digit < 6 {
                             'dig2: loop {
-                                for idx in 0 .. 10 {
-                                    if self.tbl[idx].contained_at (value, ptr) {
-                                        ptr += self.tbl[idx].len ();
-                                        digit2 = Some (idx as i64);
-                                        break 'dig2;
-                                    }
+                                if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
+                                    digit2 = Some (d as i64);
+                                    ptr += l as usize;
+                                    break 'dig2;
                                 }
+
                                 break;
                             }
                         }
@@ -550,7 +456,7 @@ impl Int {
                         val *= 60;
                         val += num;
 
-                        if vlen == ptr {
+                        if value.len () == ptr {
                             break 'top;
                         } else if self.colon.contained_at (value, ptr) {
                             continue;
@@ -577,7 +483,14 @@ impl Int {
 
 
 
-impl Model for Int {
+impl<Char, DoubleChar> Model for Int<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -591,7 +504,7 @@ impl Model for Int {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<IntValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -601,46 +514,19 @@ impl Model for Int {
         let alias = value.take_alias ();
         let value = value.value;
 
-        let src = format! ("{}", value);
-
-        let mut production: Vec<u8> = Vec::with_capacity (src.len () * self.char_len);
-
-        for b in src.as_bytes () {
-            let w = match *b {
-                b'0' => &self.tbl[0],
-                b'1' => &self.tbl[1],
-                b'2' => &self.tbl[2],
-                b'3' => &self.tbl[3],
-                b'4' => &self.tbl[4],
-                b'5' => &self.tbl[5],
-                b'6' => &self.tbl[6],
-                b'7' => &self.tbl[7],
-                b'8' => &self.tbl[8],
-                b'9' => &self.tbl[9],
-
-                b'-' => &self.minus,
-
-                _ => unreachable! () // TODO: make sure that's true
-            };
-
-            production.extend (w.as_slice ())
-        }
-
-        let node = Node::String (EncodedString::from (production));
-
+        let value = format! ("{}", value);
+        let node = Node::String (EncodedString::from (self.encoding.string_to_bytes (value)));
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
 
 
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let result = try! (self.base_decode (explicit, value, false, false));
-        Ok ( TaggedValue::from (IntValue::new (result)) )
+        Ok ( TaggedValue::from (IntValue::new (self.base_decode (explicit, value, false, false) ?)) )
     }
 
 
     fn decode11 (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let result = try! (self.base_decode (explicit, value, true, true));
-        Ok ( TaggedValue::from (IntValue::new (result)) )
+        Ok ( TaggedValue::from (IntValue::new (self.base_decode (explicit, value, true, true) ?)) )
     }
 }
 
@@ -695,7 +581,7 @@ impl ToPrimitive for IntValue {
 
 
 impl Tagged for IntValue {
-    fn get_tag (&self) -> &Twine { Int::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -772,25 +658,12 @@ from_int! (i8, u8, i16, u16, i32, u32, i64, u64, isize, usize, BigInt, BigUint);
 
 
 
-pub struct IntFactory;
-
-
-
-impl Factory for IntFactory {
-    fn get_tag (&self) -> &Twine { Int::get_tag () }
-
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Int::new (cset)) }
-}
-
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
     use super::num::BigInt;
 
-    use model::{ Factory, Tagged, Renderer };
+    use model::{ Tagged, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -800,7 +673,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
         assert_eq! (int.get_tag (), TAG);
     }
@@ -810,7 +683,7 @@ mod tests {
     #[test]
      fn encode () {
         let renderer = Renderer::new (&get_charset_utf8 ());
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
 
         let options = [0b0000_1111, 0o12, 0xA0, 581, -8888];
@@ -829,18 +702,18 @@ mod tests {
 
     #[test]
     fn decode () {
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
 
         let options = ["0b0000_1111", "0b1010_0111_0100_1010_1110", "02472256",
                        "0o2472256", "0x_0A_74_AE", "0x_0a_74_ae", "685230",
-                       "+685_230", "0b0000_1111  	"];
-        let results = [15, 685230, 2472256, 685230, 685230, 685230, 685230, 685230, 15];
+                       "+685_230", "-685_230", "0b0000_1111  	"];
+        let results = [15, 685230, 2472256, 685230, 685230, 685230, 685230, 685230, -685230, 15];
 
 
         for i in 0 .. options.len () {
-            if let Ok (tagged) = int.decode (true, &options[i].to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Int::get_tag ());
+            if let Ok (tagged) = int.decode (false, &options[i].to_string ().into_bytes ()) {
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let intval: Result<IntValue, _> = tagged.into ();
                 let intval = intval.unwrap ();
@@ -862,7 +735,7 @@ mod tests {
 
     #[test]
     fn decode11 () {
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
 
         let options = ["0b0000_1111", "0b1010_0111_0100_1010_1110", "02472256", "0o2472256", "0x_0A_74_AE", "0x_0a_74_ae", "685230", "+685_230", "190:20:30"];
@@ -871,7 +744,7 @@ mod tests {
 
         for i in 0 .. options.len () {
             if let Ok (tagged) = int.decode11 (true, &options[i].to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), Int::get_tag ());
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
                 let intval: Result<IntValue, _> = tagged.into ();
                 let intval = intval.unwrap ();
@@ -889,13 +762,13 @@ mod tests {
 
     #[test]
     fn decode_bigint () {
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
         let option = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
         let result = BigInt::from_str (option).unwrap ();
 
         if let Ok (tagged) = int.decode (true, &option.to_string ().into_bytes ()) {
-            assert_eq! (tagged.get_tag (), Int::get_tag ());
+            assert_eq! (tagged.get_tag (), &TWINE_TAG);
 
             let intval: Result<IntValue, _> = tagged.into ();
             let intval = intval.unwrap ();
@@ -912,7 +785,7 @@ mod tests {
 
     #[test]
     fn decode_nl () {
-        let int = IntFactory.build_model (&get_charset_utf8 ());
+        let int = Int::new (&get_charset_utf8 ());
 
         if let Ok (_) = int.decode (true, &"\n".to_string ().into_bytes ()) {
             assert! (false);

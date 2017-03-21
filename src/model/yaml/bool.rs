@@ -1,14 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Char, Word, Rune, Symbol };
+use self::skimmer::symbol::{ CopySymbol, Combo };
 
 use txt::{ CharSet, Encoding, Unicode, Twine };
 
-use model::{ model_issue_rope, EncodedString, Factory, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
 use std::iter::Iterator;
+use std::marker::PhantomData;
 
 
 
@@ -17,110 +18,306 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-
-pub struct Bool {
-    encoding: Encoding,
-
-    true_words: [Rune; 11],
-    false_words: [Rune; 11],
-
+pub struct Bool<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     line_feed: Char,
     carriage_return: Char,
     space: Char,
     tab_h: Char,
 
+    letter_t: Char,
+    letter_r: Char,
+    letter_u: Char,
+    letter_e: Char,
+
+    letter_t_t: Char,
+    letter_t_r: Char,
+    letter_t_u: Char,
+    letter_t_e: Char,
+
+    letter_f: Char,
+    letter_a: Char,
+    letter_l: Char,
+    letter_s: Char,
+
+    letter_t_f: Char,
+    letter_t_a: Char,
+    letter_t_l: Char,
+    letter_t_s: Char,
+
+    letter_n: Char,
+    letter_t_n: Char,
+
+    letter_o: Char,
+    letter_t_o: Char,
+
+    letter_y: Char,
+    letter_t_y: Char,
+
     s_quote: Char,
-    d_quote: Char
+    d_quote: Char,
+
+    encoding: Encoding,
+
+    _dchr: PhantomData<DoubleChar>
 }
 
 
 
-impl Bool {
+impl<Char, DoubleChar> Bool<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
-    pub fn new (cset: &CharSet) -> Bool {
+    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Bool<Char, DoubleChar> {
         Bool {
             encoding: cset.encoding,
 
-            true_words: [
-                Rune::from (Word::combine (&[&cset.letter_t, &cset.letter_r, &cset.letter_u, &cset.letter_e])),         // true
-                Rune::from (Word::combine (&[&cset.letter_t_t, &cset.letter_r, &cset.letter_u, &cset.letter_e])),       // True
-                Rune::from (Word::combine (&[&cset.letter_t_t, &cset.letter_t_r, &cset.letter_t_u, &cset.letter_t_e])), // TRUE
+            line_feed: cset.line_feed,
+            carriage_return: cset.carriage_return,
+            space: cset.space,
+            tab_h: cset.tab_h,
 
-                Rune::from (Word::combine (&[&cset.letter_o, &cset.letter_n])),     // on
-                Rune::from (Word::combine (&[&cset.letter_t_o, &cset.letter_n])),   // On
-                Rune::from (Word::combine (&[&cset.letter_t_o, &cset.letter_t_n])), // ON
+            letter_t: cset.letter_t,
+            letter_r: cset.letter_r,
+            letter_u: cset.letter_u,
+            letter_e: cset.letter_e,
 
-                Rune::from (Word::combine (&[&cset.letter_y, &cset.letter_e, &cset.letter_s])),       // yes
-                Rune::from (Word::combine (&[&cset.letter_t_y, &cset.letter_e, &cset.letter_s])),     // Yes
-                Rune::from (Word::combine (&[&cset.letter_t_y, &cset.letter_t_e, &cset.letter_t_s])), // YES
+            letter_t_t: cset.letter_t_t,
+            letter_t_r: cset.letter_t_r,
+            letter_t_u: cset.letter_t_u,
+            letter_t_e: cset.letter_t_e,
 
-                Rune::from (cset.letter_y.clone ()),   // y
-                Rune::from (cset.letter_t_y.clone ())  // Y
-            ],
+            letter_f: cset.letter_f,
+            letter_a: cset.letter_a,
+            letter_l: cset.letter_l,
+            letter_s: cset.letter_s,
 
-            false_words: [
-                Rune::from (Word::combine (&[&cset.letter_f, &cset.letter_a, &cset.letter_l, &cset.letter_s, &cset.letter_e])),           // false
-                Rune::from (Word::combine (&[&cset.letter_t_f, &cset.letter_a, &cset.letter_l, &cset.letter_s, &cset.letter_e])),         // False
-                Rune::from (Word::combine (&[&cset.letter_t_f, &cset.letter_t_a, &cset.letter_t_l, &cset.letter_t_s, &cset.letter_t_e])), // FALSE
+            letter_t_f: cset.letter_t_f,
+            letter_t_a: cset.letter_t_a,
+            letter_t_l: cset.letter_t_l,
+            letter_t_s: cset.letter_t_s,
 
-                Rune::from (Word::combine (&[&cset.letter_o, &cset.letter_f, &cset.letter_f])),       // off
-                Rune::from (Word::combine (&[&cset.letter_t_o, &cset.letter_f, &cset.letter_f])),     // Off
-                Rune::from (Word::combine (&[&cset.letter_t_o, &cset.letter_t_f, &cset.letter_t_f])), // OFF
+            letter_n: cset.letter_n,
+            letter_t_n: cset.letter_t_n,
 
-                Rune::from (Word::combine (&[&cset.letter_n, &cset.letter_o])),     // no
-                Rune::from (Word::combine (&[&cset.letter_t_n, &cset.letter_o])),   // No
-                Rune::from (Word::combine (&[&cset.letter_t_n, &cset.letter_t_o])), // NO
+            letter_o: cset.letter_o,
+            letter_t_o: cset.letter_t_o,
 
-                Rune::from (cset.letter_n.clone ()),   // n
-                Rune::from (cset.letter_t_n.clone ())  // N
-            ],
+            letter_y: cset.letter_y,
+            letter_t_y: cset.letter_t_y,
 
-            line_feed: cset.line_feed.clone (),
-            carriage_return: cset.carriage_return.clone (),
-            space: cset.space.clone (),
-            tab_h: cset.tab_h.clone (),
+            s_quote: cset.apostrophe,
+            d_quote: cset.quotation,
 
-            s_quote: cset.apostrophe.clone (),
-            d_quote: cset.quotation.clone ()
+            _dchr: PhantomData
         }
     }
 
 
-    fn base_decode (&self, explicit: bool, value: &[u8], upto: usize) -> Result<bool, ()> {
-        let mut found: bool = false;
-        let mut val: bool = false;
-        let mut ptr: usize = 0;
-        let vlen: usize = value.len ();
+    fn base_decode (&self, explicit: bool, value: &[u8], yaml_11: bool) -> Result<bool, ()> {
+        let mut found_val: u8 = 0;
+        let mut quote_state: u8 = 0; // 1 - single, 2 - double
 
-        let mut quote_state = 0; // 1 - single, 2 - double
+        let mut ptr: usize = 0;
 
         if explicit {
-            if self.s_quote.contained_at (value, 0) {
+            if self.s_quote.contained_at_start (value) {
                 quote_state = 1;
                 ptr += self.s_quote.len ();
-            } else if self.d_quote.contained_at (value, 0) {
+            } else if self.d_quote.contained_at_start (value) {
                 quote_state = 2;
                 ptr += self.d_quote.len ();
             }
         }
 
-        for i in 0 .. upto {
-            if self.true_words[i].contained_at (value, ptr) {
-                found = true;
-                val = true;
-                ptr += self.true_words[i].len ();
-                break;
-            } else if self.false_words[i].contained_at (value, ptr) {
-                found = true;
-                val = false;
-                ptr += self.false_words[i].len ();
-                break;
+        if self.letter_t.contained_at (value, ptr) {
+            if self.letter_r.contained_at (value, ptr + self.letter_t.len ()) &&
+               self.letter_u.contained_at (value, ptr + self.letter_t.len () + self.letter_r.len ()) &&
+               self.letter_e.contained_at (value, ptr + self.letter_t.len () + self.letter_r.len () + self.letter_u.len ())
+            {
+                // found = true;
+                // val = true;
+                found_val = 3;
+                ptr += self.letter_t.len () + self.letter_r.len () + self.letter_u.len () + self.letter_e.len ();
+            }
+        }
+        else if self.letter_t_t.contained_at (value, ptr) {
+            if self.letter_r.contained_at (value, ptr + self.letter_t_t.len ()) &&
+               self.letter_u.contained_at (value, ptr + self.letter_t_t.len () + self.letter_r.len ()) &&
+               self.letter_e.contained_at (value, ptr + self.letter_t_t.len () + self.letter_r.len () + self.letter_u.len ())
+            {
+                // found = true;
+                // val = true;
+                found_val = 3;
+                ptr += self.letter_t_t.len () + self.letter_r.len () + self.letter_u.len () + self.letter_e.len ();
+            } else
+            if self.letter_t_r.contained_at (value, ptr + self.letter_t_t.len ()) &&
+               self.letter_t_u.contained_at (value, ptr + self.letter_t_t.len () + self.letter_t_r.len ()) &&
+               self.letter_t_e.contained_at (value, ptr + self.letter_t_t.len () + self.letter_t_r.len () + self.letter_t_u.len ())
+            {
+                // found = true;
+                // val = true;
+                found_val = 3;
+                ptr += self.letter_t_t.len () + self.letter_t_r.len () + self.letter_t_u.len () + self.letter_t_e.len ();
+            }
+        }
+        else if self.letter_f.contained_at (value, ptr) {
+            if self.letter_a.contained_at (value, ptr + self.letter_f.len ()) &&
+               self.letter_l.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len ()) &&
+               self.letter_s.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len () + self.letter_l.len ()) &&
+               self.letter_e.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len ())
+            {
+                // found = true;
+                // val = false;
+                found_val = 1;
+                ptr += self.letter_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len () + self.letter_e.len ();
+            }
+        }
+        else if self.letter_t_f.contained_at (value, ptr) {
+            if self.letter_a.contained_at (value, ptr + self.letter_t_f.len ()) &&
+               self.letter_l.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len ()) &&
+               self.letter_s.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len ()) &&
+               self.letter_e.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len ())
+            {
+                // found = true;
+                // val = false;
+                found_val = 1;
+                ptr += self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len () + self.letter_e.len ();
+            } else
+            if self.letter_t_a.contained_at (value, ptr + self.letter_t_f.len ()) &&
+               self.letter_t_l.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len ()) &&
+               self.letter_t_s.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len ()) &&
+               self.letter_t_e.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len () + self.letter_t_s.len ())
+            {
+                // found = true;
+                // val = false;
+                found_val = 1;
+                ptr += self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len () + self.letter_t_s.len () + self.letter_t_e.len ();
+            }
+        }
+        else if yaml_11 {
+            if self.letter_o.contained_at (value, ptr) {
+                if self.letter_n.contained_at (value, ptr + self.letter_o.len ()) {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_o.len () + self.letter_n.len ();
+                } else
+                if self.letter_f.contained_at (value, ptr + self.letter_o.len ()) &&
+                   self.letter_f.contained_at (value, ptr + self.letter_o.len () + self.letter_f.len ())
+                {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr += self.letter_o.len () + self.letter_f.len () + self.letter_f.len ();
+                }
+            }
+            else if self.letter_t_o.contained_at (value, ptr) {
+                if self.letter_n.contained_at (value, ptr + self.letter_t_o.len ()) {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_t_o.len () + self.letter_n.len ();
+                } else
+                if self.letter_t_n.contained_at (value, ptr + self.letter_t_o.len ()) {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_t_o.len () + self.letter_t_n.len ();
+                } else
+                if self.letter_f.contained_at (value, ptr + self.letter_t_o.len ()) &&
+                   self.letter_f.contained_at (value, ptr + self.letter_t_o.len () + self.letter_f.len ())
+                {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr = ptr + self.letter_t_o.len () + self.letter_f.len () + self.letter_f.len ();
+                } else
+                if self.letter_t_f.contained_at (value, ptr + self.letter_t_o.len ()) &&
+                   self.letter_t_f.contained_at (value, ptr + self.letter_t_o.len () + self.letter_t_f.len ())
+                {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr += self.letter_t_o.len () + self.letter_t_f.len () + self.letter_t_f.len ();
+                }
+            }
+            else if self.letter_y.contained_at (value, ptr) {
+                if self.letter_e.contained_at (value, ptr + self.letter_y.len ()) &&
+                   self.letter_s.contained_at (value, ptr + self.letter_y.len () + self.letter_e.len ())
+                {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_y.len () + self.letter_e.len () + self.letter_s.len ();
+                } else {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_y.len ();
+                }
+            }
+            else if self.letter_t_y.contained_at (value, ptr) {
+                if self.letter_e.contained_at (value, ptr + self.letter_t_y.len ()) &&
+                   self.letter_s.contained_at (value, ptr + self.letter_t_y.len () + self.letter_e.len ())
+                {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_t_y.len () + self.letter_e.len () + self.letter_s.len ();
+                } else
+                if self.letter_t_e.contained_at (value, ptr + self.letter_t_y.len ()) &&
+                   self.letter_t_s.contained_at (value, ptr + self.letter_t_y.len () + self.letter_t_e.len ())
+                {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_t_y.len () + self.letter_t_e.len () + self.letter_t_s.len ();
+                } else {
+                    // found = true;
+                    // val = true;
+                    found_val = 3;
+                    ptr += self.letter_t_y.len ();
+                }
+            }
+            else if self.letter_n.contained_at (value, ptr) {
+                // found = true;
+                // val = false;
+                found_val = 1;
+                ptr += self.letter_n.len ();
+
+                if self.letter_o.contained_at (value, ptr) { ptr += self.letter_o.len (); }
+            }
+            else if self.letter_t_n.contained_at (value, ptr) {
+                if self.letter_o.contained_at (value, ptr + self.letter_t_n.len ()) {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr += self.letter_t_n.len () + self.letter_o.len ();
+                } else
+                if self.letter_t_o.contained_at (value, ptr + self.letter_t_n.len ()) {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr += self.letter_t_n.len () + self.letter_t_o.len ();
+                } else {
+                    // found = true;
+                    // val = false;
+                    found_val = 1;
+                    ptr += self.letter_t_n.len ();
+                }
             }
         }
 
-        if !found { return Err ( () ) }
+        if found_val == 0 { return Err ( () ) }
+        // if !found { return Err ( () ) }
 
         if quote_state > 0 {
             if quote_state == 1 && self.s_quote.contained_at (value, ptr) {
@@ -133,7 +330,7 @@ impl Bool {
         }
 
         loop {
-            if ptr >= vlen { break; }
+            if ptr >= value.len () { break; }
 
             if self.space.contained_at (value, ptr) {
                 ptr += self.space.len ();
@@ -158,13 +355,20 @@ impl Bool {
             return Err ( () )
         }
 
-        Ok (val)
+        Ok (found_val & 2 == 2)
     }
 }
 
 
 
-impl Model for Bool {
+impl<Char, DoubleChar> Model for Bool<Char, DoubleChar>
+  where
+    Char: CopySymbol + 'static,
+    DoubleChar: CopySymbol + Combo + 'static
+{
+    type Char = Char;
+    type DoubleChar = DoubleChar;
+
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
@@ -178,7 +382,7 @@ impl Model for Bool {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<BoolValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -200,14 +404,12 @@ impl Model for Bool {
 
 
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let result = try! (self.base_decode (explicit, value, 3));
-        Ok ( TaggedValue::from (BoolValue::from (result)) )
+        Ok ( TaggedValue::from (BoolValue::from (self.base_decode (explicit, value, false) ?)) )
     }
 
 
     fn decode11 (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let result = try! (self.base_decode (explicit, value, 11));
-        Ok ( TaggedValue::from (BoolValue::from (result)) )
+        Ok ( TaggedValue::from (BoolValue::from (self.base_decode (explicit, value, true) ?)) )
     }
 }
 
@@ -242,7 +444,7 @@ impl BoolValue {
 
 
 impl Tagged for BoolValue {
-    fn get_tag (&self) -> &Twine { Bool::get_tag () }
+    fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -269,24 +471,11 @@ impl AsMut<bool> for BoolValue {
 
 
 
-
-pub struct BoolFactory;
-
-
-impl Factory for BoolFactory {
-    fn get_tag (&self) -> &Twine { Bool::get_tag () }
-
-    fn build_model (&self, cset: &CharSet) -> Box<Model> { Box::new (Bool::new (cset)) }
-}
-
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
-    use model::{ Tagged, TaggedValue, Factory, Renderer };
+    use model::{ Tagged, TaggedValue, Renderer };
     use txt::get_charset_utf8;
 
     use std::iter;
@@ -295,7 +484,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let bool = BoolFactory.build_model (&get_charset_utf8 ());
+        let bool = Bool::new (&get_charset_utf8 ());
 
         assert_eq! (bool.get_tag (), TAG);
     }
@@ -304,7 +493,7 @@ mod tests {
 
     #[test]
     fn decode11 () {
-        let bool = BoolFactory.build_model (&get_charset_utf8 ());
+        let bool = Bool::new (&get_charset_utf8 ());
 
         let options = [
             "y", "Y", "yes", "Yes", "YES",
@@ -331,7 +520,7 @@ mod tests {
 
             let prod: TaggedValue = tagged.unwrap ();
 
-            assert_eq! (prod.get_tag (), Bool::get_tag ());
+            assert_eq! (prod.get_tag (), &TWINE_TAG);
 
             let val: &bool = prod.as_any ().downcast_ref::<BoolValue> ().unwrap ().as_ref ();
 
@@ -347,7 +536,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let bool = BoolFactory.build_model (&get_charset_utf8 ());
+        let bool = Bool::new (&get_charset_utf8 ());
 
         let options = [
             "true", "True", "TRUE",
@@ -366,7 +555,7 @@ mod tests {
 
             let prod: TaggedValue = tagged.unwrap ();
 
-            assert_eq! (prod.get_tag (), Bool::get_tag ());
+            assert_eq! (prod.get_tag (), &TWINE_TAG);
 
             let val: &bool = prod.as_any ().downcast_ref::<BoolValue> ().unwrap ().as_ref ();
 
@@ -386,7 +575,7 @@ mod tests {
     #[test]
     fn encode () {
         let renderer = Renderer::new (&get_charset_utf8 ());
-        let bool = BoolFactory.build_model (&get_charset_utf8 ());
+        let bool = Bool::new (&get_charset_utf8 ());
 
 
         if let Ok (rope) = bool.encode (&renderer, TaggedValue::from (BoolValue::from (true)), &mut iter::empty ()) {

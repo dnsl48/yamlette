@@ -1,11 +1,14 @@
 extern crate skimmer;
 
 
+// extern crate gauger;
+// use self::gauger::sample::{ Sample, Timer };
+
+
 use self::skimmer::reader::Read;
-
-use self::skimmer::scanner::{ Quote, scan, scan_one_at, scan_while, scan_until, scan_until_at };
-
-use self::skimmer::symbol::{ Char, Word, Rune, Symbol };
+// use self::skimmer::scanner::{ Quote, scan, scan_one_at, scan_quoted, scan_quoted_selfescape, scan_while, scan_until, scan_until_noidx, scan_until_at, scan_until_at_noidx };
+use self::skimmer::scanner::{ scan_quoted, scan_quoted_selfescape };
+use self::skimmer::symbol::{ /*Char, Word, Rune,*/ Combo, CopySymbol /*, Symbol, Word*/ };
 
 
 use txt::CharSet;
@@ -62,299 +65,447 @@ pub enum Token {
 
 
 
-pub struct Tokenizer {
-    pub cset: CharSet,
-
-    pub alias_stops: [Rune; 19],
-    pub anchor_stops: [Rune; 9],
-    pub tag_flow_stops: [Rune; 11],
-    pub tag_stops: [Char; 1],
-    pub line_breakers: [Rune; 3],
-    pub raw_stops: [Rune; 10],
-    pub spaces: [Char; 1],
-    pub tabs: [Char; 1],
-
-    pub triple_hyphen_minus: Word, // ---
-    pub triple_full_stop: Word, // ...
-    pub directive_tag: Word, // %TAG
-    pub directive_yaml: Word, // %YAML
-    pub directive_yaml_version: Word, // 1.2
-
-    pub spaces_and_tabs: [Char; 2],
-    pub spaces_and_line_breakers: [Rune; 5],
-    pub colon_and_line_breakers: [Rune; 4],
-    pub question_and_line_breakers: [Rune; 4],
-
-    scfg_escape: [Char; 1],
-    scfg_str_dbl_quotes: [(Quote, Char); 1],
-    scfg_str_sgl_quotes: [(Quote, Char); 1],
+pub struct Tokenizer<C1, C2>
+  where
+    C1: CopySymbol,
+    C2: CopySymbol
+{
+    pub cset: CharSet<C1, C2>,
+    // pub timer: Timer
 }
 
 
 
-impl Tokenizer {
-    pub fn new (cset: CharSet) -> Tokenizer {
+impl<C1, C2> Tokenizer<C1, C2>
+  where
+    C1: CopySymbol,
+    C2: CopySymbol + Combo
+{
+    pub fn new (cset: CharSet<C1, C2>) -> Tokenizer<C1, C2> {
         Tokenizer {
-            line_breakers: [
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ())
-            ],
-
-            colon_and_line_breakers: [
-                Rune::from (cset.colon.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ())
-            ],
-
-            question_and_line_breakers: [
-                Rune::from (cset.question.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ())
-            ],
-
-            alias_stops: [
-                Rune::from (cset.space.clone ()),
-                Rune::from (cset.tab_h.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ()),
-                Rune::from (cset.bracket_curly_left.clone ()),
-                Rune::from (cset.bracket_curly_right.clone ()),
-                Rune::from (cset.bracket_square_left.clone ()),
-                Rune::from (cset.bracket_square_right.clone ()),
-
-                Rune::from (Word::combine (&[&cset.colon, &cset.space])),
-                Rune::from (Word::combine (&[&cset.colon, &cset.tab_h])),
-                Rune::from (Word::combine (&[&cset.colon, &cset.line_feed])),
-                Rune::from (Word::combine (&[&cset.colon, &cset.carriage_return])),
-                Rune::from (Word::combine (&[&cset.colon, &cset.comma])),
-
-                Rune::from (Word::combine (&[&cset.comma, &cset.space])),
-                Rune::from (Word::combine (&[&cset.comma, &cset.tab_h])),
-                Rune::from (Word::combine (&[&cset.comma, &cset.line_feed])),
-                Rune::from (Word::combine (&[&cset.comma, &cset.carriage_return])),
-                Rune::from (Word::combine (&[&cset.comma, &cset.colon]))
-            ],
-
-            anchor_stops: [
-                Rune::from (cset.space.clone ()),
-                Rune::from (cset.tab_h.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ()),
-                Rune::from (cset.bracket_curly_left.clone ()),
-                Rune::from (cset.bracket_curly_right.clone ()),
-                Rune::from (cset.bracket_square_left.clone ()),
-                Rune::from (cset.bracket_square_right.clone ())
-            ],
-
-            tag_flow_stops: [
-                Rune::from (cset.space.clone ()),
-                Rune::from (cset.tab_h.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ()),
-                Rune::from (cset.bracket_curly_left.clone ()),
-                Rune::from (cset.bracket_curly_right.clone ()),
-                Rune::from (cset.bracket_square_left.clone ()),
-                Rune::from (cset.bracket_square_right.clone ()),
-                Rune::from (cset.colon.clone ()),
-                Rune::from (cset.comma.clone ())
-            ],
-
-            tag_stops: [cset.greater_than.clone ()],
-
-            spaces: [cset.space.clone ()],
-            tabs: [cset.tab_h.clone ()],
-            spaces_and_tabs: [cset.space.clone (), cset.tab_h.clone ()],
-
-            triple_hyphen_minus: Word::combine (&[&cset.hyphen_minus, &cset.hyphen_minus, &cset.hyphen_minus]),
-            triple_full_stop: Word::combine (&[&cset.full_stop, &cset.full_stop, &cset.full_stop]),
-            directive_tag: Word::combine (&[&cset.percent, &cset.letter_t_t, &cset.letter_t_a, &cset.letter_t_g]),
-            directive_yaml: Word::combine (&[&cset.percent, &cset.letter_t_y, &cset.letter_t_a, &cset.letter_t_m, &cset.letter_t_l]),
-            directive_yaml_version: Word::combine (&[&cset.digit_1, &cset.full_stop, &cset.digit_2]),
-
-            spaces_and_line_breakers: [
-                Rune::from (cset.space.clone ()),
-                Rune::from (cset.tab_h.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ())
-            ],
-
-
-            raw_stops: [
-                Rune::from (cset.bracket_curly_left.clone ()),
-                Rune::from (cset.bracket_curly_right.clone ()),
-                Rune::from (cset.bracket_square_left.clone ()),
-                Rune::from (cset.bracket_square_right.clone ()),
-                Rune::from (cset.hashtag.clone ()),
-                Rune::from (cset.crlf.clone ()),
-                Rune::from (cset.line_feed.clone ()),
-                Rune::from (cset.carriage_return.clone ()),
-
-                Rune::from (cset.colon.clone ()),
-                Rune::from (cset.comma.clone ())
-            ],
-
-            scfg_escape: [cset.backslash.clone ()],
-            scfg_str_dbl_quotes: [(Quote::new (), cset.quotation.clone ())],
-            scfg_str_sgl_quotes: [(Quote::new (), cset.apostrophe.clone ())],
-
-            cset: cset
+            cset: cset,
+            // timer: Timer::new ()
         }
     }
 
 
+    pub fn scan_while_spaces_and_tabs<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.space, scanned) {
+                scanned += self.cset.space.len ();
+                continue;
+            } else if reader.contains_copy_at (self.cset.tab_h, scanned) {
+                scanned += self.cset.tab_h.len ();
+                continue;
+            }
+
+            break;
+        }
+
+        scanned - at
+    }
+
+
+    pub fn scan_one_colon_and_line_breakers<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        if reader.contains_copy_at (self.cset.colon, at) { self.cset.colon.len () }
+        else if reader.contains_copy_at (self.cset.crlf, at) { self.cset.crlf.len () }
+        else if reader.contains_copy_at (self.cset.line_feed, at) { self.cset.line_feed.len () }
+        else if reader.contains_copy_at (self.cset.carriage_return, at) { self.cset.carriage_return.len () }
+        else { 0 }
+    }
+
+
+    pub fn scan_until_colon_and_line_breakers<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+        loop {
+            if !reader.has (scanned + 1) { break; }
+            if reader.contains_copy_at (self.cset.colon, scanned) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            scanned += 1;
+        }
+        scanned - at
+    }
+
+
+    pub fn scan_until_question_and_line_breakers<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+        loop {
+            if !reader.has (scanned + 1) { break; }
+            if reader.contains_copy_at (self.cset.question, scanned) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            scanned += 1;
+        }
+        scanned - at
+    }
+
+
+    pub fn scan_one_spaces_and_line_breakers<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        if reader.contains_copy_at (self.cset.space, at) { self.cset.space.len () }
+        else if reader.contains_copy_at (self.cset.crlf, at) { self.cset.crlf.len () }
+        else if reader.contains_copy_at (self.cset.line_feed, at) { self.cset.line_feed.len () }
+        else if reader.contains_copy_at (self.cset.tab_h, at) { self.cset.tab_h.len () }
+        else if reader.contains_copy_at (self.cset.carriage_return, at) { self.cset.carriage_return.len () }
+        else { 0 }
+    }
+
+
+    pub fn scan_while_spaces_and_line_breakers<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.space, scanned) {
+                scanned += self.cset.space.len ();
+                continue;
+            } else if reader.contains_copy_at (self.cset.crlf, scanned) {
+                scanned += self.cset.crlf.len ();
+                continue;
+            } else if reader.contains_copy_at (self.cset.line_feed, scanned) {
+                scanned += self.cset.line_feed.len ();
+                continue;
+            } else if reader.contains_copy_at (self.cset.tab_h, scanned) {
+                scanned += self.cset.tab_h.len ();
+                continue;
+            } else if reader.contains_copy_at (self.cset.carriage_return, scanned) {
+                scanned += self.cset.carriage_return.len ();
+                continue;
+            }
+
+            break;
+        }
+
+        scanned - at
+    }
+
+
+    pub fn scan_one_line_breaker<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        if reader.contains_copy_at (self.cset.crlf, at) { self.cset.crlf.len () }
+        else if reader.contains_copy_at (self.cset.line_feed, at) { self.cset.line_feed.len () }
+        else if reader.contains_copy_at (self.cset.carriage_return, at) { self.cset.carriage_return.len () }
+        else { 0 }
+    }
+
+
+    fn alias_stops<Reader: Read> (&self, reader: &mut Reader) -> usize {
+        let mut scanned = 0;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.space, scanned) { break; }
+            if reader.contains_copy_at (self.cset.tab_h, scanned) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_right, scanned) { break; }
+
+            if reader.contains_copy_at (self.cset.colon, scanned) {
+                if reader.contains_copy_at (self.cset.space, scanned + self.cset.colon.len ()) { break; }
+                if reader.contains_copy_at (self.cset.tab_h, scanned + self.cset.colon.len ()) { break; }
+                if reader.contains_copy_at (self.cset.line_feed, scanned + self.cset.colon.len ()) { break; }
+                if reader.contains_copy_at (self.cset.carriage_return, scanned + self.cset.colon.len ()) { break; }
+                if reader.contains_copy_at (self.cset.comma, scanned + self.cset.colon.len ()) { break; }
+            }
+
+            if reader.contains_copy_at (self.cset.comma, scanned) {
+                if reader.contains_copy_at (self.cset.space, scanned + self.cset.comma.len ()) { break; }
+                if reader.contains_copy_at (self.cset.tab_h, scanned + self.cset.comma.len ()) { break; }
+                if reader.contains_copy_at (self.cset.line_feed, scanned + self.cset.comma.len ()) { break; }
+                if reader.contains_copy_at (self.cset.carriage_return, scanned + self.cset.comma.len ()) { break; }
+                if reader.contains_copy_at (self.cset.colon, scanned + self.cset.comma.len ()) { break; }
+            }
+
+            scanned += 1;
+        }
+
+        scanned
+    }
+
+
+    pub fn anchor_stops<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.space, scanned) { break; }
+            if reader.contains_copy_at (self.cset.tab_h, scanned) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_right, scanned) { break; }
+
+            scanned += 1;
+        }
+
+        scanned - at
+    }
+
+
+    pub fn raw_stops<Reader: Read> (&self, reader: &mut Reader) -> usize {
+        let mut scanned = 0;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.hashtag, scanned) { break; }
+            if reader.contains_copy_at (self.cset.colon, scanned) { break; }
+            if reader.contains_copy_at (self.cset.comma, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+
+            scanned += 1;
+        }
+
+        scanned
+    }
+
+
+    fn tag_flow_stops<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+
+        loop {
+            if !reader.has (scanned + 1) { break; }
+
+            if reader.contains_copy_at (self.cset.space, scanned) { break; }
+            if reader.contains_copy_at (self.cset.tab_h, scanned) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_curly_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_left, scanned) { break; }
+            if reader.contains_copy_at (self.cset.bracket_square_right, scanned) { break; }
+            if reader.contains_copy_at (self.cset.colon, scanned) { break; }
+            if reader.contains_copy_at (self.cset.comma, scanned) { break; }
+
+            scanned += 1;
+        }
+
+        scanned - at
+    }
+
+
+    fn directive_tag<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        if reader.contains_copy_at (self.cset.letter_t_t, at) &&
+           reader.contains_copy_at (self.cset.letter_t_a, at + self.cset.letter_t_t.len ()) &&
+           reader.contains_copy_at (self.cset.letter_t_g, at + self.cset.letter_t_t.len () + self.cset.letter_t_a.len ())
+        {
+            return self.cset.letter_t_t.len () + self.cset.letter_t_a.len () + self.cset.letter_t_g.len ()
+        } else { return 0 }
+    }
+
+
+    fn directive_yaml<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        if reader.contains_copy_at (self.cset.letter_t_y, at) &&
+           reader.contains_copy_at (self.cset.letter_t_a, at + self.cset.letter_t_y.len ()) &&
+           reader.contains_copy_at (self.cset.letter_t_m, at + self.cset.letter_t_y.len () + self.cset.letter_t_a.len ()) &&
+           reader.contains_copy_at (self.cset.letter_t_l, at + self.cset.letter_t_y.len () + self.cset.letter_t_a.len () + self.cset.letter_t_m.len ())
+        {
+            return self.cset.letter_t_y.len () + self.cset.letter_t_a.len () + self.cset.letter_t_m.len () + self.cset.letter_t_l.len ()
+        } else { return 0 }
+    }
+
+
     pub fn line<Reader: Read> (&self, reader: &mut Reader) -> usize {
-        let (size, _) = scan_until (reader, &self.line_breakers);
-        size
+        let mut scanned = 0;
+        loop {
+            if !reader.has (scanned + 1) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            scanned += 1;
+        }
+        scanned
+    }
+
+
+    pub fn line_at<Reader: Read> (&self, reader: &mut Reader, at: usize) -> usize {
+        let mut scanned = at;
+        loop {
+            if !reader.has (scanned + 1) { break; }
+            if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+            if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+            if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+            scanned += 1;
+        }
+        scanned - at
     }
 
 
     pub fn get_token<Reader: Read> (&self, reader: &mut Reader) -> Option<(Token, usize, usize)> {
-        use self::skimmer::scanner::NO_STOPS;
-        use self::skimmer::scanner::NO_BRACES;
-
+        let mut scanned: usize = 0;
+        let mut chars: usize = 0;
 
         loop {
             /* --- WORDS --- */
+            loop {
+                if reader.contains_copy_at (self.cset.space, scanned) {
+                    scanned += self.cset.space.len ();
+                    chars += 1;
+                    continue;
+                }
+                break;
+            }
+            if scanned > 0 { return Some ( (Token::Indent, scanned, chars) ) }
 
-            let (bytes, chars) = scan_while (reader, &self.line_breakers);
-            if bytes > 0 { return Some ( (Token::Newline, bytes, chars) ) }
+            let quoted = scan_quoted (reader, self.cset.quotation, self.cset.backslash);
+            if quoted > 0 { return Some ( (Token::StringDouble, quoted, 1) ) }
+
+            let quoted = scan_quoted_selfescape (reader, self.cset.apostrophe, self.cset.backslash);
+            if quoted > 0 { return Some ( (Token::StringSingle, quoted, 1) ) }
+
+            if reader.contains_copy_at_start (self.cset.comma) { return Some ( (Token::Comma, self.cset.comma.len (), 1) ) }
+            if reader.contains_copy_at_start (self.cset.colon) { return Some ( (Token::Colon, self.cset.colon.len (), 1) ) }
+
+            if reader.contains_copy_at_start (self.cset.bracket_curly_left) { return Some ((Token::DictionaryStart, self.cset.bracket_curly_left.len (), 1) ) }
+            if reader.contains_copy_at_start (self.cset.bracket_curly_right) { return Some ((Token::DictionaryEnd, self.cset.bracket_curly_right.len (), 1) ) }
+
+            if reader.contains_copy_at_start (self.cset.bracket_square_left) { return Some ( (Token::SequenceStart, self.cset.bracket_square_left.len (), 1) ) }
+            if reader.contains_copy_at_start (self.cset.bracket_square_right) { return Some ( (Token::SequenceEnd, self.cset.bracket_square_right.len (), 1) ) }
 
 
-            let (bytes, chars) = scan_while (reader, &self.spaces);
-            if bytes > 0 { return Some ( (Token::Indent, bytes, chars) ) }
+            loop {
+                if reader.contains_copy_at (self.cset.crlf, scanned) {
+                    scanned += self.cset.crlf.len ();
+                    chars += 1;
+                    continue;
+                }
+
+                if reader.contains_copy_at (self.cset.line_feed, scanned) {
+                    scanned += self.cset.line_feed.len ();
+                    chars += 1;
+                    continue;
+                }
+
+                if reader.contains_copy_at (self.cset.carriage_return, scanned) {
+                    scanned += self.cset.carriage_return.len ();
+                    chars += 1;
+                    continue;
+                }
+                break;
+            }
+            if scanned > 0 { return Some ( (Token::Newline, scanned, chars) ) }
 
 
-            let (bytes, chars) = scan_while (reader, &self.tabs);
-            if bytes > 0 { return Some ( (Token::Tab, bytes, chars) ) }
-
-
-            if let Some (_) = self.cset.hashtag.read (reader) {
-                let (comment, _) = scan_until (reader, &self.line_breakers);
+            if reader.contains_copy_at_start (self.cset.hashtag) {
+                let comment = self.line (reader);
                 if comment > 0 { return Some ( (Token::Comment, comment, 1) ) }
                 break;
             }
 
 
-            if let Some (_) = self.cset.asterisk.read (reader) {
-                let (alias, _) = scan_until (reader, &self.alias_stops);
+            if reader.contains_copy_at_start (self.cset.asterisk) {
+                let alias = self.alias_stops (reader);
                 if alias > 0 { return Some ( (Token::Alias, alias, 1) ) }
                 break;
             }
 
 
-            if let Some (_) = self.cset.ampersand.read (reader) {
-                let (anchor, _) = scan_until (reader, &self.anchor_stops);
-                if anchor > 0 { return Some ( (Token::Anchor, anchor, 1) ) }
+            if reader.contains_copy_at_start (self.cset.ampersand) {
+                let anchor = self.anchor_stops (reader, self.cset.ampersand.len ());
+                if anchor > 0 { return Some ( (Token::Anchor, anchor + self.cset.ampersand.len (), 1) ) }
                 break;
             }
 
 
-            if let Some (_) = self.cset.quotation.read (reader) {
-                if let Some ( (len, _) ) = scan (reader, &NO_STOPS, &self.scfg_escape, &self.scfg_str_dbl_quotes, &NO_BRACES, &mut []) {
-                    return Some ( (Token::StringDouble, len, 1) )
-                }
-                break;
-            }
+            if reader.contains_copy_at_start (self.cset.greater_than) { return Some ( (Token::GT, self.cset.greater_than.len (), 1) ) }
 
+            if reader.contains_copy_at_start (self.cset.vertical_bar) { return Some ( (Token::Pipe, self.cset.vertical_bar.len (), 1) ) }
 
-            if let Some (_) = self.cset.apostrophe.read (reader) {
-                if let Some ( (len, _) ) = scan (reader, &NO_STOPS, &self.scfg_escape, &self.scfg_str_sgl_quotes, &NO_BRACES, &mut []) {
-                    return Some ( (Token::StringSingle, len, 1) )
-                }
-                break;
-            }
+            if reader.contains_copy_at_start (self.cset.exclamation) {
+                let len = if reader.contains_copy_at (self.cset.less_than, self.cset.exclamation.len ()) {
+                    loop {
+                        if !reader.has (scanned + 1) { break; }
+                        if reader.contains_copy_at (self.cset.greater_than, scanned + self.cset.exclamation.len () + self.cset.less_than.len ()) { break; }
+                        scanned += 1;
+                    }
 
-
-            if let Some (len) = self.triple_hyphen_minus.read (reader) {
-                if let Some (_) = scan_one_at (len, reader, &self.spaces_and_line_breakers) {
-                    return Some ( (Token::DocumentStart, len, 0) )
-                }
-                break;
-            }
-
-
-            if let Some (ex_len) = self.cset.exclamation.read (reader) {
-                let len = if let Some (lt_len) = self.cset.less_than.read_at (ex_len, reader) {
-                    let (len, idx) = scan_until_at (ex_len + lt_len, reader, &self.tag_stops);
-                    ex_len + lt_len + len + match idx { Some ( (_, len) ) => len, _ => 0 }
+                    self.cset.exclamation.len () + self.cset.less_than.len () + self.cset.exclamation.len () + scanned
 
                 } else {
-                    let (len, _) = scan_until_at (ex_len, reader, &self.tag_flow_stops);
-                    ex_len + len
+                    let len = self.tag_flow_stops (reader, self.cset.exclamation.len ());
+                    self.cset.exclamation.len () + len
                 };
 
                 return Some ( (Token::TagHandle, len, 0) )
             }
 
-
-            if let Some (len) = self.cset.bracket_curly_left.read (reader) { return Some ((Token::DictionaryStart, len, 1) ) }
-
-            if let Some (len) = self.cset.bracket_curly_right.read (reader) { return Some ((Token::DictionaryEnd, len, 1) ) }
-
-            if let Some (len) = self.cset.bracket_square_left.read (reader) { return Some ( (Token::SequenceStart, len, 1) ) }
-
-            if let Some (len) = self.cset.bracket_square_right.read (reader) { return Some ( (Token::SequenceEnd, len, 1) ) }
-
-            if let Some (len) = self.cset.greater_than.read (reader) { return Some ( (Token::GT, len, 1) ) }
-
-            if let Some (len) = self.cset.vertical_bar.read (reader) { return Some ( (Token::Pipe, len, 1) ) }
-
-
-            if let Some (len) = self.triple_full_stop.read (reader) { return Some ( (Token::DocumentEnd, len, 0) ) }
-
-            if let Some (len) = self.directive_tag.read (reader) { return Some ( (Token::DirectiveTag, len, 0) ) }
-
-            if let Some (len) = self.directive_yaml.read (reader) { return Some ( (Token::DirectiveYaml, len, 0) ) }
-
-            if let Some ( _ ) = self.cset.percent.read (reader) { return Some ( (Token::Directive, self.line (reader), 1) ) }
-
-
-            if let Some (len) = self.cset.comma.read (reader) {
-                return Some ( (Token::Comma, len, 1) )
+            if reader.contains_copy_at_start (self.cset.full_stop) {
+                if reader.contains_copy_at (self.cset.full_stop, self.cset.full_stop.len ()) &&
+                    reader.contains_copy_at (self.cset.full_stop, self.cset.full_stop.len () * 2) {
+                        return Some ( (Token::DocumentEnd, self.cset.full_stop.len () * 3, 0) )
+                    }
             }
 
+            if reader.contains_copy_at_start (self.cset.percent) {
+                let len = self.directive_tag (reader, self.cset.percent.len ());
+                if len > 0 {
+                    return Some ( (Token::DirectiveTag, self.cset.percent.len () + len, 0) )
+                } else {
+                    let len = self.directive_yaml (reader, self.cset.percent.len ());
+                    if len > 0 {
+                        return Some ( (Token::DirectiveYaml, self.cset.percent.len () + len, 0) )
+                    }
+                }
 
-            if let Some (len) = self.cset.colon.read (reader) {
-                return Some ( (Token::Colon, len, 1) )
+                return Some ( (Token::Directive, self.line (reader), 1) )
             }
 
-
-            if let Some (len) = self.cset.hyphen_minus.read (reader) {
+            if reader.contains_copy_at_start (self.cset.hyphen_minus) {
                 if !reader.has (self.cset.hyphen_minus.len () + 1) {
-                    return Some ( (Token::Dash, len, 1) )
+                    return Some ( (Token::Dash, self.cset.hyphen_minus.len (), 1) )
                 } else {
-                    if let Some (_) = scan_one_at (len, reader, &self.spaces_and_line_breakers) {
-                        return Some ( (Token::Dash, len, 1) )
+                    if reader.contains_copy_at (self.cset.hyphen_minus, self.cset.hyphen_minus.len ()) {
+                        if reader.contains_copy_at (self.cset.hyphen_minus, self.cset.hyphen_minus.len () * 2) {
+                            if self.scan_one_spaces_and_line_breakers (reader, self.cset.hyphen_minus.len () * 3) > 0 {
+                                return Some ( (Token::DocumentStart, self.cset.hyphen_minus.len () * 3, 0) )
+                            }
+                        }
+                    }
+
+                    if self.scan_one_spaces_and_line_breakers (reader, self.cset.hyphen_minus.len ()) > 0 {
+                        return Some ( (Token::Dash, self.cset.hyphen_minus.len (), 1) )
                     }
                 }
             }
 
-
-            if let Some (len) = self.cset.question.read (reader) {
+            if reader.contains_copy_at_start (self.cset.question) {
                 if !reader.has (self.cset.question.len () + 1) {
-                    return Some ( (Token::Question, len, 1) )
+                    return Some ( (Token::Question, self.cset.question.len (), 1) )
                 } else {
-                    if let Some (_) = scan_one_at (len, reader, &self.spaces_and_line_breakers) {
-                        return Some ( (Token::Question, len, 1) )
+                    if self.scan_one_spaces_and_line_breakers (reader, self.cset.question.len ()) > 0 {
+                        return Some ( (Token::Question, self.cset.question.len (), 1) )
                     }
                 }
             }
 
-
-            if let Some (len) = self.cset.commercial_at.read (reader) {
-                return Some ( (Token::ReservedCommercialAt, len, 1) )
+            if reader.contains_copy_at_start (self.cset.commercial_at) {
+                return Some ( (Token::ReservedCommercialAt, self.cset.commercial_at.len (), 1) )
             }
 
-
-            if let Some (len) = self.cset.grave_accent.read (reader) {
-                return Some ( (Token::ReservedGraveAccent, len, 1) )
+            if reader.contains_copy_at_start (self.cset.grave_accent) {
+                return Some ( (Token::ReservedGraveAccent, self.cset.grave_accent.len (), 1) )
             }
 
 
@@ -411,11 +562,36 @@ impl Tokenizer {
             }
 
 
+            loop {
+                if reader.contains_copy_at (self.cset.tab_h, scanned) {
+                    scanned += self.cset.tab_h.len ();
+                    chars += 1;
+                    continue;
+                }
+                break;
+            }
+            if scanned > 0 { return Some ( (Token::Tab, scanned, chars) ) }
+
+
             /* --- RAW --- */
 
-            let (raw_len, _) = scan_until (reader, &self.raw_stops);
-            if raw_len > 0 { return Some ( (Token::Raw, raw_len, 1) ) }
+            loop {
+                if !reader.has (scanned + 1) { break; }
 
+                if reader.contains_copy_at (self.cset.crlf, scanned) { break; }
+                if reader.contains_copy_at (self.cset.line_feed, scanned) { break; }
+                if reader.contains_copy_at (self.cset.bracket_curly_left, scanned) { break; }
+                if reader.contains_copy_at (self.cset.bracket_curly_right, scanned) { break; }
+                if reader.contains_copy_at (self.cset.bracket_square_left, scanned) { break; }
+                if reader.contains_copy_at (self.cset.bracket_square_right, scanned) { break; }
+                if reader.contains_copy_at (self.cset.hashtag, scanned) { break; }
+                if reader.contains_copy_at (self.cset.colon, scanned) { break; }
+                if reader.contains_copy_at (self.cset.comma, scanned) { break; }
+                if reader.contains_copy_at (self.cset.carriage_return, scanned) { break; }
+
+                scanned += 1;
+            }
+            if scanned > 0 { return Some ( (Token::Raw, scanned, 1) ) }
 
             break;
         }
@@ -433,12 +609,7 @@ mod tests {
     use super::skimmer::reader::Read;
     use super::skimmer::reader::SliceReader;
 
-    use txt::CharSet;
     use txt::get_charset_utf8;
-
-
-    fn get_charset () -> CharSet { get_charset_utf8 () }
-
 
 
     #[test]
@@ -448,7 +619,7 @@ mod tests {
         // %TAG ! tag://example.com,2015:yamlette/\n
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (5, len);
@@ -782,7 +953,7 @@ mod tests {
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (len, "\r\n".len ());
-            assert_eq! (2, clen);
+            assert_eq! (1, clen);
 
             if let Token::Newline = token {  } else { assert! (false, "Unexpected token!") }
 
@@ -940,7 +1111,7 @@ mod tests {
         let src = "- &anchor string";
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (1, len);
@@ -999,7 +1170,7 @@ mod tests {
         let src = "- *anchor string";
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (1, len);
@@ -1062,7 +1233,7 @@ r"- Mark McGwire
 
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (1, len);
@@ -1174,7 +1345,7 @@ avg: 0.278 # Batting average
 rbi: 147   # Runs Batted In";
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (len, "hr".len ());
@@ -1349,7 +1520,7 @@ national:
   - Atlanta Braves";
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (len, "american".len ());
@@ -1682,7 +1853,7 @@ r"-
   avg:  0.288";
 
         let mut reader = SliceReader::new (src.as_bytes ());
-        let tokenizer = Tokenizer::new (get_charset ());
+        let tokenizer = Tokenizer::new (get_charset_utf8 ());
 
         if let Some ( (token, len, clen) ) = tokenizer.get_token (&mut reader) {
             assert_eq! (1, len);

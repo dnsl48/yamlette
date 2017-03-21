@@ -495,8 +495,7 @@ macro_rules! expect {
 
 
 
-// #[cfg (all (test, not (feature = "dev")))]
-#[cfg (test)]
+#[cfg (all (test, not (feature = "dev")))]
 mod stable {
     extern crate skimmer;
     extern crate yamlette;
