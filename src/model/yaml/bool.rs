@@ -1,15 +1,12 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
-
-use txt::{ CharSet, Encoding, Unicode, Twine };
+use txt::Twine;
 
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
 
 
 
@@ -18,7 +15,7 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Bool<Char, DoubleChar>
+pub struct Bool; /*<Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
     DoubleChar: CopySymbol + Combo + 'static
@@ -64,17 +61,14 @@ pub struct Bool<Char, DoubleChar>
 
     _dchr: PhantomData<DoubleChar>
 }
+*/
 
 
 
-impl<Char, DoubleChar> Bool<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Bool {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Bool<Char, DoubleChar> {
         Bool {
             encoding: cset.encoding,
@@ -119,6 +113,7 @@ impl<Char, DoubleChar> Bool<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], yaml_11: bool) -> Result<bool, ()> {
@@ -128,6 +123,13 @@ impl<Char, DoubleChar> Bool<Char, DoubleChar>
         let mut ptr: usize = 0;
 
         if explicit {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') => { ptr += 1; quote_state = 1; }
+                Some (b'"')  => { ptr += 1; quote_state = 2; }
+                _ => ()
+            };
+
+            /*
             if self.s_quote.contained_at_start (value) {
                 quote_state = 1;
                 ptr += self.s_quote.len ();
@@ -135,191 +137,55 @@ impl<Char, DoubleChar> Bool<Char, DoubleChar>
                 quote_state = 2;
                 ptr += self.d_quote.len ();
             }
+            */
         }
 
-        if self.letter_t.contained_at (value, ptr) {
-            if self.letter_r.contained_at (value, ptr + self.letter_t.len ()) &&
-               self.letter_u.contained_at (value, ptr + self.letter_t.len () + self.letter_r.len ()) &&
-               self.letter_e.contained_at (value, ptr + self.letter_t.len () + self.letter_r.len () + self.letter_u.len ())
-            {
-                // found = true;
-                // val = true;
-                found_val = 3;
-                ptr += self.letter_t.len () + self.letter_r.len () + self.letter_u.len () + self.letter_e.len ();
-            }
-        }
-        else if self.letter_t_t.contained_at (value, ptr) {
-            if self.letter_r.contained_at (value, ptr + self.letter_t_t.len ()) &&
-               self.letter_u.contained_at (value, ptr + self.letter_t_t.len () + self.letter_r.len ()) &&
-               self.letter_e.contained_at (value, ptr + self.letter_t_t.len () + self.letter_r.len () + self.letter_u.len ())
-            {
-                // found = true;
-                // val = true;
-                found_val = 3;
-                ptr += self.letter_t_t.len () + self.letter_r.len () + self.letter_u.len () + self.letter_e.len ();
-            } else
-            if self.letter_t_r.contained_at (value, ptr + self.letter_t_t.len ()) &&
-               self.letter_t_u.contained_at (value, ptr + self.letter_t_t.len () + self.letter_t_r.len ()) &&
-               self.letter_t_e.contained_at (value, ptr + self.letter_t_t.len () + self.letter_t_r.len () + self.letter_t_u.len ())
-            {
-                // found = true;
-                // val = true;
-                found_val = 3;
-                ptr += self.letter_t_t.len () + self.letter_t_r.len () + self.letter_t_u.len () + self.letter_t_e.len ();
-            }
-        }
-        else if self.letter_f.contained_at (value, ptr) {
-            if self.letter_a.contained_at (value, ptr + self.letter_f.len ()) &&
-               self.letter_l.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len ()) &&
-               self.letter_s.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len () + self.letter_l.len ()) &&
-               self.letter_e.contained_at (value, ptr + self.letter_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len ())
-            {
-                // found = true;
-                // val = false;
-                found_val = 1;
-                ptr += self.letter_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len () + self.letter_e.len ();
-            }
-        }
-        else if self.letter_t_f.contained_at (value, ptr) {
-            if self.letter_a.contained_at (value, ptr + self.letter_t_f.len ()) &&
-               self.letter_l.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len ()) &&
-               self.letter_s.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len ()) &&
-               self.letter_e.contained_at (value, ptr + self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len ())
-            {
-                // found = true;
-                // val = false;
-                found_val = 1;
-                ptr += self.letter_t_f.len () + self.letter_a.len () + self.letter_l.len () + self.letter_s.len () + self.letter_e.len ();
-            } else
-            if self.letter_t_a.contained_at (value, ptr + self.letter_t_f.len ()) &&
-               self.letter_t_l.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len ()) &&
-               self.letter_t_s.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len ()) &&
-               self.letter_t_e.contained_at (value, ptr + self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len () + self.letter_t_s.len ())
-            {
-                // found = true;
-                // val = false;
-                found_val = 1;
-                ptr += self.letter_t_f.len () + self.letter_t_a.len () + self.letter_t_l.len () + self.letter_t_s.len () + self.letter_t_e.len ();
-            }
-        }
+        let subslice = &value[ptr ..];
+
+        if
+            subslice.starts_with ("true".as_bytes ()) ||
+            subslice.starts_with ("True".as_bytes ()) ||
+            subslice.starts_with ("TRUE".as_bytes ()) { ptr += 4; found_val = 3; }
+        else if
+            subslice.starts_with ("false".as_bytes ()) ||
+            subslice.starts_with ("False".as_bytes ()) ||
+            subslice.starts_with ("FALSE".as_bytes ()) { ptr += 5; found_val = 1; }
         else if yaml_11 {
-            if self.letter_o.contained_at (value, ptr) {
-                if self.letter_n.contained_at (value, ptr + self.letter_o.len ()) {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_o.len () + self.letter_n.len ();
-                } else
-                if self.letter_f.contained_at (value, ptr + self.letter_o.len ()) &&
-                   self.letter_f.contained_at (value, ptr + self.letter_o.len () + self.letter_f.len ())
-                {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr += self.letter_o.len () + self.letter_f.len () + self.letter_f.len ();
-                }
-            }
-            else if self.letter_t_o.contained_at (value, ptr) {
-                if self.letter_n.contained_at (value, ptr + self.letter_t_o.len ()) {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_t_o.len () + self.letter_n.len ();
-                } else
-                if self.letter_t_n.contained_at (value, ptr + self.letter_t_o.len ()) {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_t_o.len () + self.letter_t_n.len ();
-                } else
-                if self.letter_f.contained_at (value, ptr + self.letter_t_o.len ()) &&
-                   self.letter_f.contained_at (value, ptr + self.letter_t_o.len () + self.letter_f.len ())
-                {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr = ptr + self.letter_t_o.len () + self.letter_f.len () + self.letter_f.len ();
-                } else
-                if self.letter_t_f.contained_at (value, ptr + self.letter_t_o.len ()) &&
-                   self.letter_t_f.contained_at (value, ptr + self.letter_t_o.len () + self.letter_t_f.len ())
-                {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr += self.letter_t_o.len () + self.letter_t_f.len () + self.letter_t_f.len ();
-                }
-            }
-            else if self.letter_y.contained_at (value, ptr) {
-                if self.letter_e.contained_at (value, ptr + self.letter_y.len ()) &&
-                   self.letter_s.contained_at (value, ptr + self.letter_y.len () + self.letter_e.len ())
-                {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_y.len () + self.letter_e.len () + self.letter_s.len ();
-                } else {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_y.len ();
-                }
-            }
-            else if self.letter_t_y.contained_at (value, ptr) {
-                if self.letter_e.contained_at (value, ptr + self.letter_t_y.len ()) &&
-                   self.letter_s.contained_at (value, ptr + self.letter_t_y.len () + self.letter_e.len ())
-                {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_t_y.len () + self.letter_e.len () + self.letter_s.len ();
-                } else
-                if self.letter_t_e.contained_at (value, ptr + self.letter_t_y.len ()) &&
-                   self.letter_t_s.contained_at (value, ptr + self.letter_t_y.len () + self.letter_t_e.len ())
-                {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_t_y.len () + self.letter_t_e.len () + self.letter_t_s.len ();
-                } else {
-                    // found = true;
-                    // val = true;
-                    found_val = 3;
-                    ptr += self.letter_t_y.len ();
-                }
-            }
-            else if self.letter_n.contained_at (value, ptr) {
-                // found = true;
-                // val = false;
-                found_val = 1;
-                ptr += self.letter_n.len ();
-
-                if self.letter_o.contained_at (value, ptr) { ptr += self.letter_o.len (); }
-            }
-            else if self.letter_t_n.contained_at (value, ptr) {
-                if self.letter_o.contained_at (value, ptr + self.letter_t_n.len ()) {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr += self.letter_t_n.len () + self.letter_o.len ();
-                } else
-                if self.letter_t_o.contained_at (value, ptr + self.letter_t_n.len ()) {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr += self.letter_t_n.len () + self.letter_t_o.len ();
-                } else {
-                    // found = true;
-                    // val = false;
-                    found_val = 1;
-                    ptr += self.letter_t_n.len ();
-                }
-            }
+            if
+                subslice.starts_with ("on".as_bytes ()) ||
+                subslice.starts_with ("On".as_bytes ()) ||
+                subslice.starts_with ("ON".as_bytes ()) { ptr += 2; found_val = 3; }
+            else if
+                subslice.starts_with ("off".as_bytes ()) ||
+                subslice.starts_with ("Off".as_bytes ()) ||
+                subslice.starts_with ("OFF".as_bytes ()) { ptr += 3; found_val = 1; }
+            else if
+                subslice.starts_with ("yes".as_bytes ()) ||
+                subslice.starts_with ("Yes".as_bytes ()) ||
+                subslice.starts_with ("YES".as_bytes ()) { ptr += 3; found_val = 3; }
+            else if
+                subslice.starts_with ("no".as_bytes ()) ||
+                subslice.starts_with ("No".as_bytes ()) ||
+                subslice.starts_with ("NO".as_bytes ()) { ptr += 2; found_val = 1; }
+            else { match subslice.get (0).map (|b| *b) {
+                Some (b'Y') |
+                Some (b'y') => { ptr += 1; found_val = 3; }
+                Some (b'N') |
+                Some (b'n') => { ptr += 1; found_val = 1; }
+                _ => ()
+            } }
         }
 
         if found_val == 0 { return Err ( () ) }
-        // if !found { return Err ( () ) }
 
         if quote_state > 0 {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') if quote_state == 1 => { ptr += 1; }
+                Some (b'"')  if quote_state == 2 => { ptr += 1; }
+                _ => return Err ( () )
+            }
+
+            /*
             if quote_state == 1 && self.s_quote.contained_at (value, ptr) {
                 ptr += self.s_quote.len ();
             } else if quote_state == 2 && self.d_quote.contained_at (value, ptr) {
@@ -327,32 +193,20 @@ impl<Char, DoubleChar> Bool<Char, DoubleChar>
             } else {
                 return Err ( () );
             }
+            */
         }
 
         loop {
-            if ptr >= value.len () { break; }
+            match value.get (ptr).map (|b| *b) {
+                None => break,
 
-            if self.space.contained_at (value, ptr) {
-                ptr += self.space.len ();
-                continue;
+                Some (b' ') |
+                Some (b'\n') |
+                Some (b'\t') |
+                Some (b'\r') => { ptr += 1; }
+
+                _ => return Err ( () )
             }
-
-            if self.tab_h.contained_at (value, ptr) {
-                ptr += self.tab_h.len ();
-                continue;
-            }
-
-            if self.line_feed.contained_at (value, ptr) {
-                ptr += self.line_feed.len ();
-                continue;
-            }
-
-            if self.carriage_return.contained_at (value, ptr) {
-                ptr += self.carriage_return.len ();
-                continue;
-            }
-
-            return Err ( () )
         }
 
         Ok (found_val & 2 == 2)
@@ -361,28 +215,19 @@ impl<Char, DoubleChar> Bool<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Model for Bool<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Bool {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
-
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<BoolValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -394,10 +239,7 @@ impl<Char, DoubleChar> Model for Bool<Char, DoubleChar>
 
         let value = if value { "true" } else { "false" };
 
-        let node = Node::String (match self.get_encoding ().str_to_bytes (value) {
-            Ok (s) => EncodedString::from (s),
-            Err (s) => EncodedString::from (s)
-        });
+        let node = Node::String (EncodedString::from (value.as_bytes ()));
 
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
@@ -476,7 +318,7 @@ mod tests {
     use super::*;
 
     use model::{ Tagged, TaggedValue, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -484,7 +326,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let bool = Bool::new (&get_charset_utf8 ());
+        let bool = Bool; // ::new (&get_charset_utf8 ());
 
         assert_eq! (bool.get_tag (), TAG);
     }
@@ -493,7 +335,7 @@ mod tests {
 
     #[test]
     fn decode11 () {
-        let bool = Bool::new (&get_charset_utf8 ());
+        let bool = Bool; // ::new (&get_charset_utf8 ());
 
         let options = [
             "y", "Y", "yes", "Yes", "YES",
@@ -536,7 +378,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let bool = Bool::new (&get_charset_utf8 ());
+        let bool = Bool; // ::new (&get_charset_utf8 ());
 
         let options = [
             "true", "True", "TRUE",
@@ -574,8 +416,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let bool = Bool::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let bool = Bool; // ::new (&get_charset_utf8 ());
 
 
         if let Ok (rope) = bool.encode (&renderer, TaggedValue::from (BoolValue::from (true)), &mut iter::empty ()) {

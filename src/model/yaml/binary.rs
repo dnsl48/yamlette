@@ -1,15 +1,13 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
-
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 
 
 
@@ -19,38 +17,53 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Binary<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    tbl: [Char; 64],
-    pad: Char,
-    line_feed: Char,
-    carriage_return: Char,
-    space: Char,
-    tab_h: Char,
+pub struct Binary; /* {
+    // tbl: [Char; 64],
+    // pad: Char,
+    // line_feed: Char,
+    // carriage_return: Char,
+    // space: Char,
+    // tab_h: Char,
 
-    s_quote: Char,
-    d_quote: Char,
+    // s_quote: Char,
+    // d_quote: Char,
 
-    tcl: usize,
+    // tcl: usize,
 
     encoding: Encoding,
 
-    _dchr: PhantomData<DoubleChar>
+    // _dchr: PhantomData<DoubleChar>
 }
+*/
 
 
 
-impl<Char, DoubleChar> Binary<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Binary {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+    fn tbl (byte: u8) -> u8 {
+        match byte {
+            0  ... 25 => byte + b'A',
+            26 ... 51 => byte + b'a' - 26,
+            52 ... 61 => byte + b'0' - 52,
+            62        => b'+',
+            63        => b'/',
+            _ => unreachable! ()
+        }
+    }
 
+    fn lbt (byte: u8) -> u8 {
+        match byte {
+            v @ b'A' ... b'Z' => v - b'A',
+            v @ b'a' ... b'z' => v - b'a' + 26,
+            v @ b'0' ... b'9' => v - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => unreachable! ()
+        }
+    }
+
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Binary<Char, DoubleChar> {
         let pad = cset.equal;
 
@@ -142,25 +155,17 @@ impl<Char, DoubleChar> Binary<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 }
 
 
 
-impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Binary {
     fn get_tag (&self) -> &Twine { &TWINE_TAG }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
 
     fn is_decodable (&self) -> bool { true }
@@ -168,7 +173,7 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value: BinaryValue = match <TaggedValue as Into<Result<BinaryValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -180,13 +185,14 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
 
         let res_len = (value.len () + if value.len () % 3 > 0 { 3 - (value.len () % 3) } else { 0 }) / 3 * 4;
 
-        let mut production: Vec<u8> = Vec::with_capacity (res_len * self.tcl);
+        let mut production: Vec<u8> = Vec::with_capacity (res_len);
 
         let mut rem: u8 = 0;
 
         for b in value {
             let b = b.to_be ();
 
+            /*
             let idx = if rem & 0b1000_0000 == 0b1000_0000 {
                 let idx = ((rem & 0b0000_1111) << 2) | (b >> 6);
                 production.extend (self.tbl[idx as usize].as_slice ());
@@ -201,8 +207,23 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
 
                 b >> 2
             };
+             */
+            let idx = if rem & 0b1000_0000 == 0b1000_0000 {
+                let idx = ((rem & 0b0000_1111) << 2) | (b >> 6);
+                production.push (Self::tbl(idx));
+                rem = 0;
+                b & 0b0011_1111
+            } else if rem & 0b0100_0000 == 0b0100_0000 {
+                let idx = ((rem & 0b0000_0011) << 4) | (b >> 4);
+                rem = 0b1000_0000 | (b & 0b0000_1111);
+                idx
+            } else {
+                rem = 0b0100_0000 | (b & 0b0000_0011);
 
-            production.extend (self.tbl[idx as usize].as_slice ());
+                b >> 2
+            };
+
+            production.push (Self::tbl(idx));
         }
 
         for _ in 0 .. (production.capacity () - production.len ()) {
@@ -215,9 +236,9 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
 
                 rem = 0;
 
-                production.extend (self.tbl[idx as usize].as_slice ());
+                production.push (Self::tbl(idx));
             } else {
-                production.extend (self.pad.as_slice ());
+                production.push (b'=');
             }
         }
 
@@ -228,9 +249,9 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
 
 
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let vlen = value.len ();
+        // let vlen = value.len ();
 
-        let mut production: Vec<u8> = Vec::with_capacity (vlen / (4 * self.tcl) * 3);
+        let mut production: Vec<u8> = Vec::with_capacity (value.len () / 4 * 3);
 
         // if vlen % (4 * self.tcl) != 0 { return Err ( () ) } // TODO: warning?
 
@@ -240,71 +261,42 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
         let mut quote_state = 0; // 1 - single, 2 - double, 3 - finished
 
 
-        'top: loop {
-            if ptr >= vlen { break; }
+        if explicit && quote_state == 0 {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') => { ptr += 1; quote_state = 1; }
+                Some (b'"')  => { ptr += 1; quote_state = 2; }
+                _ => ()
+            };
+        }
 
 
-            if quote_state == 1 {
-                if self.s_quote.contained_at (value, ptr) {
-                    ptr += self.s_quote.len ();
-                    quote_state = 3;
-                    continue;
+        loop {
+            match value.get (ptr).map (|b| *b) {
+                None => break,
+
+                Some (b'\'') => {
+                    if quote_state == 1 {
+                        ptr += 1;
+                        quote_state = 3;
+                        break;
+                    } else { return Err ( () ) }
                 }
-            }
 
-
-            if quote_state == 2 {
-                if self.d_quote.contained_at (value, ptr) {
-                    ptr += self.d_quote.len ();
-                    quote_state = 3;
-                    continue;
+                Some (b'"') => {
+                    if quote_state == 2 {
+                        ptr += 1;
+                        quote_state = 3;
+                        break;
+                    } else { return Err ( () ) }
                 }
-            }
 
-
-            if quote_state == 0 && explicit {
-                if self.s_quote.contained_at (value, ptr) {
-                    ptr += self.s_quote.len ();
-                    quote_state = 1;
-                }
-            }
-
-
-            if quote_state == 0 && explicit {
-                if self.d_quote.contained_at (value, ptr) {
-                    ptr += self.d_quote.len ();
-                    quote_state = 2;
-                }
-            }
-
-
-            if self.space.contained_at (value, ptr) {
-                ptr += self.space.len ();
-                continue;
-            }
-
-            if self.tab_h.contained_at (value, ptr) {
-                ptr += self.tab_h.len ();
-                continue;
-            }
-
-            if self.line_feed.contained_at (value, ptr) {
-                ptr += self.line_feed.len ();
-                continue;
-            }
-
-            if self.carriage_return.contained_at (value, ptr) {
-                ptr += self.carriage_return.len ();
-                continue;
-            }
-
-
-            if quote_state == 3 { return Err ( () ) }
-
-
-            for i in 0u8 .. 64u8 {
-                if self.tbl[i as usize].contained_at (value, ptr) {
-                    ptr += self.tbl[i as usize].len ();
+                Some (v @ b'a' ... b'z') |
+                Some (v @ b'A' ... b'z') |
+                Some (v @ b'0' ... b'9') |
+                Some (v @ b'+') |
+                Some (v @ b'/') => {
+                    ptr += 1;
+                    let i = Self::lbt (v);
 
                     let idx: u8 = if rem & 0b1100_0000 == 0b1100_0000 {
                         let idx = ((rem & 0b0011_1111) << 2) | (i >> 4);
@@ -320,20 +312,18 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
                         idx
                     } else {
                         rem = i | 0b1100_0000;
-                        continue 'top;
+                        continue;
                     };
 
                     production.push (idx);
-                    continue 'top;
                 }
-            }
 
-            if self.pad.contained_at (value, ptr) {
-                ptr += self.pad.len ();
+                Some (b'=') => {
+                    ptr += 1;
 
-                let i: u8 = 0;
+                    let i: u8 = 0;
 
-                let idx: u8 = if rem & 0b1100_0000 == 0b1100_0000 {
+                    let idx: u8 = if rem & 0b1100_0000 == 0b1100_0000 {
                         let idx = ((rem & 0b0011_1111) << 2) | (i >> 4);
                         rem = (i & 0b0000_1111) | 0b1000_0000;
                         idx
@@ -347,13 +337,31 @@ impl<Char, DoubleChar> Model for Binary<Char, DoubleChar>
                         idx
                     } else {
                         rem = i | 0b1100_0000;
-                        continue 'top;
+                        continue;
                     };
 
-                if idx == 0 { break 'top; }
+                    if idx == 0 { break }
 
-                production.push (idx);
-            } else { return Err ( () ) }
+                    production.push (idx);
+                }
+
+                _ => return Err ( () )
+            }
+        }
+
+        if quote_state == 3 {
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (b' ') |
+                    Some (b'\n') |
+                    Some (b'\t') |
+                    Some (b'\r') => { ptr += 1; }
+
+                    _ => return Err ( () )
+                }
+            }
         }
 
         Ok ( TaggedValue::from (BinaryValue::from (production)) )
@@ -419,24 +427,12 @@ impl AsMut<Vec<u8>> for BinaryValue {
 
 
 
-/*
-pub struct BinaryFactory;
-
-impl Factory for BinaryFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Binary::new (cset)) }
-}
-*/
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -444,7 +440,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let bin = Binary::new (&get_charset_utf8 ());
+        let bin = Binary; // ::new (&get_charset_utf8 ());
 
         assert_eq! (bin.get_tag (), TAG);
     }
@@ -453,8 +449,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let bin = Binary::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let bin = Binary; // ::new (&get_charset_utf8 ());
 
         let pairs = pairs ();
 
@@ -462,8 +458,13 @@ mod tests {
             let p = pairs[idx];
 
             if let Ok (rope) = bin.encode (&renderer, TaggedValue::from (BinaryValue::from (p.0.to_string ().into_bytes ())), &mut iter::empty ()) {
-                let encoded = rope.render (&renderer);
-                let expected = p.1.as_bytes ();
+
+                println! ("rope: {:?}", rope);
+                // let encoded = rope.render (&renderer);
+                // let expected = p.1.as_bytes ();
+
+                let encoded = unsafe { String::from_utf8_unchecked (rope.render (&renderer)) };
+                let expected = p.1;
 
                 assert_eq! (encoded, expected);
             } else { assert! (false, "Unexpected result") }
@@ -474,7 +475,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let bin = Binary::new (&get_charset_utf8 ());
+        let bin = Binary; // ::new (&get_charset_utf8 ());
 
         let pairs = pairs ();
 

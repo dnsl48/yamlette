@@ -1,10 +1,8 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
 
-
-use txt::{ CharSet, Twine };
-use txt::encoding::{ Encoding, Unicode, UTF8 };
+use txt::Twine;
+use txt::encoding::{ Unicode, UTF8 };
 
 use model::{ model_issue_rope, Model, Rope, Tagged, TaggedValue };
 use model::renderer::{ EncodedString, Node, Renderer };
@@ -13,7 +11,9 @@ use model::style::{ CommonStyles, Style };
 use std::any::Any;
 use std::mem;
 use std::iter::Iterator;
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
+
+use std::ptr;
 
 
 pub const TAG: &'static str = "tag:yaml.org,2002:str";
@@ -23,177 +23,45 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 // TODO: do warnings for incorrect escapes on decode (and encode)
 
 
-pub struct Str<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    s_quote: Char,
-    d_quote: Char,
-
-    backslash: Char,
-
-    line_feed: Char,
-    carriage_return: Char,
-
-    slash: Char,
-    space: Char,
-    tab: Char,
-    underscore: Char,
-
-    digit_0: Char,
-/*
-    digit_1: Char,
-    digit_2: Char,
-    digit_3: Char,
-    digit_4: Char,
-    digit_5: Char,
-    digit_6: Char,
-    digit_7: Char,
-    digit_8: Char,
-    digit_9: Char,
-*/
-    letter_a: Char,
-    letter_b: Char,
-    // letter_c: Char,
-    // letter_d: Char,
-    letter_e: Char,
-    letter_f: Char,
-    letter_n: Char,
-    letter_r: Char,
-    letter_t: Char,
-    letter_u: Char,
-    letter_v: Char,
-    letter_x: Char,
-
-    // letter_t_a: Char,
-    // letter_t_b: Char,
-    // letter_t_c: Char,
-    // letter_t_d: Char,
-    // letter_t_e: Char,
-    // letter_t_f: Char,
-    letter_t_l: Char,
-    letter_t_n: Char,
-    letter_t_p: Char,
-    letter_t_u: Char,
-
-    encoding: Encoding,
-
-    _dchr: PhantomData<DoubleChar>
-}
+pub struct Str;
 
 
-
-impl<Char, DoubleChar> Str<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Str {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+    fn extract_hex_at (&self, src: &[u8], mut at: usize) -> Option<(u32, usize)> {
+        let mut result: u32 = 0;
 
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Str<Char, DoubleChar> {
-        Str {
-            encoding: cset.encoding,
+        loop {
+            let val = match src.get (at).map (|b| *b) {
+                Some (val @ b'0' ... b'9') => { val - b'0' }
+                Some (val @ b'a' ... b'f') => { 10 + (val - b'a') }
+                Some (val @ b'A' ... b'F') => { 10 + (val - b'A') }
+                _ => break
+            };
 
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
+            at += 1;
 
-            backslash: cset.backslash,
-
-            line_feed: cset.line_feed,
-            carriage_return: cset.carriage_return,
-
-            slash: cset.slash,
-            space: cset.space,
-            tab: cset.tab_h,
-            underscore: cset.low_line,
-
-            digit_0: cset.digit_0,
-/*
-            digit_1: cset.digit_1,
-            digit_2: cset.digit_2,
-            digit_3: cset.digit_3,
-            digit_4: cset.digit_4,
-            digit_5: cset.digit_5,
-            digit_6: cset.digit_6,
-            digit_7: cset.digit_7,
-            digit_8: cset.digit_8,
-            digit_9: cset.digit_9,
-*/
-            letter_a: cset.letter_a,
-            letter_b: cset.letter_b,
-            // letter_c: cset.letter_c,
-            // letter_d: cset.letter_d,
-            letter_e: cset.letter_e,
-            letter_f: cset.letter_f,
-            letter_n: cset.letter_n,
-            letter_r: cset.letter_r,
-            letter_t: cset.letter_t,
-            letter_u: cset.letter_u,
-            letter_v: cset.letter_v,
-            letter_x: cset.letter_x,
-
-/*
-            letter_t_a: cset.letter_t_a,
-            letter_t_b: cset.letter_t_b,
-            letter_t_c: cset.letter_t_c,
-            letter_t_d: cset.letter_t_d,
-            letter_t_e: cset.letter_t_e,
-            letter_t_f: cset.letter_t_f,
-*/
-            letter_t_l: cset.letter_t_l,
-            letter_t_n: cset.letter_t_n,
-            letter_t_p: cset.letter_t_p,
-            letter_t_u: cset.letter_t_u,
-
-            _dchr: PhantomData
+            result = if let Some (nv) = result.checked_mul (16) {
+                if let Some (nv) = nv.checked_add (val as u32) {
+                    nv
+                } else { return None }
+            } else { return None }
         }
+
+        return Some ((result, at))
     }
 
-/*
-    fn extract_hex_at (&self, src: &[u8], at: usize) -> Option<(u8, usize)> {
-        // TODO: effective specialisations for UTF-8, UTF-16 and UTF-32
-        // TODO: or keep a charset copy and just use it here?
 
-             if self.digit_0.contained_at (&src, at) { Some ( (0, self.digit_0.len ()) ) }
-        else if self.digit_1.contained_at (&src, at) { Some ( (1, self.digit_1.len ()) ) }
-        else if self.digit_2.contained_at (&src, at) { Some ( (2, self.digit_2.len ()) ) }
-        else if self.digit_3.contained_at (&src, at) { Some ( (3, self.digit_3.len ()) ) }
-        else if self.digit_4.contained_at (&src, at) { Some ( (4, self.digit_4.len ()) ) }
-        else if self.digit_5.contained_at (&src, at) { Some ( (5, self.digit_5.len ()) ) }
-        else if self.digit_6.contained_at (&src, at) { Some ( (6, self.digit_6.len ()) ) }
-        else if self.digit_7.contained_at (&src, at) { Some ( (7, self.digit_7.len ()) ) }
-        else if self.digit_8.contained_at (&src, at) { Some ( (8, self.digit_8.len ()) ) }
-        else if self.digit_9.contained_at (&src, at) { Some ( (9, self.digit_9.len ()) ) }
-
-        else if self.letter_a.contained_at (&src, at) { Some ( (10, self.letter_a.len ()) ) }
-        else if self.letter_b.contained_at (&src, at) { Some ( (11, self.letter_b.len ()) ) }
-        else if self.letter_c.contained_at (&src, at) { Some ( (12, self.letter_c.len ()) ) }
-        else if self.letter_d.contained_at (&src, at) { Some ( (13, self.letter_d.len ()) ) }
-        else if self.letter_e.contained_at (&src, at) { Some ( (14, self.letter_e.len ()) ) }
-        else if self.letter_f.contained_at (&src, at) { Some ( (15, self.letter_f.len ()) ) }
-
-        else if self.letter_t_a.contained_at (&src, at) { Some ( (10, self.letter_t_a.len ()) ) }
-        else if self.letter_t_b.contained_at (&src, at) { Some ( (11, self.letter_t_b.len ()) ) }
-        else if self.letter_t_c.contained_at (&src, at) { Some ( (12, self.letter_t_c.len ()) ) }
-        else if self.letter_t_d.contained_at (&src, at) { Some ( (13, self.letter_t_d.len ()) ) }
-        else if self.letter_t_e.contained_at (&src, at) { Some ( (14, self.letter_t_e.len ()) ) }
-        else if self.letter_t_f.contained_at (&src, at) { Some ( (15, self.letter_t_f.len ()) ) }
-
-        else { None }
-    }
-*/
-
-
+    // TODO: redo it safely
     unsafe fn encode_auto_quoted (&self, mut value: StrValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
         let issue_tag = value.issue_tag ();
         let alias = value.take_alias ();
         let string = value.take_twine ();
         let bytes: &[u8] = string.as_bytes ();
-        let utf8 = UTF8;
-        let char_len = self.encoding.char_max_bytes_len () as usize; // max bytes for a character in the encoding
-        let capacity = bytes.len () * char_len * 2;  // 2 bytes for escaped with a backslash chars
+        // let utf8 = UTF8;
+        // let char_len = self.encoding.char_max_bytes_len () as usize; // max bytes for a character in the encoding
+        let capacity = bytes.len () *  2;  // reserve 2 bytes for escaped with a backslash chars
         let mut result_string: Vec<u8> = Vec::with_capacity (capacity);
 
         /*
@@ -222,9 +90,10 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
             if slen >= bytes.len () { break; }
             if rlen >= capacity { unreachable! () /* overflow! */ }
 
-            let (code, len) = utf8.to_unicode_ptr (sptr, bytes.len () - slen);
-            slen += len as usize;
-            sptr = sptr.offset (len as isize);
+            // let (code, len) = utf8.to_unicode_ptr (sptr, bytes.len () - slen);
+            let code = *sptr;
+            slen += 1; // len as usize;
+            sptr = sptr.offset (1 as isize);
 
             match code {
                 0 => {
@@ -242,11 +111,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.digit_0.len ();
+                    rlen += 2; // self.backslash.len () + self.digit_0.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.digit_0.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\0".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.digit_0.copy_to_ptr (rptr);
                 }
 
 
@@ -265,11 +137,15 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_a.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_a.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_a.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\a".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_a.copy_to_ptr (rptr);
+                    
                 }
 
 
@@ -288,11 +164,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_b.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_b.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_b.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\b".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_b.copy_to_ptr (rptr);
                 }
 
 
@@ -311,11 +190,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_t.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_t.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_t.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\t".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_t.copy_to_ptr (rptr);
                 }
 
 
@@ -334,11 +216,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_n.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_n.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_n.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\n".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_n.copy_to_ptr (rptr);
                 }
 
 
@@ -357,11 +242,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_v.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_v.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_v.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\v".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_v.copy_to_ptr (rptr);
                 }
 
 
@@ -380,11 +268,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_f.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_f.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_f.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\f".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_f.copy_to_ptr (rptr);
                 }
 
 
@@ -403,11 +294,14 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_r.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_r.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_r.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\r".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_r.copy_to_ptr (rptr);
                 }
 
 
@@ -426,79 +320,105 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         }
                     }
 
-                    rlen += self.backslash.len () + self.letter_e.len ();
+                    rlen += 2; // self.backslash.len () + self.letter_e.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
-                    rptr = self.letter_e.copy_to_ptr (rptr);
+                    ptr::copy_nonoverlapping ("\\e".as_ptr (), rptr, 2);
+                    rptr = rptr.offset (2);
+
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.letter_e.copy_to_ptr (rptr);
                 }
 
 
                 34 => {
                     if quotes == 2 {
-                        rlen += self.backslash.len () + self.d_quote.len ();
+                        rlen += 2; // self.backslash.len () + self.d_quote.len ();
                         result_string.set_len (rlen);
 
-                        rptr = self.backslash.copy_to_ptr (rptr);
-                        rptr = self.d_quote.copy_to_ptr (rptr);
+                        ptr::copy_nonoverlapping ("\\\"".as_ptr (), rptr, 2);
+                        rptr = rptr.offset (2);
+
+                        // rptr = self.backslash.copy_to_ptr (rptr);
+                        // rptr = self.d_quote.copy_to_ptr (rptr);
 
                         continue;
                     }
 
                     if first_rollback_at.is_none () {
-                        first_rollback_at = Some ( (slen - len as usize, rlen) );
+                        first_rollback_at = Some ( (slen - 1, rlen) );
                     }
 
-                    rlen += self.d_quote.len ();
+                    rlen += 1; // self.d_quote.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.d_quote.copy_to_ptr (rptr);
+                    *rptr = b'"';
+                    rptr = rptr.offset (1);
+
+                    // rptr = self.d_quote.copy_to_ptr (rptr);
+                    // ptr::copy_nonoverlapping ("\"".as_ptr (), rptr, 2);
+                    // rptr = rptr.offset (1);
                 }
 
 
                 39 => {
                     if quotes == 1 {
-                        rlen += self.s_quote.len () * 2;
+                        rlen += 2; // self.s_quote.len () * 2;
                         result_string.set_len (rlen);
 
-                        rptr = self.s_quote.copy_to_ptr_times (rptr, 2);
+                        // rptr = self.s_quote.copy_to_ptr_times (rptr, 2);
+                        ptr::copy_nonoverlapping ("''".as_ptr (), rptr, 2);
+                        rptr = rptr.offset (2);
 
                         continue;
                     }
 
                     if first_rollback_at.is_none () {
-                        first_rollback_at = Some ( (slen - len as usize, rlen) );
+                        first_rollback_at = Some ( (slen - 1, rlen) );
                     }
 
-                    rlen += self.s_quote.len ();
+                    rlen += 1; // self.s_quote.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.s_quote.copy_to_ptr (rptr);
+                    // rptr = self.s_quote.copy_to_ptr (rptr);
+                    *rptr = b'\'';
+                    rptr = rptr.offset (1);
                 }
 
 
                 92 => {
                     if quotes == 2 {
-                        rlen += self.backslash.len () * 2;
+                        rlen += 2; // self.backslash.len () * 2;
                         result_string.set_len (rlen);
 
-                        rptr = self.backslash.copy_to_ptr_times (rptr, 2);
+                        // rptr = self.backslash.copy_to_ptr_times (rptr, 2);
+                        ptr::copy_nonoverlapping ("\\\\".as_ptr (), rptr, 2);
+                        rptr = rptr.offset (2);
 
                         continue;
                     }
 
                     if first_rollback_at.is_none () {
-                        first_rollback_at = Some ( (slen - len as usize, rlen) );
+                        first_rollback_at = Some ( (slen - 1, rlen) );
                     }
 
-                    rlen += self.backslash.len ();
+                    rlen += 1; // self.backslash.len ();
                     result_string.set_len (rlen);
 
-                    rptr = self.backslash.copy_to_ptr (rptr);
+                    // rptr = self.backslash.copy_to_ptr (rptr);
+                    *rptr = b'\\';
+                    rptr = rptr.offset (1);
                 }
 
 
                 _ => {
+                    rlen += 1;
+                    result_string.set_len (rlen);
+
+                    *rptr = code;
+                    rptr = rptr.offset (1);
+
+                    /*
                     let bs = self.encoding.from_unicode (code);
 
                     rlen += bs[4] as usize;
@@ -508,11 +428,10 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
                         *rptr = bs[i];
                         rptr = rptr.offset (1);
                     }
+                    */
                 }
             };
         }
-
-        
 
         let node = if quotes == 2 {
             Node::DoubleQuotedString (EncodedString::from (result_string))
@@ -528,21 +447,13 @@ impl<Char, DoubleChar> Str<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Model for Str<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Str {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
@@ -554,7 +465,7 @@ impl<Char, DoubleChar> Model for Str<Char, DoubleChar>
     fn get_default (&self) -> TaggedValue { TaggedValue::from (StrValue::from (String::new ())) }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let value: StrValue = match <TaggedValue as Into<Result<StrValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -573,452 +484,259 @@ impl<Char, DoubleChar> Model for Str<Char, DoubleChar>
         const STATE_BREAK: u8 = 4;
 
 
-        if self.d_quote.contained_at (value, ptr) {
-            let utf8 = UTF8;
-            let mut buffer: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
-            let mut result: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+        match value.get (ptr).map (|b| *b) {
+            Some (b'"') => {
+                // let utf8 = UTF8;
+                let mut buffer: Vec<u8> = Vec::with_capacity (value.len ());
+                let mut result: Vec<u8> = Vec::with_capacity (value.len ());
 
-            ptr += self.d_quote.len ();
+                ptr += 1; // self.d_quote.len ();
 
-            loop {
-                if ptr >= value.len () { break; }
+                loop {
+                    match value.get (ptr).map (|b| *b) {
+                        None => break,
 
+                        Some (b' ') => {
+                            ptr += 1;
 
-                let (code, len): (u32, u8) = if self.space.contained_at (value, ptr) {
-                    state = state | STATE_SPACE;
+                            state = state | STATE_SPACE;
 
-                    (32, (self.space.len ()) as u8)
-                } else
-
-                if self.tab.contained_at (value, ptr) {
-                    state = state | STATE_SPACE;
-
-                    (9, (self.tab.len ()) as u8)
-                } else
-
-                if self.backslash.contained_at (value, ptr) && self.line_feed.contained_at (value, ptr + self.backslash.len ())
-                {
-                    state = state | STATE_ESCNL;
-
-                    ptr += self.backslash.len () + self.line_feed.len ();
-
-                    continue;
-                } else
-
-                if self.backslash.contained_at (value, ptr) && self.carriage_return.contained_at (value, ptr + self.backslash.len ())
-                {
-                    state = state | STATE_ESCNL;
-
-                    ptr += self.backslash.len () + self.line_feed.len ();
-
-                    continue;
-                } else
-
-                if self.line_feed.contained_at (value, ptr) {
-                    if state & STATE_BREAK == 0 {
-                        buffer.clear ();
-
-                        state = state | STATE_BREAK | STATE_SPACE;
-
-                        ptr += self.line_feed.len ();
-
-                        continue;
-                    }
-
-                    (10, self.line_feed.len () as u8)
-                } else
-
-                if self.carriage_return.contained_at (value, ptr) {
-                    if state & STATE_BREAK == 0 {
-                        state = state | STATE_BREAK | STATE_SPACE;
-
-                        buffer.clear ();
-
-                        ptr += self.carriage_return.len ();
-
-                        continue;
-                    }
-
-                    (13, self.carriage_return.len () as u8)
-                } else
-
-
-                if state & STATE_SPACE == STATE_SPACE {
-                    if state & STATE_BREAK == STATE_BREAK && buffer.len () == 0 {
-                        result.push (b' '); 
-                    } else {
-                        result.append (&mut buffer);
-                    }
-
-                    state = 0;
-
-                    continue;
-                } else { (0, 0) };
-
-
-                if state & STATE_SPACE == STATE_SPACE {
-                    ptr += len as usize;
-
-                    if state & STATE_ESCNL == STATE_ESCNL {
-                        continue;
-                    } else {
-                        if state & STATE_BREAK == STATE_BREAK && code != 10 && code != 13 {
-                            continue;
-                        } else {
-                            let bs = utf8.from_unicode (code);
-                            buffer.extend (&bs[.. bs[4] as usize]);
+                            if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b' ');
+                            }
                         }
-                    }
 
-                    continue;
+                        Some (b'\t') => {
+                            ptr += 1;
+
+                            state = state | STATE_SPACE;
+                            if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\t');
+                            }
+                        }
+
+                        Some (b'\n') => {
+                            ptr += 1;
+ 
+                            if state & STATE_BREAK == 0 {
+                                buffer.clear ();
+                                state = state | STATE_BREAK | STATE_SPACE;
+                            } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\n');
+                            } else {
+                                unimplemented! ()
+                            }
+                        }
+
+                        Some (b'\r') => {
+                            ptr += if let Some (b'\n') = value.get (ptr + 1).map (|b| *b) { 2 } else { 1 };
+
+                            if state & STATE_BREAK == 0 {
+                                buffer.clear ();
+                                state = state | STATE_BREAK | STATE_SPACE;
+                            } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\n');
+                            } else {
+                                unimplemented! ()
+                            }
+                        }
+
+                        Some (b'\\') => match value.get (ptr + 1).map (|b| *b) {
+                            Some (b'\n') => {
+                                ptr += 2;
+                                state = state | STATE_ESCNL;
+                            }
+                            Some (b'\r') => {
+                                ptr += if let Some (b'\n') = value.get (ptr + 2).map (|b| *b) { 3 } else { 2 };
+                                state = state | STATE_ESCNL;
+                            }
+                            Some (b'0') => { ptr += 2; result.push (0); }
+                            Some (b'a') => { ptr += 2; result.push (7); }
+                            Some (b'b') => { ptr += 2; result.push (8); }
+                            Some (b't') => { ptr += 2; result.push (9); }
+                            Some (b'n') => { ptr += 2; result.push (10); }
+                            Some (b'v') => { ptr += 2; result.push (11); }
+                            Some (b'f') => { ptr += 2; result.push (12); }
+                            Some (b'r') => { ptr += 2; result.push (13); }
+                            Some (b'e') => { ptr += 2; result.push (27); }
+                            Some (b' ') => { ptr += 2; result.push (32); }
+                            Some (b'"') => { ptr += 2; result.push (34); }
+                            Some (b'/') => { ptr += 2; result.push (47); }
+                            Some (b'\\') => { ptr += 2; result.push (92); }
+                            Some (b'N') => { ptr += 2; result.push (0xC2); result.push (0x85); }
+                            Some (b'_') => { ptr += 2; result.push (0xC2); result.push (0xA0); }
+                            Some (b'L') => { ptr += 3; result.push (0xE2); result.push (0x80); result.push (0xA8); }
+                            Some (b'P') => { ptr += 3; result.push (0xE2); result.push (0x80); result.push (0xA9); }
+
+                            Some (b'x') => {
+                                ptr += 1;
+
+                                if let Some ((code, len)) = self.extract_hex_at (value, ptr) {
+                                    if len - ptr == 2 {
+                                        ptr += 2;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                } else { result.push (b'\\'); }
+                            }
+
+                            Some (b'u') => {
+                                ptr += 1;
+
+                                if let Some ((code, len)) = self.extract_hex_at (value, ptr) {
+                                    if len - ptr == 4 {
+                                        ptr += 4;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                } else { result.push (b'\\'); }
+                            }
+
+                            Some (b'U') => {
+                                ptr += 1;
+
+                                if let Some ((code, len)) = self.extract_hex_at (value, ptr) {
+                                    if len - ptr == 8 {
+                                        ptr += 8;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                } else { result.push (b'\\'); }
+                            }
+
+                            _ => { ptr += 1; result.push (b'\\'); }
+                        },
+
+                        _ if state & STATE_SPACE == STATE_SPACE => {
+                            if state & STATE_BREAK == STATE_BREAK && buffer.len () == 0 {
+                                result.push (b' '); 
+                            } else {
+                                result.append (&mut buffer);
+                            }
+
+                            state = 0;
+                        }
+
+                        Some (b'"') if ptr + 1 == value.len () => { break }
+
+                        Some (b @ _) => {
+                            ptr += 1;
+                            result.push (b);
+                        }
+                    };
                 }
 
-                let (code, len): (u32, u8) = if self.backslash.contained_at (value, ptr) {
-                    let ptr = ptr + self.backslash.len ();
-
-                    if self.digit_0.contained_at (value, ptr) {
-                        (0, (self.backslash.len () + self.digit_0.len ()) as u8)
-                    } else
-
-                    if self.letter_a.contained_at (value, ptr) {
-                        (7, (self.backslash.len () + self.letter_a.len ()) as u8)
-                    } else
-
-                    if self.letter_b.contained_at (value, ptr) {
-                        (8, (self.backslash.len () + self.letter_b.len ()) as u8)
-                    } else
-
-                    if self.letter_t.contained_at (value, ptr) {
-                        (9, (self.backslash.len () + self.letter_t.len ()) as u8)
-                    } else
-
-                    if self.letter_n.contained_at (value, ptr) {
-                        (10, (self.backslash.len () + self.letter_n.len ()) as u8)
-                    } else
-
-                    if self.letter_v.contained_at (value, ptr) {
-                        (11, (self.backslash.len () + self.letter_v.len ()) as u8)
-                    } else
-
-                    if self.letter_f.contained_at (value, ptr) {
-                        (12, (self.backslash.len () + self.letter_f.len ()) as u8)
-                    } else
-
-                    if self.letter_r.contained_at (value, ptr) {
-                        (13, (self.backslash.len () + self.letter_r.len ()) as u8)
-                    } else
-
-                    if self.letter_e.contained_at (value, ptr) {
-                        (27, (self.backslash.len () + self.letter_e.len ()) as u8)
-                    } else
-
-                    if self.space.contained_at (value, ptr) {
-                        (32, (self.backslash.len () + self.space.len ()) as u8)
-                    } else
-
-                    if self.d_quote.contained_at (value, ptr) {
-                        (34, (self.backslash.len () + self.d_quote.len ()) as u8)
-                    } else
-
-                    if self.slash.contained_at (value, ptr) {
-                        (47, (self.backslash.len () + self.slash.len ()) as u8)
-                    } else
-
-                    if self.backslash.contained_at (value, ptr) {
-                        (92, (self.backslash.len () + self.backslash.len ()) as u8)
-                    } else
-
-                    if self.letter_t_n.contained_at (value, ptr) {
-                        (133, (self.backslash.len () + self.letter_t_n.len ()) as u8)
-                    } else
-
-                    if self.underscore.contained_at (value, ptr) {
-                        (160, (self.backslash.len () + self.underscore.len ()) as u8)
-                    } else
-
-                    if self.letter_t_l.contained_at (value, ptr) {
-                        (8232, (self.backslash.len () + self.letter_t_l.len ()) as u8)
-                    } else
-
-                    if self.letter_t_p.contained_at (value, ptr) {
-                        (8233, (self.backslash.len () + self.letter_t_p.len ()) as u8)
-                    } else
-
-                    if self.letter_x.contained_at (value, ptr) {
-                        let ptr = ptr + self.letter_x.len ();
-
-                        /*
-                        self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
-                        self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
-                            Some ( ((d1 * 16 + d2) as u32, (self.backslash.len () + self.letter_x.len () + l1 + l2) as u8) )
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-                        */
-                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
-                            Some ( ((d1 as u32 * 16 + d2 as u32) as u32, (self.backslash.len () as u8 + self.letter_x.len () as u8 + l1 + l2) as u8) )
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-
-                    } else
-
-                    if self.letter_u.contained_at (value, ptr) {
-                        let ptr = ptr + self.letter_u.len ();
-/*
-                        self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
-                        self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
-                        self.extract_hex_at (value, ptr + l1 + l2).and_then (|(d3, l3)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3).and_then (|(d4, l4)| {
-                            Some ( (
-                                (d4 as u16 + (d3 as u16 * 16) + (d2 as u16 * 16 * 16) + (d1 as u16 * 16 * 16 * 16)) as u32,
-                                (self.backslash.len () + self.letter_u.len () + l1 + l2 + l3 + l4) as u8
-                            ) )
-                        })
-                        })
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-*/
-                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize ..]).and_then (|(d3, l3)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize ..]).and_then (|(d4, l4)| {
-                            Some ( (
-                                (d4 as u16 + (d3 as u16 * 16) + (d2 as u16 * 16 * 16) + (d1 as u16 * 16 * 16 * 16)) as u32,
-                                (self.backslash.len () as u8 + self.letter_u.len () as u8 + l1 + l2 + l3 + l4) as u8
-                            ) )
-                        })
-                        })
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-
-                    } else
-
-                    if self.letter_t_u.contained_at (value, ptr) {
-                        let ptr = ptr + self.letter_t_u.len ();
-
-                        /*
-                        self.extract_hex_at (value, ptr).and_then (|(d1, l1)| {
-                        self.extract_hex_at (value, ptr + l1).and_then (|(d2, l2)| {
-                        self.extract_hex_at (value, ptr + l1 + l2).and_then (|(d3, l3)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3).and_then (|(d4, l4)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3 + l4).and_then (|(d5, l5)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3 + l4 + l5).and_then (|(d6, l6)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3 + l4 + l5 + l6).and_then (|(d7, l7)| {
-                        self.extract_hex_at (value, ptr + l1 + l2 + l3 + l4 + l5 + l6 + l7).and_then (|(d8, l8)| {
-                            Some ( (
-                                d8 as u32 +
-                                d7 as u32 * 16 +
-                                d6 as u32 * 16 * 16 +
-                                d5 as u32 * 16 * 16 * 16 +
-                                d4 as u32 * 16 * 16 * 16 * 16 +
-                                d3 as u32 * 16 * 16 * 16 * 16 * 16 +
-                                d2 as u32 * 16 * 16 * 16 * 16 * 16 * 16 +
-                                d1 as u32 * 16 * 16 * 16 * 16 * 16 * 16 * 16,
-                                (self.backslash.len () + self.letter_t_u.len () + l1 + l2 + l3 + l4 + l5 + l6 + l7 + l8) as u8
-                            ) )
-                        })
-                        })
-                        })
-                        })
-                        })
-                        })
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-                        */
-                        self.encoding.extract_hex_digit (&value[ptr ..]).and_then (|(d1, l1)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize ..]).and_then (|(d2, l2)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize ..]).and_then (|(d3, l3)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize ..]).and_then (|(d4, l4)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize ..]).and_then (|(d5, l5)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize ..]).and_then (|(d6, l6)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize + l6 as usize ..]).and_then (|(d7, l7)| {
-                        self.encoding.extract_hex_digit (&value[ptr + l1 as usize + l2 as usize + l3 as usize + l4 as usize + l5 as usize + l6 as usize + l7 as usize ..]).and_then (|(d8, l8)| {
-                            Some ( (
-                                d8 as u32 +
-                                d7 as u32 * 16 +
-                                d6 as u32 * 16 * 16 +
-                                d5 as u32 * 16 * 16 * 16 +
-                                d4 as u32 * 16 * 16 * 16 * 16 +
-                                d3 as u32 * 16 * 16 * 16 * 16 * 16 +
-                                d2 as u32 * 16 * 16 * 16 * 16 * 16 * 16 +
-                                d1 as u32 * 16 * 16 * 16 * 16 * 16 * 16 * 16,
-                                (self.backslash.len () as u8 + self.letter_t_u.len () as u8 + l1 + l2 + l3 + l4 + l5 + l6 + l7 + l8) as u8
-                            ) )
-                        })
-                        })
-                        })
-                        })
-                        })
-                        })
-                        })
-                        }).or_else (|| { Some ( (92, self.backslash.len () as u8) ) }).unwrap ()
-
-                    } else
-
-
-                    { (92, self.backslash.len () as u8) }
-                } else {
-                    self.encoding.to_unicode (&value[ptr ..])
-                };
-
-
-                ptr += len as usize;
-
-
-                if ptr == value.len () && code == 34 { break; }
-
-
-                let bs = utf8.from_unicode (code);
-                result.extend (&bs[.. bs[4] as usize]);
+                Ok (TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (result) })))
             }
 
-            let s = String::from_utf8 (result);
+            Some (b'\'') => {
+                // let utf8 = UTF8;
+                let mut buffer: Vec<u8> = Vec::with_capacity (value.len ());
+                let mut result: Vec<u8> = Vec::with_capacity (value.len ());
 
-            if s.is_err () { Err ( () ) }
-            else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
+                ptr += 1;
 
-        } else if self.s_quote.contained_at (value, ptr) {
-            let utf8 = UTF8;
-            let mut buffer: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
-            let mut result: Vec<u8> = Vec::with_capacity (value.len () * self.encoding.char_max_bytes_len () as usize);
+                loop {
+                    match value.get (ptr).map (|b| *b) {
+                        None => break,
 
-            ptr += self.s_quote.len ();
+                        Some (b' ') => {
+                            ptr += 1;
 
-            loop {
-                if ptr >= value.len () { break; }
+                            state = state | STATE_SPACE;
 
-                let (code, len): (u32, u8) = if self.space.contained_at (value, ptr) {
-                    state = state | STATE_SPACE;
-
-                    (32, (self.space.len ()) as u8)
-                } else
-
-                if self.tab.contained_at (value, ptr) {
-                    state = state | STATE_SPACE;
-
-                    (9, (self.tab.len ()) as u8)
-                } else
-
-                if self.backslash.contained_at (value, ptr) && self.line_feed.contained_at (value, ptr + self.backslash.len ())
-                {
-                    state = state | STATE_ESCNL;
-
-                    ptr += self.backslash.len () + self.line_feed.len ();
-
-                    continue;
-                } else
-
-                if self.backslash.contained_at (value, ptr) && self.carriage_return.contained_at (value, ptr + self.backslash.len ())
-                {
-                    state = state | STATE_ESCNL;
-
-                    ptr += self.backslash.len () + self.line_feed.len ();
-
-                    continue;
-                } else
-
-                if self.line_feed.contained_at (value, ptr) {
-                    if state & STATE_BREAK == 0 {
-                        buffer.clear ();
-
-                        state = state | STATE_BREAK | STATE_SPACE;
-
-                        ptr += self.line_feed.len ();
-
-                        continue;
-                    }
-
-                    (10, self.line_feed.len () as u8)
-                } else
-
-                if self.carriage_return.contained_at (value, ptr) {
-                    if state & STATE_BREAK == 0 {
-                        state = state | STATE_BREAK | STATE_SPACE;
-
-                        buffer.clear ();
-
-                        ptr += self.carriage_return.len ();
-
-                        continue;
-                    }
-
-                    (13, self.carriage_return.len () as u8)
-                } else
-
-
-                if state & STATE_SPACE == STATE_SPACE {
-                    if state & STATE_BREAK == STATE_BREAK && buffer.len () == 0 {
-                        result.push (b' '); 
-                    } else {
-                        result.append (&mut buffer);
-                    }
-
-                    state = 0;
-
-                    continue;
-                } else { (0, 0) };
-
-
-
-                if state & STATE_SPACE == STATE_SPACE {
-                    ptr += len as usize;
-
-                    if state & STATE_ESCNL == STATE_ESCNL {
-                        continue;
-                    } else {
-                        if state & STATE_BREAK == STATE_BREAK && code != 10 && code != 13 {
-                            continue;
-                        } else {
-                            let bs = utf8.from_unicode (code);
-                            buffer.extend (&bs[.. bs[4] as usize]);
+                            if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b' ');
+                            }
                         }
-                    }
 
-                    continue;
+                        Some (b'\t') => {
+                            ptr += 1;
+
+                            state = state | STATE_SPACE;
+                            if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\t');
+                            }
+                        }
+
+                        Some (b'\n') => {
+                            ptr += 1;
+ 
+                            if state & STATE_BREAK == 0 {
+                                buffer.clear ();
+                                state = state | STATE_BREAK | STATE_SPACE;
+                            } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\n');
+                            } else {
+                                unimplemented! ()
+                            }
+                        }
+
+                        Some (b'\r') => {
+                            ptr += if let Some (b'\n') = value.get (ptr + 1).map (|b| *b) { 2 } else { 1 };
+
+                            if state & STATE_BREAK == 0 {
+                                buffer.clear ();
+                                state = state | STATE_BREAK | STATE_SPACE;
+                            } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
+                                buffer.push (b'\n');
+                            } else {
+                                unimplemented! ()
+                            }
+                        }
+
+                        Some (b'\\') => match value.get (ptr + 1).map (|b| *b) {
+                            Some (b'\n') => {
+                                ptr += 2;
+                                state = state | STATE_ESCNL;
+                            }
+
+                            Some (b'\r') => {
+                                ptr += if let Some (b'\n') = value.get (ptr + 2).map (|b| *b) { 3 } else { 2 };
+                                state = state | STATE_ESCNL;
+                            }
+
+                            _ => { ptr += 1; result.push (b'\\'); }
+                        },
+
+                        _ if state & STATE_SPACE == STATE_SPACE => {
+                            if state & STATE_BREAK == STATE_BREAK && buffer.len () == 0 {
+                                result.push (b' '); 
+                            } else {
+                                result.append (&mut buffer);
+                            }
+
+                            state = 0;
+                        }
+
+                        Some (b'\'') => match value.get (ptr + 1).map (|b| *b) {
+                            Some (b'\'') => {
+                                ptr += 1;
+                                result.push (b'\'');
+                            }
+                            None => { break }
+                            _ => return Err ( () )
+                        },
+
+                        // Some (b'"') if ptr + 1 == value.len () => { ptr += 1; break }
+
+                        Some (b @ _) => {
+                            ptr += 1;
+                            result.push (b);
+                        }
+                    };
                 }
 
-                let (code, len): (u32, u8) = if self.backslash.contained_at (value, ptr) && self.s_quote.contained_at (value, ptr + self.backslash.len ())
-                {
-                    (39, (self.backslash.len () + self.s_quote.len ()) as u8)
-                } else if self.s_quote.contained_at (value, ptr) && self.s_quote.contained_at (value, ptr + self.s_quote.len ()) {
-                    (39, (self.s_quote.len () * 2) as u8)
-                } else {
-                    self.encoding.to_unicode (&value[ptr ..])
-                };
+                let s = String::from_utf8 (result);
 
+                if s.is_err () { Err ( () ) }
+                else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
 
-                ptr += len as usize;
-
-
-                if ptr == value.len () && code == 39 { break; }
-
-
-                let bs = utf8.from_unicode (code);
-                result.extend (&bs[.. bs[4] as usize]);
             }
 
-            let s = String::from_utf8 (result);
-
-            if s.is_err () { Err ( () ) }
-            else { Ok ( TaggedValue::from (StrValue::from (s.unwrap ())) ) }
-
-        } else {
-            match self.encoding.bytes_to_string (value) {
-                Err ( () ) => Err ( () ),
-                Ok (string) => Ok ( TaggedValue::from (StrValue::from (string)) )
+            _ => {
+                Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (Vec::from (value)) })) )
             }
-            /*
-            loop {
-                if ptr >= value.len () { break; }
-
-                let (code, len) = self.encoding.to_unicode (&value[ptr ..]);
-
-                ptr += len as usize;
-
-                let bs = utf8.from_unicode (code);
-                result.extend (&bs[.. bs[4] as usize]);
-            }
-            */
         }
 
     }
@@ -1146,7 +864,7 @@ mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -1155,7 +873,7 @@ mod tests {
     #[test]
     fn tag () {
         // let str = StrFactory.build_model (&get_charset_utf8 ());
-        let str = Str::new (&get_charset_utf8 ());
+        let str = Str; // ::new (&get_charset_utf8 ());
 
         assert_eq! (str.get_tag (), TAG);
     }
@@ -1164,8 +882,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let str = Str::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let str = Str; // ::new (&get_charset_utf8 ());
 
 
         let ops = [
@@ -1191,7 +909,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let str = Str::new (&get_charset_utf8 ());
+        let str = Str; // ::new (&get_charset_utf8 ());
 
         let ops = [
             ("Hey, this is a string!", "Hey, this is a string!"),
@@ -1219,7 +937,7 @@ mod tests {
 
     #[test]
     fn folding () {
-        let str = Str::new (&get_charset_utf8 ());
+        let str = Str; // ::new (&get_charset_utf8 ());
 
         let ops = [
             (r#""Four    spaces""#, "Four    spaces"),
@@ -1245,6 +963,65 @@ to a line feed, or 	\
 
   baz
 ""#, " foo\nbar\nbaz ")
+        ];
+
+
+        for i in 0 .. ops.len () {
+            if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
+                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+
+                let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
+
+                assert_eq! (val, ops[i].1);
+            } else { assert! (false) }
+        }
+    }
+}
+
+
+#[cfg (test)]
+mod dev_tests {
+    use super::*;
+
+    use model::{ Tagged, Renderer };
+    // use txt::get_charset_utf8;
+
+    use std::iter;
+
+
+    #[test]
+    fn folding () {
+        let str = Str; // ::new (&get_charset_utf8 ());
+
+        let ops = [
+            // (r#""Four    spaces""#, "Four    spaces"),
+
+            // (r#""Four  \  spaces""#, "Four    spaces"),
+
+            (r#""Four  
+  spaces""#, "Four spaces"),
+
+/*
+(r#"" 1st non-empty
+
+ 2nd non-empty 
+	3rd non-empty ""#, " 1st non-empty\n2nd non-empty 3rd non-empty "),
+
+            (r#""folded 
+to a space,	
+ 
+to a line feed, or 	\
+ \ 	non-content""#, "folded to a space,\nto a line feed, or \t \tnon-content"),
+
+
+(r#""
+  foo 
+ 
+  	 bar
+
+  baz
+""#, " foo\nbar\nbaz ")
+            */
         ];
 
 

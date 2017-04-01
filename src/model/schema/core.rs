@@ -1,7 +1,5 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
-
 
 use model::schema::Schema;
 
@@ -27,85 +25,77 @@ use model::yaml::binary::Binary;
 use model::yamlette::literal::Literal;
 use model::yamlette::incognitum::Incognitum;
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use std::default::Default;
 
 
 
-pub struct Core<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    encoding: Encoding,
+pub struct Core {
     styles: CommonStyles,
     tag_handles: [(Twine, Twine); 3],
-    mod_map: Map<Char, DoubleChar>,
-    mod_set: Set<Char, DoubleChar>,
-    mod_pairs: Pairs<Char, DoubleChar>,
-    mod_seq: Seq<Char, DoubleChar>,
-    mod_omap: Omap<Char, DoubleChar>,
-    mod_null: Null<Char, DoubleChar>,
-    mod_bool: Bool<Char, DoubleChar>,
-    mod_int: Int<Char, DoubleChar>,
-    mod_float: Float<Char, DoubleChar>,
-    mod_str: Str<Char, DoubleChar>,
-    mod_merge: Merge<Char, DoubleChar>,
-    mod_value: Value<Char, DoubleChar>,
-    mod_yaml: Yaml<Char, DoubleChar>,
-    mod_timestamp: Timestamp<Char, DoubleChar>,
-    mod_binary: Binary<Char, DoubleChar>,
-    mod_literal: Literal<Char, DoubleChar>,
-    mod_incognitum: Incognitum<Char, DoubleChar>
+
+    mod_map: Map,
+    mod_set: Set,
+    mod_pairs: Pairs,
+    mod_seq: Seq,
+    mod_omap: Omap,
+    mod_null: Null,
+    mod_bool: Bool,
+    mod_int: Int,
+    mod_float: Float,
+    mod_str: Str,
+    mod_merge: Merge,
+    mod_value: Value,
+    mod_yaml: Yaml,
+    mod_timestamp: Timestamp,
+    mod_binary: Binary,
+    mod_literal: Literal,
+    mod_incognitum: Incognitum
 }
 
 
 
-impl<Char, DoubleChar> Schema<Char, DoubleChar> for Core<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    fn init (&mut self, _: &CharSet<Char, DoubleChar>) { }
+impl Schema for Core {
+    #[inline (always)]
+    fn get_model_literal (&self) -> Literal { self.mod_literal }
 
-    fn get_model_literal (&self) -> &Literal<Char, DoubleChar> { &self.mod_literal }
+    #[inline (always)]
+    fn get_model_null (&self) -> Null { self.mod_null }
 
-    fn get_model_null (&self) -> &Null<Char, DoubleChar> { &self.mod_null }
-
-    fn get_encoding (&self) -> Encoding { self.encoding }
-
+    #[inline (always)]
     fn get_common_styles (&self) -> CommonStyles { self.styles }
 
+    #[inline (always)]
     fn get_yaml_version (&self) -> (u8, u8) { (1, 2) }
 
     fn get_tag_handles (&self) -> &[(Twine, Twine)] { &self.tag_handles }
 
     #[inline (always)]
-    fn get_tag_model_map (&self) -> &Twine { <Map<Char, DoubleChar>>::get_tag () }
+    fn get_tag_model_map (&self) -> &Twine { Map::get_tag () }
 
     #[inline (always)]
-    fn get_tag_model_seq (&self) -> &Twine { <Seq<Char, DoubleChar>>::get_tag () }
+    fn get_tag_model_seq (&self) -> &Twine { Seq::get_tag () }
 
 
-    fn look_up_model<'a, 'b> (&'a self, tag: &'b str) -> Option<&'a Model<Char=Char, DoubleChar=DoubleChar>> {
-             if tag == <Map<Char, DoubleChar>>::get_tag () { Some (&self.mod_map) }
-        else if tag == <Set<Char, DoubleChar>>::get_tag () { Some (&self.mod_set) }
-        else if tag == <Pairs<Char, DoubleChar>>::get_tag () { Some (&self.mod_pairs) }
-        else if tag == <Seq<Char, DoubleChar>>::get_tag () { Some (&self.mod_seq) }
-        else if tag == <Omap<Char, DoubleChar>>::get_tag () { Some (&self.mod_omap) }
-        else if tag == <Null<Char, DoubleChar>>::get_tag () { Some (&self.mod_null) }
-        else if tag == <Bool<Char, DoubleChar>>::get_tag () { Some (&self.mod_bool) }
-        else if tag == <Int<Char, DoubleChar>>::get_tag () { Some (&self.mod_int) }
-        else if tag == <Float<Char, DoubleChar>>::get_tag () { Some (&self.mod_float) }
-        else if tag == <Str<Char, DoubleChar>>::get_tag () { Some (&self.mod_str) }
-        else if tag == <Merge<Char, DoubleChar>>::get_tag () { Some (&self.mod_merge) }
-        else if tag == <Value<Char, DoubleChar>>::get_tag () { Some (&self.mod_value) }
-        else if tag == <Yaml<Char, DoubleChar>>::get_tag () { Some (&self.mod_yaml) }
-        else if tag == <Timestamp<Char, DoubleChar>>::get_tag () { Some (&self.mod_timestamp) }
-        else if tag == <Binary<Char, DoubleChar>>::get_tag () { Some (&self.mod_binary) }
-        else if tag == <Literal<Char, DoubleChar>>::get_tag () { Some (&self.mod_literal) }
-        else if tag == <Incognitum<Char, DoubleChar>>::get_tag () { Some (&self.mod_incognitum) }
+    fn look_up_model<'a, 'b> (&'a self, tag: &'b str) -> Option<&'a Model> {
+             if tag == Map::get_tag () { Some (&self.mod_map) }
+        else if tag == Set::get_tag () { Some (&self.mod_set) }
+        else if tag == Pairs::get_tag () { Some (&self.mod_pairs) }
+        else if tag == Seq::get_tag () { Some (&self.mod_seq) }
+        else if tag == Omap::get_tag () { Some (&self.mod_omap) }
+        else if tag == Null::get_tag () { Some (&self.mod_null) }
+        else if tag == Bool::get_tag () { Some (&self.mod_bool) }
+        else if tag == Int::get_tag () { Some (&self.mod_int) }
+        else if tag == Float::get_tag () { Some (&self.mod_float) }
+        else if tag == Str::get_tag () { Some (&self.mod_str) }
+        else if tag == Merge::get_tag () { Some (&self.mod_merge) }
+        else if tag == Value::get_tag () { Some (&self.mod_value) }
+        else if tag == Yaml::get_tag () { Some (&self.mod_yaml) }
+        else if tag == Timestamp::get_tag () { Some (&self.mod_timestamp) }
+        else if tag == Binary::get_tag () { Some (&self.mod_binary) }
+        else if tag == Literal::get_tag () { Some (&self.mod_literal) }
+        else if tag == Incognitum::get_tag () { Some (&self.mod_incognitum) }
         else { None }
     }
 
@@ -132,7 +122,7 @@ impl<Char, DoubleChar> Schema<Char, DoubleChar> for Core<Char, DoubleChar>
     }
 
 
-    fn look_up_model_callback (&self, predicate: &mut (FnMut (&Model<Char=Char, DoubleChar=DoubleChar>) -> bool)) -> Option<&Model<Char=Char, DoubleChar=DoubleChar>> {
+    fn look_up_model_callback (&self, predicate: &mut (FnMut (&Model) -> bool)) -> Option<&Model> {
              if predicate (&self.mod_map) { Some (&self.mod_map) }
         else if predicate (&self.mod_set) { Some (&self.mod_set) }
         else if predicate (&self.mod_pairs) { Some (&self.mod_pairs) }
@@ -153,19 +143,15 @@ impl<Char, DoubleChar> Schema<Char, DoubleChar> for Core<Char, DoubleChar>
         else { None }
     }
 
-    fn get_metamodel (&self) -> Option<&Model<Char=Char, DoubleChar=DoubleChar>> { Some (&self.mod_incognitum) }
+    fn get_metamodel (&self) -> Option<&Model> { Some (&self.mod_incognitum) }
 }
 
 
 
-impl<Char, DoubleChar> Core<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Core<Char, DoubleChar> { Core {
+impl Core {
+    pub fn new () -> Core { Core {
         // encoding: Encoding::default (),
-        encoding: cset.encoding,
+        // encoding: cset.encoding,
 
         styles: CommonStyles::default (),
 
@@ -176,22 +162,22 @@ impl<Char, DoubleChar> Core<Char, DoubleChar>
         ],
 
         // models: None
-        mod_map: Map::new (&cset),
-        mod_set: Set::new (&cset),
-        mod_pairs: Pairs::new (&cset),
-        mod_seq: Seq::new (&cset),
-        mod_omap: Omap::new (&cset),
-        mod_null: Null::new (&cset),
-        mod_bool: Bool::new (&cset),
-        mod_int: Int::new (&cset),
-        mod_float: Float::new (&cset),
-        mod_str: Str::new (&cset),
-        mod_merge: Merge::new (&cset),
-        mod_value: Value::new (&cset),
-        mod_yaml: Yaml::new (&cset),
-        mod_timestamp: Timestamp::new (&cset),
-        mod_binary: Binary::new (&cset),
-        mod_literal: Literal::new (&cset),
-        mod_incognitum: Incognitum::new (&cset)
+        mod_map: Map,
+        mod_set: Set,
+        mod_pairs: Pairs,
+        mod_seq: Seq,
+        mod_omap: Omap,
+        mod_null: Null,
+        mod_bool: Bool,
+        mod_int: Int,
+        mod_float: Float,
+        mod_str: Str,
+        mod_merge: Merge,
+        mod_value: Value,
+        mod_yaml: Yaml,
+        mod_timestamp: Timestamp,
+        mod_binary: Binary,
+        mod_literal: Literal,
+        mod_incognitum: Incognitum
     } }
 }

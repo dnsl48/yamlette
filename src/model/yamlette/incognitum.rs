@@ -1,16 +1,16 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
-use txt::{ CharSet, Twine };
-use txt::encoding::{ Encoding, Unicode };
+use txt::Twine;
+// use txt::encoding::{ Encoding, Unicode };
 
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 
 
 
@@ -20,49 +20,32 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Incognitum<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    encoding: Encoding,
-    _char: PhantomData<Char>,
-    _dchr: PhantomData<DoubleChar>
-}
+pub struct Incognitum;
 
 
 
-impl<Char, DoubleChar> Incognitum<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Incognitum {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+    /*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Incognitum<Char, DoubleChar> { Incognitum {
         encoding: cset.encoding,
         _char: PhantomData,
         _dchr: PhantomData
     } }
+    */
 }
 
 
 
-impl<Char, DoubleChar> Model for Incognitum<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Incognitum {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
+    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
@@ -71,7 +54,7 @@ impl<Char, DoubleChar> Model for Incognitum<Char, DoubleChar>
     fn is_metamodel (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let value: IncognitumValue = match <TaggedValue as Into<Result<IncognitumValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -97,18 +80,18 @@ impl<Char, DoubleChar> Model for Incognitum<Char, DoubleChar>
 
         result.push_str (value.get_value ().as_str ());
 
-        Ok (Rope::from (Node::String (EncodedString::from (self.encoding.string_to_bytes (result)))))
+        Ok (Rope::from (Node::String (EncodedString::from (result.into_bytes ()))))
     }
 
 
     fn decode (&self, _: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let string = try! (self.encoding.bytes_to_string (value));
+        let string = unsafe { String::from_utf8_unchecked (Vec::from (value)) };
         Ok ( TaggedValue::from (IncognitumValue::new (string)) )
     }
 
 
     fn meta_init (&self, anchor: Option<String>, tag: Option<String>, value: &[u8]) -> Result<TaggedValue, ()> {
-        let string = try! (self.encoding.bytes_to_string (value));
+        let string = unsafe { String::from_utf8_unchecked (Vec::from (value)) };
 
         let mut value = IncognitumValue::new (string);
 
@@ -164,24 +147,12 @@ impl Tagged for IncognitumValue {
 
 
 
-/*
-pub struct IncognitumFactory;
-
-impl Factory for IncognitumFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Incognitum::new (cset)) }
-}
-*/
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -189,7 +160,7 @@ mod tests {
     #[test]
     fn tag () {
         // let incognitum = IncognitumFactory.build_model (&get_charset_utf8 ());
-        let incognitum = Incognitum::new (&get_charset_utf8 ());
+        let incognitum = Incognitum; // ::new (&get_charset_utf8 ());
 
         assert_eq! (incognitum.get_tag ().as_ref (), TAG);
     }
@@ -198,9 +169,9 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
         // let incognitum = IncognitumFactory.build_model (&get_charset_utf8 ());
-        let incognitum = Incognitum::new (&get_charset_utf8 ());
+        let incognitum = Incognitum; // ::new (&get_charset_utf8 ());
 
         let ops: &[(Option<&'static str>, Option<&'static str>, &'static str, &'static str)] = &[
             (
@@ -253,7 +224,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let incognitum = Incognitum::new (&get_charset_utf8 ());
+        let incognitum = Incognitum; // ::new (&get_charset_utf8 ());
 
         let ops = [
             ("Hey, this is a string!", "Hey, this is a string!"),

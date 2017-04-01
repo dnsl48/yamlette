@@ -1,9 +1,7 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
 
-
-use txt::{ CharSet, Encoding, Unicode, Twine };
+use txt::Twine;
 
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
@@ -11,7 +9,6 @@ use model::style::CommonStyles;
 use std::any::Any;
 use std::default::Default;
 use std::iter::Iterator;
-use std::marker::PhantomData;
 
 
 
@@ -20,8 +17,8 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-
-pub struct Null<Char, DoubleChar>
+#[derive (Copy, Clone, Debug)]
+pub struct Null; /*<Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
     DoubleChar: CopySymbol + Combo + 'static
@@ -43,16 +40,14 @@ pub struct Null<Char, DoubleChar>
 
     _dchr: PhantomData<DoubleChar>
 }
+*/
 
 
 
-impl<Char, DoubleChar> Null<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Null {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Null<Char, DoubleChar> {
         Null {
             encoding: cset.encoding,
@@ -73,50 +68,49 @@ impl<Char, DoubleChar> Null<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 
     fn read_null (&self, value: &[u8], ptr: usize) -> usize {
-             if self.tilde.contained_at (value, ptr) { self.tilde.len () }
-        else if self.letter_n.contained_at (value, ptr) &&
-                self.letter_u.contained_at (value, ptr + self.letter_n.len ()) &&
-                self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len ()) &&
-                self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len () + self.letter_l.len ())
-            {
-                self.letter_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
-            }
-        else if self.letter_t_n.contained_at (value, ptr) {
-            if self.letter_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
-               self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len ()) &&
-               self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len ())
-            {
-                self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
-            } else
-            if self.letter_t_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
-               self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len ()) &&
-               self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len ())
-            {
-                self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len () + self.letter_t_l.len ()
-            } else { 0 }
-        } else { 0 }
+        match value.get (ptr).map (|b| *b) {
+            Some (b'~') => 1,
+            Some (b'n') => if value.starts_with ("null".as_bytes ()) { 4 } else { 0 },
+            Some (b'N') => if value.starts_with ("Null".as_bytes ()) || value.starts_with ("NULL".as_bytes ()) { 4 } else { 0 },
+            _ => 0
+        }
+
+        //      if self.tilde.contained_at (value, ptr) { self.tilde.len () }
+        // else if self.letter_n.contained_at (value, ptr) &&
+        //         self.letter_u.contained_at (value, ptr + self.letter_n.len ()) &&
+        //         self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len ()) &&
+        //         self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len () + self.letter_l.len ())
+        //     {
+        //         self.letter_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
+        //     }
+        // else if self.letter_t_n.contained_at (value, ptr) {
+        //     if self.letter_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
+        //        self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len ()) &&
+        //        self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len ())
+        //     {
+        //         self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
+        //     } else
+        //     if self.letter_t_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
+        //        self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len ()) &&
+        //        self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len ())
+        //     {
+        //         self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len () + self.letter_t_l.len ()
+        //     } else { 0 }
+        // } else { 0 }
     }
 }
 
 
 
-impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Null {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
 
     fn is_decodable (&self) -> bool { true }
@@ -129,7 +123,7 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
     fn get_default (&self) -> TaggedValue { TaggedValue::from (NullValue::default ()) }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut val: NullValue = match <TaggedValue as Into<Result<NullValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -138,12 +132,7 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
         let issue_tag = val.issue_tag ();
         let alias = val.take_alias ();
 
-        let value = "~";
-
-        let node = Node::String (match self.get_encoding ().str_to_bytes (value) {
-            Ok (s) => EncodedString::from (s),
-            Err (s) => EncodedString::from (s)
-        });
+        let node = Node::String (EncodedString::from ("~".as_bytes ()));
 
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
@@ -156,6 +145,13 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
         let mut quote_state: u8 = 0;
 
         if explicit {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') => { ptr += 1; quote_state = 1; }
+                Some (b'"')  => { ptr += 1; quote_state = 2; }
+                _ => ()
+            };
+
+            /*
             if self.s_quote.contained_at_start (value) {
                 ptr += self.s_quote.len ();
                 quote_state = 1;
@@ -163,6 +159,7 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
                 ptr += self.d_quote.len ();
                 quote_state = 2;
             }
+            */
         }
 
         let maybe_null = self.read_null (value, ptr);
@@ -170,6 +167,12 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
             ptr += maybe_null;
 
             if quote_state > 0 {
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'\'') if quote_state == 1 => (),
+                    Some (b'"')  if quote_state == 2 => (),
+                    _ => return Err ( () )
+                };
+                /*
                 if quote_state == 1 {
                     if self.s_quote.contained_at (value, ptr) {
                         // ptr += self.s_quote.len (); ??
@@ -183,6 +186,7 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
                         return Err ( () )
                     }
                 }
+                */
             }
 
             return Ok ( TaggedValue::from (NullValue::default ()) )
@@ -190,6 +194,13 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
 
 
         if quote_state > 0 {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') if quote_state == 1 => Ok ( TaggedValue::from (NullValue::default ()) ),
+                Some (b'"')  if quote_state == 2 => Ok ( TaggedValue::from (NullValue::default ()) ),
+                _ => Err ( () )
+            }
+
+            /*
             if quote_state == 1 && ptr == self.s_quote.len () {
                 if self.s_quote.contained_at (value, ptr) {
                     return Ok ( TaggedValue::from (NullValue::default ()) )
@@ -199,9 +210,8 @@ impl<Char, DoubleChar> Model for Null<Char, DoubleChar>
                     return Ok ( TaggedValue::from (NullValue::default ()) )
                 }
             }
-        }
-
-        Err ( () )
+            */
+        } else { Err ( () ) }
     }
 }
 
@@ -256,7 +266,7 @@ mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -264,7 +274,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let null = Null::new (&get_charset_utf8 ());
+        let null = Null; // ::new (&get_charset_utf8 ());
 
         assert_eq! (null.get_tag (), TAG);
     }
@@ -273,8 +283,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let null = Null::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let null = Null; // ::new (&get_charset_utf8 ());
 
         if let Ok (rope) = null.encode (&renderer, TaggedValue::from (NullValue::default ()), &mut iter::empty ()) {
             let encode = rope.render (&renderer);
@@ -286,7 +296,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let null = Null::new (&get_charset_utf8 ());
+        let null = Null; // ::new (&get_charset_utf8 ());
 
 
         let options = ["", "~", "null", "Null", "NULL"];

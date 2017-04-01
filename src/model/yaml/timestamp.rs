@@ -4,11 +4,11 @@ extern crate num;
 
 
 use self::fraction::{ Fraction, BigFraction };
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 use self::num::BigUint;
 
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
@@ -17,8 +17,6 @@ use model::yaml::float::FloatValue;
 use std::any::Any;
 use std::i32;
 use std::iter::Iterator;
-use std::marker::PhantomData;
-
 
 
 
@@ -27,45 +25,15 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-
-pub struct Timestamp<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    colon: Char,
-    minus: Char,
-    dot: Char,
-    letter_t: Char,
-    letter_t_t: Char,
-    letter_z: Char,
-    letter_t_z: Char,
-    plus: Char,
-    space: Char,
-    tab: Char,
-
-    s_quote: Char,
-    d_quote: Char,
-
-    dgt: [Char; 10],
-
-    encoding: Encoding,
-
-    chr_len: usize,
-
-    _dchr: PhantomData<DoubleChar>
-}
+pub struct Timestamp;
 
 
 
-impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Timestamp {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
 
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Timestamp<Char, DoubleChar> {
         Timestamp {
             encoding: cset.encoding,
@@ -102,11 +70,13 @@ impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 
 
     fn parse_figure (&self, ptr: &mut usize, value: &[u8]) -> Option<i64> {
         let mut figure: Option<i64> = None;
 
+        /*
         'figure: loop {
             for i in 0 .. 10 {
                 if self.dgt[i].contained_at (value, *ptr) {
@@ -121,6 +91,22 @@ impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
             }
             break;
         }
+        */
+        'figure: loop {
+            match value.get (*ptr).map (|b| *b) {
+                Some (val @ b'0' ... b'9') => {
+                    let val = val - b'0';
+
+                    figure = if let Some (nval) = (if figure.is_some () { figure.unwrap () } else { 0 }).checked_mul (10) {
+                        if let Some (nval) = nval.checked_add (val as i64) {
+                            *ptr += 1;
+                            Some (nval)
+                        } else { return None }
+                    } else { return None };
+                }
+                _ => break
+            }
+        }
 
         figure
     }
@@ -129,6 +115,7 @@ impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
     fn parse_fraction (&self, ptr: &mut usize, value: &[u8]) -> Option<FloatValue> {
         let mut fraction: Option<(Result<u64, BigUint>, Result<u64, BigUint>)> = None;
 
+        /*
         'fraction: loop {
             for i in 0 .. 10 {
                 if self.dgt[i].contained_at (value, *ptr) {
@@ -167,6 +154,45 @@ impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
             }
             break;
         }
+        */
+
+        'fraction: loop {
+            match value.get (*ptr).map (|b| *b) {
+                Some (val @ b'0' ... b'9') => {
+                    *ptr += 1;
+                    let val = val - b'0';
+
+                    let mut f = if fraction.is_some () { fraction.unwrap () } else { (Ok (0), Ok (1)) };
+
+                    f.0 = match f.0 {
+                        Ok (u) => {
+                            if let Some (nval) = u.checked_mul (10) {
+                                if let Some (nval) = nval.checked_add (val as u64) {
+                                    Ok (nval)
+                                } else {
+                                    Err (BigUint::from (nval) + BigUint::from (val as u64))
+                                }
+                            } else {
+                                Err (BigUint::from (u) * BigUint::from (10u8) + BigUint::from (val as u64))
+                            }
+                        }
+                        Err (b) => { Err (b * BigUint::from (10u8) + BigUint::from (val as u64)) }
+                    };
+
+                    f.1 = match f.1 {
+                        Ok (u) => if let Some (nval) = u.checked_mul (10) {
+                            Ok (nval)
+                        } else {
+                            Err (BigUint::from (u) * BigUint::from (10u8))
+                        },
+                        Err (b) => { Err (b * BigUint::from (10u8)) }
+                    };
+
+                    fraction = Some ((f.0, f.1));
+                }
+                _ => break
+            }
+        }
 
         if let Some ( (num, den) ) = fraction {
             if num.is_ok () && den.is_ok () {
@@ -184,13 +210,9 @@ impl<Char, DoubleChar> Timestamp<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
+impl Model for Timestamp {
+    // type Char = Char;
+    // type DoubleChar = DoubleChar;
 
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
@@ -198,14 +220,14 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
+    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let value: TimestampValue = match <TaggedValue as Into<Result<TimestampValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -250,6 +272,7 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
             }
         }
 
+        /*
         let mut production: Vec<u8> = Vec::with_capacity (src.len () * self.chr_len);
 
         for chr in src.as_bytes () {
@@ -276,14 +299,15 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
 
             production.extend (symbol.as_slice ());
         }
+        */
 
-        Ok (Rope::from (Node::String (EncodedString::from (production))))
+        Ok (Rope::from (Node::String (EncodedString::from (src.into_bytes ()))))
     }
 
 
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         let mut ptr: usize = 0;
-        let vlen: usize = value.len ();
+        // let vlen: usize = value.len ();
 
         let mut state: u8 = 0;
 
@@ -303,18 +327,33 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
 
 
         'top: loop {
-            if ptr >= vlen { break; }
+            if ptr >= value.len () { break; }
 
 
             if explicit && ptr == 0 && quote_state == 0 {
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'\'') => {
+                        ptr += 1;
+                        quote_state = 1;
+                        continue 'top;
+                    }
+                    Some (b'"') => {
+                        ptr += 1;
+                        quote_state = 2;
+                        continue 'top;
+                    }
+                    _ => ()
+                }
+                /*
                 if self.s_quote.contained_at (value, ptr) {
                     ptr += self.s_quote.len ();
                     quote_state = 1;
                     continue;
                 }
+                */
             }
 
-
+            /*
             if explicit && ptr == 0 && quote_state == 0 {
                 if self.d_quote.contained_at (value, ptr) {
                     ptr += self.d_quote.len ();
@@ -322,17 +361,25 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                     continue;
                 }
             }
+            */
 
 
             if state == 0 {
-                let ltz = if self.minus.contained_at (value, ptr) { true } else { false };
+                // let ltz = if self.minus.contained_at (value, ptr) { true } else { false };
+                let ltz = if let Some (b'-') = value.get (ptr).map (|b| *b) { ptr += 1; true } else { false };
 
                 let figure = self.parse_figure (&mut ptr, value);
 
                 if figure.is_none () { return Err ( () ) }
 
                 if !ltz && figure.unwrap () >= 0 && figure.unwrap () < 25 {
+                    /*
                     if self.colon.contained_at (value, ptr) {
+                        state = STATE_HOUR;
+                        dt = dt.hour (figure.unwrap () as u8);
+                    }
+                    */
+                    if let Some (b':') = value.get (ptr).map (|b| *b) {
                         state = STATE_HOUR;
                         dt = dt.hour (figure.unwrap () as u8);
                     }
@@ -346,8 +393,22 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state == STATE_YEAR {
+                /*
                 if self.minus.contained_at (value, ptr) {
                     ptr += self.minus.len ();
+
+                    let figure = self.parse_figure (&mut ptr, value);
+
+                    if figure.is_none () { return Err ( () ) }
+
+                    if figure.unwrap () > 0 && figure.unwrap () < 13 {
+                        state = state | STATE_MONTH;
+                        dt = dt.month (figure.unwrap () as u8);
+                    } else { return Err ( () ) }
+                } else { return Err ( () ) }
+                */
+                if let Some (b'-') = value.get (ptr).map (|b| *b) {
+                    ptr += 1;
 
                     let figure = self.parse_figure (&mut ptr, value);
 
@@ -362,8 +423,22 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state == STATE_YEAR | STATE_MONTH {
+                /*
                 if self.minus.contained_at (value, ptr) {
                     ptr += self.minus.len ();
+
+                    let figure = self.parse_figure (&mut ptr, value);
+
+                    if figure.is_none () { return Err ( () ) }
+
+                    if figure.unwrap () > 0 && figure.unwrap () < 32 {
+                        state = state | STATE_DAY;
+                        dt = dt.day (figure.unwrap () as u8);
+                    } else { return Err ( () ) }
+                } else { return Err ( () ) }
+                */
+                if let Some (b'-') = value.get (ptr).map (|b| *b) {
+                    ptr += 1;
 
                     let figure = self.parse_figure (&mut ptr, value);
 
@@ -378,11 +453,20 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state == STATE_YEAR | STATE_MONTH | STATE_DAY {
+                /*
                 if self.letter_t_t.contained_at (value, ptr) { ptr += self.letter_t_t.len (); }
                 else if self.space.contained_at (value, ptr) { ptr += self.space.len (); }
                 else if self.letter_t.contained_at (value, ptr) { ptr += self.letter_t.len (); }
                 else if self.tab.contained_at (value, ptr) { ptr += self.tab.len (); }
                 else { return Err ( () ) };
+                */
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'T') |
+                    Some (b' ') |
+                    Some (b't') |
+                    Some (b'\t') => { ptr += 1; }
+                    _ => return Err ( () )
+                };
 
 
                 let figure = self.parse_figure (&mut ptr, value);
@@ -397,8 +481,22 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND) == STATE_HOUR {
+                /*
                 if self.colon.contained_at (value, ptr) {
                     ptr += self.colon.len ();
+
+                    let figure = self.parse_figure (&mut ptr, value);
+
+                    if figure.is_none () { return Err ( () ) }
+
+                    if figure.unwrap () >=0 && figure.unwrap () < 61 {
+                        state = state | STATE_MINUTE;
+                        dt = dt.minute (figure.unwrap () as u8);
+                    } else { return Err ( () ) }
+                } else { return Err ( () ) }
+                */
+                if let Some (b':') = value.get (ptr).map (|b| *b) {
+                    ptr += 1;
 
                     let figure = self.parse_figure (&mut ptr, value);
 
@@ -413,8 +511,22 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND) == (STATE_HOUR | STATE_MINUTE) {
+                /*
                 if self.colon.contained_at (value, ptr) {
                     ptr += self.colon.len ();
+
+                    let figure = self.parse_figure (&mut ptr, value);
+
+                    if figure.is_none () { return Err ( () ) }
+
+                    if figure.unwrap () >=0 && figure.unwrap () < 61 {
+                        state = state | STATE_SECOND;
+                        dt = dt.second (figure.unwrap () as u8);
+                    } else { return Err ( () ) }
+                } else { return Err ( () ) }
+                */
+                if let Some (b':') = value.get (ptr).map (|b| *b) {
+                    ptr += 1;
 
                     let figure = self.parse_figure (&mut ptr, value);
 
@@ -429,6 +541,7 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                 continue;
 
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND) == (STATE_HOUR | STATE_MINUTE | STATE_SECOND) {
+                /*
                 if self.dot.contained_at (value, ptr) {
                     ptr += self.dot.len ();
 
@@ -438,17 +551,35 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
 
                     dt = dt.fraction (fraction.unwrap ());
                 }
+                */
+                if let Some (b'.') = value.get (ptr).map (|b| *b) {
+                    ptr += 1;
 
-                if ptr >= vlen { break 'top; }
+                    let fraction = self.parse_fraction (&mut ptr, value);
+
+                    if fraction.is_none () { return Err ( () ) }
+
+                    dt = dt.fraction (fraction.unwrap ());
+                }
+
+                if ptr >= value.len () { break 'top; }
 
                 loop {
+                    /*
                     if self.space.contained_at (value, ptr) {
                         ptr += self.space.len ();
                     } else if self.tab.contained_at (value, ptr) {
                         ptr += self.tab.len ();
                     } else { break; }
+                    */
+                    match value.get (ptr).map (|b| *b) {
+                        Some (b' ') |
+                        Some (b'\t') => { ptr += 1; }
+                        _ => break
+                    };
                 }
 
+                /*
                 if self.letter_t_z.contained_at (value, ptr) {
                     ptr += self.letter_t_z.len ();
 
@@ -488,8 +619,37 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                     } else { return Err ( () ) }
 
                 }
+                */
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'z') |
+                    Some (b'Z') => {
+                        ptr += 1;
+                        state = state | STATE_TZ_HOUR | STATE_TZ_MINUTE;
+                        dt = dt.tz_hour (0).tz_minute (0);
+                    }
+                    Some (b'-') => {
+                        ptr += 1;
+                        let figure = self.parse_figure (&mut ptr, value);
+                        if figure.is_none () { return Err ( () ) }
+                        if figure.unwrap () >= 0 && figure.unwrap () < 25 {
+                            state = state | STATE_TZ_HOUR;
+                            dt = dt.tz_hour ((figure.unwrap () as i8) * -1);
+                        } else { return Err ( () ) }
+                    }
+                    Some (b'+') => {
+                        ptr += 1;
+                        let figure = self.parse_figure (&mut ptr, value);
+                        if figure.is_none () { return Err ( () ) }
+                        if figure.unwrap () >= 0 && figure.unwrap () < 25 {
+                            state = state | STATE_TZ_HOUR;
+                            dt = dt.tz_hour (figure.unwrap () as i8);
+                        } else { return Err ( () ) }
+                    }
+                    _ => ()
+                };
 
-                if state & STATE_TZ_HOUR == 0 && vlen > ptr {
+
+                if state & STATE_TZ_HOUR == 0 && value.len () > ptr {
                     let figure = self.parse_figure (&mut ptr, value);
 
                     if figure.is_none () { return Err ( () ) }
@@ -503,10 +663,16 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
                     continue;
                 }
 
-                if state & STATE_TZ_MINUTE == 0 && vlen > ptr {
+                if state & STATE_TZ_MINUTE == 0 && value.len () > ptr {
+                    /*
                     if self.colon.contained_at (value, ptr) {
                         ptr += self.colon.len ();
                     } else { return Err ( () ) }
+                    */
+                    match value.get (ptr).map (|b| *b) {
+                        Some (b':') => { ptr += 1; }
+                        _ => return Err ( () )
+                    };
 
                     let figure = self.parse_figure (&mut ptr, value);
 
@@ -529,11 +695,18 @@ impl<Char, DoubleChar> Model for Timestamp<Char, DoubleChar>
 
         if state > 0 {
             if quote_state > 0 {
+                /*
                 if quote_state == 1 && self.s_quote.contained_at (value, ptr) {
                     // pass
                 } else if quote_state == 2 && self.d_quote.contained_at (value, ptr) {
                     // pass
                 } else { return Err ( () ) }
+                */
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'\'') if quote_state == 1 => (),
+                    Some (b'"')  if quote_state == 2 => (),
+                    _ => return Err ( () )
+                };
             }
 
             Ok ( TaggedValue::from (dt) )
@@ -643,17 +816,6 @@ impl Tagged for TimestampValue {
 
 
 
-/*
-pub struct TimestampFactory;
-
-impl Factory for TimestampFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Timestamp::new (cset)) }
-}
-*/
-
-
 
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
@@ -666,7 +828,7 @@ mod tests {
 
     use model::{ Tagged, Renderer };
     use model::yaml::float::FloatValue;
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -675,7 +837,7 @@ mod tests {
     #[test]
     fn tag () {
         // let ts_coder = TimestampFactory.build_model (&get_charset_utf8 ());
-        let ts_coder = Timestamp::new (&get_charset_utf8 ());
+        let ts_coder = Timestamp; // ::new (&get_charset_utf8 ());
 
         assert_eq! (ts_coder.get_tag (), TAG);
     }
@@ -683,7 +845,7 @@ mod tests {
 
     macro_rules! encoded_dt_is {
         ($coder:expr, $dt:expr, $str:expr) => {{
-            let renderer = Renderer::new (&get_charset_utf8 ());
+            let renderer = Renderer; // ::new (&get_charset_utf8 ());
             if let Ok (rope) = $coder.encode (&renderer, TaggedValue::from ($dt), &mut iter::empty ()) {
                 let encoded = rope.render (&renderer);
                 assert_eq! ($str.to_string ().into_bytes (), encoded);
@@ -695,7 +857,7 @@ mod tests {
 
     #[test]
     fn encode () {
-        let ts_coder = Timestamp::new (&get_charset_utf8 ());
+        let ts_coder = Timestamp; // ::new (&get_charset_utf8 ());
 
         encoded_dt_is! (ts_coder, TimestampValue::new ().year (2016).month (1).day (16), "2016-01-16");
         encoded_dt_is! (ts_coder, TimestampValue::new ().hour (18).minute (58).second (3), "18:58:03");
@@ -717,7 +879,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let ts_coder = Timestamp::new (&get_charset_utf8 ());
+        let ts_coder = Timestamp; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = ts_coder.decode (true, "2016-01-16".as_bytes ()) {
             assert_eq! (tagged.get_tag (), &TWINE_TAG);

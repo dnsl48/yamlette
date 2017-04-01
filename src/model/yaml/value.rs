@@ -1,15 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 
 
 
@@ -19,31 +19,14 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Value<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    marker: Char,
-
-    s_quote: Char,
-    d_quote: Char,
-
-    encoding: Encoding,
-
-    _dchr: PhantomData<DoubleChar>
-}
+pub struct Value;
 
 
 
-impl<Char, DoubleChar> Value<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Value {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Value<Char, DoubleChar> {
         Value {
             encoding: cset.encoding,
@@ -56,17 +39,14 @@ impl<Char, DoubleChar> Value<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 }
 
 
 
-impl<Char, DoubleChar> Model for Value<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
+impl Model for Value {
+    // type Char = Char;
+    // type DoubleChar = DoubleChar;
 
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
@@ -74,29 +54,41 @@ impl<Char, DoubleChar> Model for Value<Char, DoubleChar>
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
+    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<ValueValue, TaggedValue>>>::into (value) {
-            Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from (self.marker.new_vec ()))) ),
+            Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from ("=".as_bytes ()))) ),
             Err (value) => Err (value)
         }
     }
 
 
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let vlen = value.len ();
+        // let vlen = value.len ();
 
         let mut ptr = 0;
         let mut quote_state = 0; // 1 - single, 2 - double
 
 
         if explicit {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') => {
+                    ptr += 1;
+                    quote_state = 1;
+                }
+                Some (b'"') => {
+                    ptr += 1;
+                    quote_state = 2;
+                }
+                _ => ()
+            };
+            /*
             if self.s_quote.contained_at (value, 0) {
                 ptr += self.s_quote.len ();
                 quote_state = 1;
@@ -104,8 +96,38 @@ impl<Char, DoubleChar> Model for Value<Char, DoubleChar>
                 ptr += self.d_quote.len ();
                 quote_state = 2;
             }
+            */
         }
 
+
+        match value.get (ptr).map (|b| *b) {
+            Some (b'=') => {
+                ptr += 1;
+            }
+            _ => return Err ( () )
+        }
+
+
+        if quote_state > 0 {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') if quote_state == 1 => { ptr += 1; }
+                Some (b'"')  if quote_state == 2 => { ptr += 1; }
+                _ => return Err ( () )
+            };
+/*
+            if quote_state == 1 && self.s_quote.contained_at (value, ptr) {
+                ptr += self.s_quote.len ();
+            } else if quote_state == 2 && self.d_quote.contained_at (value, ptr) {
+                ptr += self.d_quote.len ();
+            } else { return Err ( () ) }
+*/
+        }
+
+        if value.len () > ptr { return Err ( () ) }
+
+        Ok ( TaggedValue::from (ValueValue) )
+
+/*
         if self.marker.contained_at (value, ptr) {
             ptr += self.marker.len ();
 
@@ -121,6 +143,7 @@ impl<Char, DoubleChar> Model for Value<Char, DoubleChar>
 
             Ok ( TaggedValue::from (ValueValue) )
         } else { Err ( () ) }
+*/
     }
 }
 
@@ -148,24 +171,13 @@ impl AsRef<str> for ValueValue {
 
 
 
-/*
-pub struct ValueFactory;
-
-impl Factory for ValueFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Value::new (cset)) }
-}
-*/
-
-
 
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -174,7 +186,7 @@ mod tests {
     #[test]
     fn tag () {
         // let value = ValueFactory.build_model (&get_charset_utf8 ());
-        let value = Value::new (&get_charset_utf8 ());
+        let value = Value; // ::new (&get_charset_utf8 ());
 
         assert_eq! (value.get_tag (), TAG);
     }
@@ -183,8 +195,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let value = Value::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let value = Value; // ::new (&get_charset_utf8 ());
 
         if let Ok (rope) = value.encode (&renderer, TaggedValue::from (ValueValue), &mut iter::empty ()) {
             let vec = rope.render (&renderer);
@@ -196,7 +208,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let value = Value::new (&get_charset_utf8 ());
+        let value = Value; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = value.decode (true, "=".as_bytes ()) {
             assert_eq! (tagged.get_tag (), &TWINE_TAG);

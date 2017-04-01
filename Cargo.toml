@@ -20,6 +20,8 @@ skimmer = { path = "../skimmer/skimmer-git" }
 twine = "0.0.1"
 fraction = "0.3.4"
 
+gauger = { path = "../gauger-rs" }
+
 [dependencies.num]
 version = "0.1.36"
 default-features = false

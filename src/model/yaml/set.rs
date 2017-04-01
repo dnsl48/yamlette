@@ -1,9 +1,9 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 
 
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use model::{ model_alias, model_tag, Model, Rope, Renderer, Tagged, TaggedValue };
 use model::renderer::Node;
@@ -11,9 +11,7 @@ use model::style::CommonStyles;
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
-
-
+// use std::marker::PhantomData;
 
 
 pub const TAG: &'static str = "tag:yaml.org,2002:set";
@@ -21,65 +19,43 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-
-pub struct Set<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    encoding: Encoding,
-    _char: PhantomData<Char>,
-    _dchr: PhantomData<DoubleChar>
-}
+pub struct Set;
 
 
 
-impl<Char, DoubleChar> Set<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Set {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Set<Char, DoubleChar> { Set {
         encoding: cset.encoding,
         _char: PhantomData,
         _dchr: PhantomData
     } }
+*/
 }
 
 
 
-impl<Char, DoubleChar> Model for Set<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Set {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
+    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_dictionary (&self) -> bool { true }
 
-    fn compose (&self, renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+    fn compose (&self, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
         compose (self, renderer, value, tags, children)
     }
 }
 
 
 
-pub fn compose<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub fn compose (model: &Model, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
     let value: SetValue = match <TaggedValue as Into<Result<SetValue, TaggedValue>>>::into (value) {
         Ok (value) => value,
         Err (_) => panic! ("Not a SeqValue")
@@ -103,11 +79,7 @@ pub fn compose<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar
 }
 
 
-fn compose_empty<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+fn compose_empty (model: &Model, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
     if let Some (alias) = value.take_alias () {
         if value.styles.issue_tag () {
             Rope::from (vec! [model_tag (model, tags), Node::Space, model_alias (model, alias), Node::Space, Node::CurlyBrackets])
@@ -124,11 +96,7 @@ fn compose_empty<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleCh
 }
 
 
-fn compose_flow_respect_threshold<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, renderer: &Renderer<Char, DoubleChar>, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+fn compose_flow_respect_threshold (model: &Model, renderer: &Renderer, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let compact = value.styles.compact ();
     let threshold = value.styles.threshold () as usize;
@@ -201,11 +169,7 @@ fn compose_flow_respect_threshold<Char, DoubleChar> (model: &Model<Char=Char, Do
 }
 
 
-fn compose_flow_no_threshold<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+fn compose_flow_no_threshold (model: &Model, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let compact = value.styles.compact ();
     let issue_tag = value.styles.issue_tag ();
@@ -260,11 +224,7 @@ fn compose_flow_no_threshold<Char, DoubleChar> (model: &Model<Char=Char, DoubleC
 }
 
 
-fn compose_flow_multiline<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+fn compose_flow_multiline (model: &Model, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let issue_tag = value.styles.issue_tag ();
     let alias = value.take_alias ();
@@ -314,11 +274,7 @@ fn compose_flow_multiline<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar
 }
 
 
-fn compose_block<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+fn compose_block (model: &Model, mut value: SetValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let issue_tag = value.styles.issue_tag ();
     let alias = value.take_alias ();
@@ -397,30 +353,17 @@ impl Tagged for SetValue {
 
 
 
-/*
-pub struct SetFactory;
-
-impl Factory for SetFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Set::new (cset)) }
-}
-*/
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
 
 
     #[test]
     fn tag () {
-        // let set = SetFactory.build_model (&get_charset_utf8 ());
-        let set = Set::new (&get_charset_utf8 ());
+        let set = Set; // ::new (&get_charset_utf8 ());
 
         assert_eq! (set.get_tag (), TAG);
     }

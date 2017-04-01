@@ -2,9 +2,8 @@ extern crate num;
 extern crate skimmer;
 
 use self::num::{ BigInt, BigUint, ToPrimitive };
-use self::skimmer::symbol::{ CopySymbol, Combo };
 
-use txt::{ CharSet, Encoding, Unicode, Twine }; 
+use txt::Twine; 
 
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
@@ -13,7 +12,6 @@ use std::any::Any;
 use std::fmt;
 use std::ops::{ AddAssign, MulAssign, Neg };
 use std::iter::Iterator;
-use std::marker::PhantomData;
 
 
 
@@ -135,7 +133,7 @@ impl fmt::Display for Mint {
 
 
 
-pub struct Int<Char, DoubleChar>
+pub struct Int; /*<Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
     DoubleChar: CopySymbol + Combo + 'static
@@ -161,16 +159,13 @@ pub struct Int<Char, DoubleChar>
 
     _dchr: PhantomData<DoubleChar>
 }
+*/
 
 
 
-impl<Char, DoubleChar> Int<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Int {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Int<Char, DoubleChar> {
         Int {
             encoding: cset.encoding,
@@ -195,10 +190,12 @@ impl<Char, DoubleChar> Int<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], sexagesimals: bool, shortocts: bool) -> Result<Mint, ()> {
-        if !explicit && !self.encoding.check_is_dec_num (value) { return Err ( () ) }
+        if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
+        // if !explicit && !self.encoding.check_is_dec_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
         const STATE_SIGN_N: u8 = 3;
@@ -216,236 +213,178 @@ impl<Char, DoubleChar> Int<Char, DoubleChar>
         let mut ptr: usize = 0;
         let mut val = Mint::new ();
 
-        'top: loop {
-            if ptr >= value.len () { break; }
+        loop {
+            match value.get (ptr).map (|b| *b) {
+                None => break,
 
-
-            if quote_state == 1 {
-                if self.s_quote.contained_at (value, ptr) {
-                    if ptr == self.s_quote.len () {
-                        return Err ( () )
+                Some (b'\'') => {
+                    ptr += 1;
+                    if explicit && quote_state == 0 && state & STATE_END == 0 {
+                        quote_state = 1;
+                    } else if quote_state == 1 {
+                        if ptr == 2 { return Err ( () ) }
+                        quote_state = 0;
+                        state = state | STATE_END;
+                        break
+                    } else {
+                        state = state | STATE_END;
+                        break
                     }
-                    ptr += self.s_quote.len ();
-                    quote_state = 0;
-                    state = state | STATE_END;
-                    continue;
-                }
-            }
-
-
-            if quote_state == 2 {
-                if self.d_quote.contained_at (value, ptr) {
-                    if ptr == self.d_quote.len () { return Err ( () ) }
-                    ptr += self.d_quote.len ();
-                    quote_state = 0;
-                    state = state | STATE_END;
-                    continue;
-                }
-            }
-
-
-            if explicit && quote_state == 0 && state & STATE_END == 0 {
-                if self.s_quote.contained_at (value, ptr) {
-                    ptr += self.s_quote.len ();
-                    quote_state = 1;
-                }
-            }
-
-
-            if explicit && quote_state == 0 && state & STATE_END == 0 {
-                if self.d_quote.contained_at (value, ptr) {
-                    ptr += self.d_quote.len ();
-                    quote_state = 2;
-                }
-            }
-
-
-            if state & STATE_END == STATE_END {
-                if ptr == 0 { return Err ( () ) }
-                if quote_state > 0 { return Err ( () ) }
-
-                if self.space.contained_at (value, ptr) {
-                    ptr += self.space.len ();
-                    continue;
                 }
 
-                if self.tab_h.contained_at (value, ptr) {
-                    ptr += self.tab_h.len ();
-                    continue;
+                Some (b'"') => {
+                    ptr += 1;
+                    if explicit && quote_state == 0 && state & STATE_END == 0 {
+                        quote_state = 2;
+                    } else if quote_state == 2 {
+                        if ptr == 2 { return Err ( () ) }
+                        quote_state = 0;
+                        state = state | STATE_END;
+                        break
+                    } else {
+                        state = state | STATE_END;
+                        break
+                    }
                 }
 
-                if self.line_feed.contained_at (value, ptr) {
-                    ptr += self.line_feed.len ();
-                    continue;
+                Some (b'-') => {
+                    if state & STATE_SIGN == 0 {
+                        ptr += 1;
+                        state = state | STATE_SIGN_N;
+                    } else { break }
                 }
 
-                if self.carriage_return.contained_at (value, ptr) {
-                    ptr += self.carriage_return.len ();
-                    continue;
+                Some (b'+') => {
+                    if state & STATE_SIGN == 0 {
+                        ptr += 1;
+                        state = state | STATE_SIGN;
+                    } else { break }
                 }
 
-                return Err ( () )
-            }
+                _ if state & STATE_SIGN == 0 => { state = state | STATE_SIGN; }
 
-
-            if state & STATE_SIGN == 0 {
-                if self.minus.contained_at (value, ptr) {
-                    state = state | STATE_SIGN_N;
-                    ptr += self.minus.len ();
-                    continue;
-                }
-
-                if self.plus.contained_at (value, ptr) {
-                    state = state | STATE_SIGN;
-                    ptr += self.plus.len ();
-                    continue;
-                }
-
-                state = state | STATE_SIGN;
-            }
-
-
-            if state & STATE_NUM == 0 {
-                if self.digit_0.contained_at (value, ptr) {
+                Some (b'0') if state & STATE_NUM == 0 => {
+                    ptr += 1;
                     state = state | STATE_NUM;
-                    ptr += self.digit_0.len ();
 
-                    if self.letter_b.contained_at (value, ptr) {
-                        state = state | STATE_BIN;
-                        ptr += self.letter_b.len ();
-                        continue;
-                    }
-
-                    if self.letter_o.contained_at (value, ptr) {
-                        state = state | STATE_OCT;
-                        ptr += self.letter_o.len ();
-                        continue;
-                    }
-
-                    if self.letter_x.contained_at (value, ptr) {
-                        state = state | STATE_HEX;
-                        ptr += self.letter_x.len ();
-                        continue;
-                    }
-
-                    if let Some ( (d, _) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                        state = state | if d < 8 && shortocts { STATE_OCT } else { STATE_DEC };
-                        continue;
-                    }
-
-                    state = state | STATE_END;
-                    continue;
-                }
-
-                state = state | STATE_DEC;
-            }
-
-            if state & STATE_BIN == STATE_BIN {
-                'bin: loop {
-                    if ptr >= value.len () { break 'top; }
-
-                    if let Some ( (d, l) ) = self.encoding.extract_bin_digit (&value[ptr ..]) {
-                        val *= 2;
-                        val += d as i64;
-                        ptr += l as usize;
-                        continue;
-                    }
-
-                    if self.underscore.contained_at (value, ptr) {
-                        ptr += self.underscore.len ();
-                        continue;
-                    }
-
-                    state = state | STATE_END;
-                    continue 'top;
-                }
-            }
-
-
-            if state & STATE_OCT == STATE_OCT {
-                'oct: loop {
-                    if ptr >= value.len () { break 'top; }
-
-                    if let Some ( (d, l) ) = self.encoding.extract_oct_digit (&value[ptr ..]) {
-                        val *= 8;
-                        val += d as i64;
-                        ptr += l as usize;
-                        continue 'oct;
-                    }
-
-                    if self.underscore.contained_at (value, ptr) {
-                        ptr += self.underscore.len ();
-                        continue 'oct;
-                    }
-
-                    state = state | STATE_END;
-                    continue 'top;
-                }
-            }
-
-
-            if state & STATE_HEX == STATE_HEX {
-                'hex: loop {
-                    if ptr >= value.len () { break 'top; }
-
-                    if let Some ( (d, l) ) = self.encoding.extract_hex_digit (&value[ptr ..]) {
-                        val *= 16;
-                        val += d as i64;
-                        ptr += l as usize;
-                        continue 'hex;
-                    }
-
-                    if self.underscore.contained_at (value, ptr) {
-                        ptr += self.underscore.len ();
-                        continue 'hex;
-                    }
-
-                    state = state | STATE_END;
-                    continue 'top;
-                }
-            }
-
-            if state & STATE_DEC == STATE_DEC {
-                'dec: loop {
-                    if ptr >= value.len () { break 'top; }
-
-                    if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                        val *= 10;
-                        val += d as i64;
-                        ptr += l as usize;
-                        continue 'dec;
-                    }
-
-                    if self.underscore.contained_at (value, ptr) {
-                        ptr += self.underscore.len ();
-                        continue 'dec;
-                    }
-
-                    if sexagesimals && self.colon.contained_at (value, ptr) {
-                        ptr += self.colon.len ();
-
-                        let digit: i64;
-                        'dig1: loop {
-                            if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                                digit = d as i64;
-                                ptr += l as usize;
-                                break 'dig1;
-                            }
-
-                            return Err ( () )
+                    match value.get (ptr).map (|b| *b) {
+                        Some (b'b') => { ptr += 1; state = state | STATE_BIN; }
+                        Some (b'o') => { ptr += 1; state = state | STATE_OCT; }
+                        Some (b'x') => { ptr += 1; state = state | STATE_HEX; }
+                        Some (v @ b'0' ... b'9') => {
+                            ptr += 1;
+                            state = state | if (v - b'0') < 8 && shortocts { STATE_OCT } else { STATE_DEC };
                         }
+                        _ => { state = state | STATE_END; }
+                    };
+
+                    break
+                }
+
+                _ if state & STATE_NUM == 0 => { state = state | STATE_DEC; break }
+
+                _ => break
+            }
+        }
+
+        if state & STATE_BIN == STATE_BIN {
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (b'0') => {
+                        ptr += 1;
+                        val *= 2;
+                    }
+
+                    Some (b'1') => {
+                        ptr += 1;
+                        val *= 2;
+                        val += 1;
+                    }
+
+                    Some (b'_') => { ptr += 1; }
+
+                    _ => { state = state | STATE_END; break }
+                }
+            }
+        } else if state & STATE_OCT == STATE_OCT {
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (v @ b'0' ... b'7') => {
+                        ptr += 1;
+                        val *= 8;
+                        val += (v - b'0') as i64;
+                    }
+
+                    Some (b'_') => { ptr += 1; }
+
+                    _ => { state = state | STATE_END; break }
+                }
+            }
+        } else if state & STATE_HEX == STATE_HEX {
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (v @ b'0' ... b'9') => {
+                        ptr += 1;
+                        val *= 16;
+                        val += (v - b'0') as i64;
+                    }
+
+                    Some (v @ b'a' ... b'f') => {
+                        ptr += 1;
+                        val *= 16;
+                        val += (10 + (v - b'a')) as i64;
+                    }
+
+                    Some (v @ b'A' ... b'F') => {
+                        ptr += 1;
+                        val *= 16;
+                        val += (10 + (v - b'A')) as i64;
+                    }
+
+                    Some (b'_') => { ptr += 1; }
+
+                    _ => { state = state | STATE_END; break }
+                }
+            }
+        } else if state & STATE_DEC == STATE_DEC {
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (v @ b'0' ... b'9') => {
+                        ptr += 1;
+                        val *= 10;
+                        val += (v - b'0') as i64;
+                    }
+
+                    Some (b'_') => { ptr += 1; }
+
+                    Some (b':') if sexagesimals => {
+                        ptr += 1;
+
+                        let digit: i64 = match value.get (ptr).map (|b| *b) {
+                            Some (val @ b'0' ... b'9') => {
+                                ptr += 1;
+                                (val - b'0') as i64
+                            }
+                            _ => return Err ( () )
+                        };
 
                         let mut digit2: Option<i64> = None;
 
                         if digit < 6 {
-                            'dig2: loop {
-                                if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                                    digit2 = Some (d as i64);
-                                    ptr += l as usize;
-                                    break 'dig2;
+                            match value.get (ptr).map (|b| *b) {
+                                Some (val @ b'0' ... b'9') => {
+                                    ptr += 1;
+                                    digit2 = Some ((val - b'0') as i64);
                                 }
-
-                                break;
+                                _ => ()
                             }
                         }
 
@@ -457,21 +396,36 @@ impl<Char, DoubleChar> Int<Char, DoubleChar>
                         val += num;
 
                         if value.len () == ptr {
-                            break 'top;
-                        } else if self.colon.contained_at (value, ptr) {
+                            break;
+                        } else if let Some (b':') = value.get (ptr).map (|b| *b) {
                             continue;
                         } else {
                             state = state | STATE_END;
-                            continue 'top;
+                            continue;
                         }
                     }
 
-                    state = state | STATE_END;
-                    continue 'top;
+                    _ => { state = state | STATE_END; break }
                 }
             }
+        }
 
-            unreachable! ();
+        if state & STATE_END == STATE_END {
+            if ptr == 0 { return Err ( () ) }
+            if quote_state > 0 { return Err ( () ) }
+
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+
+                    Some (b' ') |
+                    Some (b'\n') |
+                    Some (b'\t') |
+                    Some (b'\r') => { ptr += 1; }
+
+                    _ => return Err ( () )
+                };
+            }
         }
 
         if state & STATE_NUM != STATE_NUM { return Err ( () ) }
@@ -483,28 +437,20 @@ impl<Char, DoubleChar> Int<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Model for Int<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Int {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<IntValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -515,7 +461,7 @@ impl<Char, DoubleChar> Model for Int<Char, DoubleChar>
         let value = value.value;
 
         let value = format! ("{}", value);
-        let node = Node::String (EncodedString::from (self.encoding.string_to_bytes (value)));
+        let node = Node::String (EncodedString::from (value.into_bytes ()));
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
 
@@ -664,7 +610,7 @@ mod tests {
     use super::num::BigInt;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
     use std::str::FromStr;
@@ -673,7 +619,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let int = Int::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
         assert_eq! (int.get_tag (), TAG);
     }
@@ -682,8 +628,8 @@ mod tests {
 
     #[test]
      fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let int = Int::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
 
         let options = [0b0000_1111, 0o12, 0xA0, 581, -8888];
@@ -702,7 +648,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let int = Int::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
 
         let options = ["0b0000_1111", "0b1010_0111_0100_1010_1110", "02472256",
@@ -735,7 +681,7 @@ mod tests {
 
     #[test]
     fn decode11 () {
-        let int = Int::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
 
         let options = ["0b0000_1111", "0b1010_0111_0100_1010_1110", "02472256", "0o2472256", "0x_0A_74_AE", "0x_0a_74_ae", "685230", "+685_230", "190:20:30"];
@@ -762,7 +708,7 @@ mod tests {
 
     #[test]
     fn decode_bigint () {
-        let int = Int::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
         let option = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
         let result = BigInt::from_str (option).unwrap ();
@@ -785,7 +731,7 @@ mod tests {
 
     #[test]
     fn decode_nl () {
-        let int = Int::new (&get_charset_utf8 ());
+        let int = Int; // ::new (&get_charset_utf8 ());
 
         if let Ok (_) = int.decode (true, &"\n".to_string ().into_bytes ()) {
             assert! (false);

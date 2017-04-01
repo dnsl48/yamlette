@@ -1,15 +1,15 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 
-use txt::{ CharSet, Twine };
-use txt::encoding::{ Encoding, Unicode };
+use txt::{ Twine };
+// use txt::encoding::{ Encoding, Unicode };
 
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
 use std::iter::Iterator;
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 
 
 
@@ -18,48 +18,50 @@ pub const TAG: &'static str = "tag:yamlette.org,1:literal";
 static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
-
-pub struct Literal<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    encoding: Encoding,
-    _char: PhantomData<Char>,
-    _dchr: PhantomData<DoubleChar>
-}
+#[derive (Copy, Clone, Debug)]
+pub struct Literal;
 
 
-
-impl<Char, DoubleChar> Literal<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Literal {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+    /*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Literal<Char, DoubleChar> { Literal {
         encoding: cset.encoding,
         _char: PhantomData,
         _dchr: PhantomData
     } }
+    */
 
-    pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> { self.encoding.bytes_to_string (bytes) }
+    #[inline (always)]
+    pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
+        // Ok (String::from_utf8_lossy (bytes).into ())
+        Ok (unsafe { String::from_utf8_unchecked (Vec::from (bytes)) })
+    }
 
-    pub fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> { self.encoding.bytes_to_string_times (bytes, times) }
+    pub fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
+        // self.encoding.bytes_to_string_times (bytes, times)
 
-    pub fn string_to_bytes (&self, string: String) -> Vec<u8> { self.encoding.string_to_bytes (string) }
+        let mut vec: Vec<u8> = Vec::with_capacity (bytes.len () * times);
+
+        for _ in 0 .. times {
+            vec.extend (bytes);
+        }
+        Ok (unsafe { String::from_utf8_unchecked (vec) })
+    }
+
+    #[inline (always)]
+    pub fn string_to_bytes (&self, string: String) -> Vec<u8> {
+        // self.encoding.string_to_bytes (string)
+        string.into_bytes ()
+    }
 }
 
 
 
-impl<Char, DoubleChar> Model for Literal<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
+impl Model for Literal {
+    // type Char = Char;
+    // type DoubleChar = DoubleChar;
 
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
@@ -67,7 +69,7 @@ impl<Char, DoubleChar> Model for Literal<Char, DoubleChar>
 
     fn as_mut_any (&mut self) -> &mut Any { self }
 
-    fn get_encoding (&self) -> Encoding { self.encoding }
+    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
@@ -78,14 +80,11 @@ impl<Char, DoubleChar> Model for Literal<Char, DoubleChar>
     fn get_default (&self) -> TaggedValue { TaggedValue::from (LiteralValue { value: Twine::from ("") }) }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<LiteralValue, TaggedValue>>>::into (value) {
             Ok (value) => match value.value {
-                Twine::String (s) => Ok (Rope::from (Node::String (EncodedString::from (self.encoding.string_to_bytes (s))))),
-                Twine::Static (s) => Ok (Rope::from (Node::String (match self.encoding.str_to_bytes (s) {
-                    Ok (s) => EncodedString::from (s),
-                    Err (s) => EncodedString::from (s)
-                })))
+                Twine::String (s) => Ok (Rope::from (Node::String (EncodedString::from (s.into_bytes ())))),
+                Twine::Static (s) => Ok (Rope::from (Node::String (EncodedString::from (s.as_bytes ()))))
             },
             Err (value) => Err (value)
         }
@@ -134,24 +133,11 @@ impl AsRef<str> for LiteralValue {
 
 
 
-/*
-pub struct LiteralFactory;
-
-impl Factory for LiteralFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char: CopySymbol + 'static, DoubleChar: CopySymbol + Combo + 'static> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>> { Box::new (Literal::new (cset)) }
-}
-*/
-
-
-
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -159,8 +145,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        // let literal = LiteralFactory.build_model (&get_charset_utf8 ());
-        let literal = Literal::new (&get_charset_utf8 ());
+        let literal = Literal; // ::new (&get_charset_utf8 ());
 
         assert_eq! (literal.get_tag ().as_ref (), TAG);
     }
@@ -169,8 +154,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let literal = Literal::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let literal = Literal; // ::new (&get_charset_utf8 ());
 
         let ops = [
             (r#""Hey, this is a string!""#, r#""Hey, this is a string!""#),
@@ -195,7 +180,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let literal = Literal::new (&get_charset_utf8 ());
+        let literal = Literal; // ::new (&get_charset_utf8 ());
 
         let ops = [
             ("Hey, this is a string!", "Hey, this is a string!"),

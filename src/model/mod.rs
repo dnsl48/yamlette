@@ -12,10 +12,10 @@ pub mod tagged_value;
 
 extern crate skimmer;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
+// use self::skimmer::symbol::{ CopySymbol, Combo };
 
 use txt::Twine;
-use txt::encoding::{ Encoding, Unicode };
+// use txt::encoding::{ Encoding, Unicode };
 
 use std::any::Any;
 
@@ -46,9 +46,8 @@ pub trait Tagged : Any {
 
 
 pub trait Model : Send + Sync {
-    type Char: CopySymbol;
-    type DoubleChar: CopySymbol + Combo;
-
+    // type Char: CopySymbol;
+    // type DoubleChar: CopySymbol + Combo;
 
     fn get_tag (&self) -> &Twine;
 
@@ -57,7 +56,7 @@ pub trait Model : Send + Sync {
     fn as_mut_any (&mut self) -> &mut Any;
 
 
-    fn get_encoding (&self) -> Encoding;
+    // fn get_encoding (&self) -> Encoding;
 
 
     fn is_collection (&self) -> bool { self.is_dictionary () || self.is_sequence () }
@@ -87,19 +86,15 @@ pub trait Model : Send + Sync {
     fn decode11 (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> { self.decode (explicit, value) }
 
 
-    fn encode (&self, _renderer: &Renderer<Self::Char, Self::DoubleChar>, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
+    fn encode (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
 
-    fn compose (&self, _renderer: &Renderer<Self::Char, Self::DoubleChar>, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
+    fn compose (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
 }
 
 
 
 
-pub fn model_issue_rope<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, node: Node, issue_tag: bool, alias: Option<Twine>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Option<Twine>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
     if let Some (alias) = alias {
         if issue_tag {
             Rope::from (vec! [model_tag (model, tags), Node::Space, model_alias (model, alias), Node::Space, node])
@@ -117,46 +112,25 @@ pub fn model_issue_rope<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=D
 
 
 
-pub fn model_alias<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, alias: Twine) -> Node
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub fn model_alias (_model: &Model, alias: Twine) -> Node {
     match alias {
-        Twine::Static (alias) => _model_alias_static_str (alias, model.get_encoding ()),
-        Twine::String (alias) => _model_alias_string (alias, model.get_encoding ())
+        Twine::Static (alias) => Node::AmpersandString (EncodedString::from (alias.as_bytes ())),
+        Twine::String (alias) => Node::AmpersandString (EncodedString::from (alias.into_bytes ()))
     }
 }
 
 
-fn _model_alias_static_str (alias: &'static str, encoding: Encoding) -> Node {
-    match encoding.str_to_bytes (alias) {
-        Ok (s) => Node::AmpersandString (EncodedString::from (s)),
-        Err (s) => Node::AmpersandString (EncodedString::from (s))
-    }
-}
 
-fn _model_alias_string (alias: String, encoding: Encoding) -> Node {
-    Node::AmpersandString (EncodedString::from (encoding.string_to_bytes (alias)))
-}
-
-
-
-
-pub fn model_tag<Char, DoubleChar> (model: &Model<Char=Char, DoubleChar=DoubleChar>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub fn model_tag (model: &Model, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
     match *model.get_tag () {
-        Twine::Static (tag) => _model_tag_static_str (tag, model.get_encoding (), tags),
-        Twine::String (ref tag) => _model_tag_string (tag, model.get_encoding (), tags)
+        Twine::Static (tag) => _model_tag_static_str (tag, tags),
+        Twine::String (ref tag) => _model_tag_string (tag, tags)
     }
 }
 
 
 
-fn _model_tag_static_str (tag: &'static str, encoding: Encoding, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
+fn _model_tag_static_str (tag: &'static str, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
     for &(ref shortcut, ref handle) in tags {
         let h = handle.as_ref ();
         if h.len () == 0 || h.contains (' ') { continue; }
@@ -164,35 +138,48 @@ fn _model_tag_static_str (tag: &'static str, encoding: Encoding, tags: &mut Iter
         if tag.starts_with (h) {
             return match *shortcut {
                 Twine::Static (s) => {
-                    match encoding.str_to_bytes (s) {
-                        Ok (f) => match encoding.str_to_bytes (&tag[h.len () ..]) {
-                            Ok (l) => Node::StringConcat (EncodedString::from (f), EncodedString::from (l)),
-                            Err (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                        },
-                        Err (f) => match encoding.str_to_bytes (&tag[h.len () ..]) {
-                            Ok (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                            Err (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                        }
-                    }
+                    let f = s.as_bytes ();
+                    let l = tag[h.len () ..].as_bytes ();
+                    Node::StringConcat (EncodedString::from (f), EncodedString::from (l))
                 }
                 Twine::String (ref s) => {
                     let mut string = Vec::with_capacity (s.len () + (tag.len () - h.len ()));
 
+                    string.extend (s.as_bytes ());
+                    string.extend (tag[h.len () ..].as_bytes ());
+
+                    Node::String (EncodedString::from (string))
+                }
+            }
+        }
+    }
+
+    Node::StringSpecificTag (EncodedString::from (tag.as_bytes ()))
+}
+
+
+
+fn _model_tag_string (tag: &str, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
+    for &(ref shortcut, ref handle) in tags {
+        let h = handle.as_ref ();
+        if h.len () == 0 || h.contains (' ') { continue; }
+
+        if tag.starts_with (h) {
+            return match *shortcut {
+                Twine::Static (s) => {
+                    let f = s.as_bytes ();
+                    let l = tag[h.len () ..].as_bytes ();
+
+                    let mut string = Vec::with_capacity (f.len () + l.len ());
+                    string.extend (f);
+                    string.extend (l);
+                    Node::String (EncodedString::from (string))
+
+                }
+                Twine::String (ref s) => {
+                    let mut string = Vec::with_capacity (s.len () + (tag.len () - h.len ()));
+
+                    /*
                     match encoding.str_to_bytes (s.as_ref ()) {
                         Ok (f) => string.extend (f),
                         Err (v) => string.extend (v)
@@ -202,6 +189,10 @@ fn _model_tag_static_str (tag: &'static str, encoding: Encoding, tags: &mut Iter
                         Ok (f) => string.extend (f),
                         Err (v) => string.extend (v)
                     }
+                    */
+
+                    string.extend (s.as_bytes ());
+                    string.extend (tag[h.len () ..].as_bytes ());
 
                     Node::String (EncodedString::from (string))
                 }
@@ -209,74 +200,13 @@ fn _model_tag_static_str (tag: &'static str, encoding: Encoding, tags: &mut Iter
         }
     }
 
-    match encoding.str_to_bytes (tag) {
-        Ok (s) => Node::StringSpecificTag (EncodedString::from (s)),
-        Err (v) => Node::StringSpecificTag (EncodedString::from (v))
-    }
-}
+    let v: Vec<u8> = Vec::from (tag);
+    Node::StringSpecificTag (EncodedString::from (v))
 
-
-
-fn _model_tag_string (tag: &str, encoding: Encoding, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
-    for &(ref shortcut, ref handle) in tags {
-        let h = handle.as_ref ();
-        if h.len () == 0 || h.contains (' ') { continue; }
-
-        if tag.starts_with (h) {
-            return match *shortcut {
-                Twine::Static (s) => {
-                    match encoding.str_to_bytes (s) {
-                        Ok (f) => match encoding.str_to_bytes (&tag[h.len () ..]) {
-                            Ok (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                 Node::String (EncodedString::from (string))
-                            },
-                            Err (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                        },
-                        Err (f) => match encoding.str_to_bytes (&tag[h.len () ..]) {
-                            Ok (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                            Err (l) => {
-                                let mut string = Vec::with_capacity (f.len () + l.len ());
-                                string.extend (f);
-                                string.extend (l);
-                                Node::String (EncodedString::from (string))
-                            }
-                        }
-                    }
-                }
-                Twine::String (ref s) => {
-                    let mut string = Vec::with_capacity (s.len () + (tag.len () - h.len ()));
-
-                    match encoding.str_to_bytes (s.as_ref ()) {
-                        Ok (f) => string.extend (f),
-                        Err (v) => string.extend (v)
-                    }
-
-                    match encoding.str_to_bytes (&tag[h.len () ..]) {
-                        Ok (f) => string.extend (f),
-                        Err (v) => string.extend (v)
-                    }
-
-                    Node::String (EncodedString::from (string))
-                }
-            }
-        }
-    }
-
+    /*
     match encoding.str_to_bytes (tag) {
         Ok (s) => Node::StringSpecificTag (EncodedString::from (Vec::from (s))),
         Err (v) => Node::StringSpecificTag (EncodedString::from (v))
     }
+    */
 }

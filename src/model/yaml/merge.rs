@@ -1,9 +1,7 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
 
-
-use txt::{ CharSet, Encoding, Twine };
+use txt::Twine;
 
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
@@ -18,7 +16,7 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-pub struct Merge<Char, DoubleChar>
+pub struct Merge; /* <Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
     DoubleChar: CopySymbol + Combo + 'static
@@ -35,16 +33,14 @@ pub struct Merge<Char, DoubleChar>
     space: Char,
     tab_h: Char
 }
+*/
 
 
 
-impl<Char, DoubleChar> Merge<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Merge {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Merge<Char, DoubleChar> {
         Merge {
             encoding: cset.encoding,
@@ -60,25 +56,17 @@ impl<Char, DoubleChar> Merge<Char, DoubleChar>
             tab_h: cset.tab_h
         }
     }
+*/
 }
 
 
 
-impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Merge {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
 
     fn is_decodable (&self) -> bool { true }
@@ -86,9 +74,9 @@ impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<MergeValue, TaggedValue>>>::into (value) {
-            Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from (self.marker.new_vec ()))) ),
+            Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from ("<<".as_bytes ()))) ),
             Err (value) => Err (value)
         }
     }
@@ -97,11 +85,17 @@ impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
     fn decode (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         let mut ptr = 0;
 
-        let vlen = value.len ();
+        // let vlen = value.len ();
 
         let mut quote_state = 0;
 
         if explicit {
+            match value.get (ptr).map (|b| *b) {
+                Some (b'\'') => { ptr += 1; quote_state = 1; }
+                Some (b'"')  => { ptr += 1; quote_state = 2; }
+                _ => ()
+            }
+            /*
             if self.s_quote.contained_at (value, 0) {
                 ptr += self.s_quote.len ();
                 quote_state = 1;
@@ -109,8 +103,34 @@ impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
                 ptr += self.d_quote.len ();
                 quote_state = 2;
             }
+            */
         }
 
+        if value.starts_with ("<<".as_bytes ()) {
+            ptr += 2;
+
+            if quote_state > 0 {
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'\'') if quote_state == 1 => { ptr += 1; }
+                    Some (b'"')  if quote_state == 2 => { ptr += 1; }
+                    _ => return Err ( () )
+                }
+            }
+
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
+                    Some (b' ') |
+                    Some (b'\n') |
+                    Some (b'\t') |
+                    Some (b'\r') => { ptr += 1; }
+                    _ => return Err ( () )
+                };
+            }
+
+            Ok ( TaggedValue::from (MergeValue) )
+        } else { Err ( () ) }
+/*
         if self.marker.contained_at (value, ptr) {
             ptr += self.marker.len ();
 
@@ -159,6 +179,7 @@ impl<Char, DoubleChar> Model for Merge<Char, DoubleChar>
             Ok ( TaggedValue::from (MergeValue) )
         }
         else { Err ( () ) }
+*/
     }
 }
 
@@ -186,28 +207,13 @@ impl AsRef<str> for MergeValue {
 
 
 
-/*
-pub struct MergeFactory;
-
-impl Factory for MergeFactory {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
-
-    fn build_model<Char, DoubleChar> (&self, cset: &CharSet<Char, DoubleChar>) -> Box<Model<Char=Char, DoubleChar=DoubleChar>>
-      where
-        Char: CopySymbol + 'static,
-        DoubleChar: CopySymbol + Combo + 'static
-    { Box::new (Merge::new (cset)) }
-}
-*/
-
-
 
 #[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::iter;
 
@@ -215,7 +221,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let merge = Merge::new (&get_charset_utf8 ());
+        let merge = Merge; // ::new (&get_charset_utf8 ());
 
         assert_eq! (merge.get_tag (), TAG);
     }
@@ -223,8 +229,8 @@ mod tests {
 
     #[test]
     fn encode () {
-        let renderer = Renderer::new (&get_charset_utf8 ());
-        let merge = Merge::new (&get_charset_utf8 ());
+        let renderer = Renderer; // ::new (&get_charset_utf8 ());
+        let merge = Merge; // ::new (&get_charset_utf8 ());
 
         let rope = merge.encode (&renderer, TaggedValue::from (MergeValue), &mut iter::empty ()).ok ().unwrap ();
         assert_eq! (rope.render (&renderer), vec! [b'<', b'<']);
@@ -233,7 +239,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let merge = Merge::new (&get_charset_utf8 ());
+        let merge = Merge; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = merge.decode (true, "<<".as_bytes ()) {
             assert_eq! (tagged.get_tag (), &TWINE_TAG);

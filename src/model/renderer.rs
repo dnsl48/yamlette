@@ -1,8 +1,7 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::CopySymbol;
-
-use txt::CharSet;
+// use self::skimmer::symbol::CopySymbol;
+// use txt::CharSet;
 
 use std::ptr;
 
@@ -156,11 +155,7 @@ impl Node {
 
 
 #[derive(Clone)]
-pub struct Renderer<Char, DoubleChar>
-  where
-    Char: CopySymbol,
-    DoubleChar: CopySymbol
-{
+pub struct Renderer; /* {
     newline: Result<Char, DoubleChar>,
 
     ampersand: Char,
@@ -187,14 +182,11 @@ pub struct Renderer<Char, DoubleChar>
 
     curly_bracket_open: Char,
     curly_bracket_close: Char
-}
+} */
 
 
-impl<Char, DoubleChar> Renderer<Char, DoubleChar>
-  where
-    Char: CopySymbol,
-    DoubleChar: CopySymbol
-{
+impl Renderer {
+    /*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
         Renderer {
             newline: Result::Ok (cset.line_feed),
@@ -217,16 +209,18 @@ impl<Char, DoubleChar> Renderer<Char, DoubleChar>
             curly_bracket_close: cset.bracket_curly_right
         }
     }
+    */
 
-
+    /*
     pub fn new_crlf (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
         let mut renderer = Renderer::new (cset);
         renderer.newline = Result::Err (cset.crlf);
         renderer
     }
+    */
 
 
-    fn _indent_space_len (&self, size: usize) -> usize { size * self.space.len () }
+    // fn _indent_space_len (&self, size: usize) -> usize { size * self.space.len () }
 
 
     pub fn render_into_vec (&self, vec: &mut Vec<u8>, node: Node) {
@@ -246,57 +240,53 @@ impl<Char, DoubleChar> Renderer<Char, DoubleChar>
         match *node {
             Node::Empty => 0,
 
-            Node::Indent (size) => self._indent_space_len (size),
-            Node::NewlineIndent (size) => self.newline.len () + self._indent_space_len (size),
-            Node::CommaNewlineIndent (size) => self.comma.len () + self.newline.len () + self._indent_space_len (size),
-            Node::IndentHyphenSpace (size) => self.hyphen.len () + self.space.len () + self._indent_space_len (size),
-            Node::NewlineIndentHyphenSpace (size) => self.newline.len () + self.hyphen.len () + self.space.len () + self._indent_space_len (size),
+            Node::Indent (size) => size,
+            Node::NewlineIndent (size) => 1 + size,
+            Node::CommaNewlineIndent (size) => 2 + size,
+            Node::IndentHyphenSpace (size) => 2 + size,
+            Node::NewlineIndentHyphenSpace (size) => 3 + size,
 
-            Node::IndentQuestionSpace (size) => self.question.len () + self.space.len () + self._indent_space_len (size),
-            Node::NewlineIndentQuestionSpace (size) => self.newline.len () + self.question.len () + self.space.len () + self._indent_space_len (size),
+            Node::IndentQuestionSpace (size) => 2 + size,
+            Node::NewlineIndentQuestionSpace (size) => 3 + size,
 
-            Node::StringSpecificTag (ref s) => s.len () + self.exclamation.len () + self.lt.len () + self.gt.len (),
+            Node::StringSpecificTag (ref s) => s.len () + 3,
 
             Node::StringConcat (ref former, ref latter) => former.len () + latter.len (),
 
             Node::String (ref s) => s.len (),
-            Node::StringNewline (ref s) => s.len () + self.newline.len (),
-            Node::SingleQuotedString (ref s) => s.len () + self.apostrophe.len () * 2,
-            Node::DoubleQuotedString (ref s) => s.len () + self.quotation.len () * 2,
+            Node::StringNewline (ref s) => s.len () + 1,
+            Node::SingleQuotedString (ref s) => s.len () + 2,
+            Node::DoubleQuotedString (ref s) => s.len () + 2,
 
-            Node::AmpersandString (ref s) => self.ampersand.len () + s.len (),
-            Node::AsteriskString (ref s) => self.asterisk.len () + s.len (),
+            Node::AmpersandString (ref s) => 1 + s.len (),
+            Node::AsteriskString (ref s) => 1 + s.len (),
 
-            Node::Comma => self.comma.len (),
-            Node::Colon => self.colon.len (),
-            Node::Space => self.space.len (),
-            Node::Question => self.question.len (),
-            Node::Hyphen => self.hyphen.len (),
-            Node::Dot => self.dot.len (),
+            Node::Comma |
+            Node::Colon |
+            Node::Space |
+            Node::Question |
+            Node::Hyphen |
+            Node::Newline |
+            Node::SquareBracketOpen |
+            Node::SquareBracketClose |
+            Node::CurlyBracketOpen |
+            Node::CurlyBracketClose |
+            Node::Dot => 1,
 
-            Node::QuestionNewline => self.question.len () + self.newline.len (),
-            Node::QuestionNewlineIndent (size) => self.question.len () + self.newline.len () + self._indent_space_len (size),
-            Node::QuestionSpace => self.question.len () + self.space.len (),
+            Node::QuestionSpace |
+            Node::QuestionNewline |
+            Node::SquareBrackets |
+            Node::CommaSpace |
+            Node::ColonSpace |
+            Node::HyphenSpace |
+            Node::ColonNewline |
+            Node::CurlyBrackets => 2,
 
-            Node::Newline => self.newline.len (),
+            Node::QuestionNewlineIndent (size) => 2 + size,
+            Node::ColonNewlineIndent (size) => 2 + size,
 
-            Node::SquareBrackets => self.square_bracket_open.len () + self.square_bracket_close.len (),
-            Node::SquareBracketOpen => self.square_bracket_open.len (),
-            Node::SquareBracketClose => self.square_bracket_close.len (),
-
-            Node::CurlyBrackets => self.curly_bracket_open.len () + self.curly_bracket_close.len (),
-            Node::CurlyBracketOpen => self.curly_bracket_open.len (),
-            Node::CurlyBracketClose => self.curly_bracket_close.len (),
-
-            Node::CommaSpace => self.comma.len () + self.space.len (),
-            Node::ColonSpace => self.colon.len () + self.space.len (),
-            Node::HyphenSpace => self.hyphen.len () + self.space.len (),
-
-            Node::ColonNewline => self.colon.len () + self.newline.len (),
-            Node::ColonNewlineIndent (size) => self.colon.len () + self.newline.len () + self._indent_space_len (size),
-
-            Node::TripleHyphenNewline => self.hyphen.len () * 3 + self.newline.len (),
-            Node::TripleDotNewline => self.dot.len () * 3 + self.newline.len ()
+            Node::TripleHyphenNewline => 3 + 1,
+            Node::TripleDotNewline => 3 + 1
         }
     }
 
@@ -305,129 +295,189 @@ impl<Char, DoubleChar> Renderer<Char, DoubleChar>
         match *node {
             Node::Empty => (),
 
-            Node::Indent (size) => { dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size); }
+            // Node::Indent (size) => { dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size); }
+            Node::Indent (size) => { dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size); }
 
             Node::NewlineIndent (size) => {
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
             }
 
             Node::IndentHyphenSpace (size) => {
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
-                dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
+                // dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'-', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::NewlineIndentHyphenSpace (size) => {
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
-                dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
+                // dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'-', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::IndentQuestionSpace (size) => {
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
-                dst_ptr = self.question.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
+                // dst_ptr = self.question.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'?', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::NewlineIndentQuestionSpace (size) => {
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
-                dst_ptr = self.question.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
+                // dst_ptr = self.question.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'?', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::CommaNewlineIndent (size) => {
-                dst_ptr = self.comma.copy_to_ptr (dst_ptr);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                // dst_ptr = self.comma.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b',', dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
             }
 
             Node::CommaSpace => {
-                dst_ptr = self.comma.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.comma.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b',', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::ColonSpace => {
-                dst_ptr = self.colon.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.colon.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b':', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::QuestionNewline => {
-                dst_ptr = self.question.copy_to_ptr (dst_ptr);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.question.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'?', dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
             }
 
             Node::QuestionNewlineIndent (size) => {
-                dst_ptr = self.question.copy_to_ptr (dst_ptr);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                // dst_ptr = self.question.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'?', dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
             }
 
             Node::QuestionSpace => {
-                dst_ptr = self.question.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.question.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'?', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::ColonNewline => {
-                dst_ptr = self.colon.copy_to_ptr (dst_ptr);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.colon.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b':', dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
             }
 
             Node::ColonNewlineIndent (size) => {
-                dst_ptr = self.colon.copy_to_ptr (dst_ptr);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                // dst_ptr = self.colon.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b':', dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr_times (dst_ptr, size);
+                dst_ptr = copy_to_ptr_times (b' ', dst_ptr, size);
             }
 
             Node::HyphenSpace => {
-                dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
-                dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.hyphen.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'-', dst_ptr);
+                // dst_ptr = self.space.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b' ', dst_ptr);
             }
 
             Node::SquareBrackets => {
-                dst_ptr = self.square_bracket_open.copy_to_ptr (dst_ptr);
-                dst_ptr = self.square_bracket_close.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.square_bracket_open.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'[', dst_ptr);
+                // dst_ptr = self.square_bracket_close.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b']', dst_ptr);
             }
-            Node::SquareBracketOpen => { dst_ptr = self.square_bracket_open.copy_to_ptr (dst_ptr); }
-            Node::SquareBracketClose => { dst_ptr = self.square_bracket_close.copy_to_ptr (dst_ptr); }
+            // Node::SquareBracketOpen => { dst_ptr = self.square_bracket_open.copy_to_ptr (dst_ptr); }
+            Node::SquareBracketOpen => { dst_ptr = copy_to_ptr (b'[', dst_ptr); }
+            // Node::SquareBracketClose => { dst_ptr = self.square_bracket_close.copy_to_ptr (dst_ptr); }
+            Node::SquareBracketClose => { dst_ptr = copy_to_ptr (b']', dst_ptr); }
 
 
             Node::CurlyBrackets => {
-                dst_ptr = self.curly_bracket_open.copy_to_ptr (dst_ptr);
-                dst_ptr = self.curly_bracket_close.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.curly_bracket_open.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'{', dst_ptr);
+                // dst_ptr = self.curly_bracket_close.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'}', dst_ptr);
             }
-            Node::CurlyBracketOpen => { dst_ptr = self.curly_bracket_open.copy_to_ptr (dst_ptr); }
-            Node::CurlyBracketClose => { dst_ptr = self.curly_bracket_close.copy_to_ptr (dst_ptr); }
+            // Node::CurlyBracketOpen => { dst_ptr = self.curly_bracket_open.copy_to_ptr (dst_ptr); }
+            Node::CurlyBracketOpen => { dst_ptr = copy_to_ptr (b'{', dst_ptr); }
+            // Node::CurlyBracketClose => { dst_ptr = self.curly_bracket_close.copy_to_ptr (dst_ptr); }
+            Node::CurlyBracketClose => { dst_ptr = copy_to_ptr (b'}', dst_ptr); }
 
-            Node::Hyphen => { dst_ptr = self.hyphen.copy_to_ptr (dst_ptr); }
-            Node::Dot => { dst_ptr = self.dot.copy_to_ptr (dst_ptr); }
-            Node::Question => { dst_ptr = self.question.copy_to_ptr (dst_ptr); }
-            Node::Comma => { dst_ptr = self.comma.copy_to_ptr (dst_ptr); }
-            Node::Colon => { dst_ptr = self.colon.copy_to_ptr (dst_ptr); }
-            Node::Space => { dst_ptr = self.space.copy_to_ptr (dst_ptr); }
-            Node::Newline => { dst_ptr = self.newline.copy_to_ptr (dst_ptr); }
+            // Node::Hyphen => { dst_ptr = self.hyphen.copy_to_ptr (dst_ptr); }
+            Node::Hyphen => { dst_ptr = copy_to_ptr (b'-', dst_ptr); }
+            // Node::Dot => { dst_ptr = self.dot.copy_to_ptr (dst_ptr); }
+            Node::Dot => { dst_ptr = copy_to_ptr (b'.', dst_ptr); }
+            // Node::Question => { dst_ptr = self.question.copy_to_ptr (dst_ptr); }
+            Node::Question => { dst_ptr = copy_to_ptr (b'?', dst_ptr); }
+            // Node::Comma => { dst_ptr = self.comma.copy_to_ptr (dst_ptr); }
+            Node::Comma => { dst_ptr = copy_to_ptr (b',', dst_ptr); }
+            // Node::Colon => { dst_ptr = self.colon.copy_to_ptr (dst_ptr); }
+            Node::Colon => { dst_ptr = copy_to_ptr (b':', dst_ptr); }
+            // Node::Space => { dst_ptr = self.space.copy_to_ptr (dst_ptr); }
+            Node::Space => { dst_ptr = copy_to_ptr (b' ', dst_ptr); }
+            // Node::Newline => { dst_ptr = self.newline.copy_to_ptr (dst_ptr); }
+            Node::Newline => { dst_ptr = copy_to_ptr (b'\n', dst_ptr); }
 
 
             Node::TripleHyphenNewline => {
-                dst_ptr = self.hyphen.copy_to_ptr_times (dst_ptr, 3);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.hyphen.copy_to_ptr_times (dst_ptr, 3);
+                dst_ptr = copy_to_ptr_times (b'-', dst_ptr, 3);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
             }
 
             Node::TripleDotNewline => {
-                dst_ptr = self.dot.copy_to_ptr_times (dst_ptr, 3);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.dot.copy_to_ptr_times (dst_ptr, 3);
+                dst_ptr = copy_to_ptr_times (b'.', dst_ptr, 3);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
             }
 
 
             Node::StringSpecificTag (ref vec) => {
-                dst_ptr = self.exclamation.copy_to_ptr (dst_ptr);
-                dst_ptr = self.lt.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.exclamation.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'!', dst_ptr);
+                // dst_ptr = self.lt.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'<', dst_ptr);
                 let len = vec.len ();
                 ptr::copy_nonoverlapping (vec.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
-                dst_ptr = self.gt.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.gt.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'>', dst_ptr);
             }
 
 
@@ -451,31 +501,38 @@ impl<Char, DoubleChar> Renderer<Char, DoubleChar>
                 let len = s.len ();
                 ptr::copy_nonoverlapping (s.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
-                dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.newline.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\n', dst_ptr);
             }
             Node::SingleQuotedString (ref s) => {
-                dst_ptr = self.apostrophe.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.apostrophe.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\'', dst_ptr);
                 let len = s.len ();
                 ptr::copy_nonoverlapping (s.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
-                dst_ptr = self.apostrophe.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.apostrophe.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'\'', dst_ptr);
             }
             Node::DoubleQuotedString (ref s) => {
-                dst_ptr = self.quotation.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.quotation.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'"', dst_ptr);
                 let len = s.len ();
                 ptr::copy_nonoverlapping (s.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
-                dst_ptr = self.quotation.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.quotation.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'"', dst_ptr);
             }
 
             Node::AmpersandString (ref s) => {
-                dst_ptr = self.ampersand.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.ampersand.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'&', dst_ptr);
                 let len = s.len ();
                 ptr::copy_nonoverlapping (s.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
             }
             Node::AsteriskString (ref s) => {
-                dst_ptr = self.asterisk.copy_to_ptr (dst_ptr);
+                // dst_ptr = self.asterisk.copy_to_ptr (dst_ptr);
+                dst_ptr = copy_to_ptr (b'*', dst_ptr);
                 let len = s.len ();
                 ptr::copy_nonoverlapping (s.as_ptr (), dst_ptr, len);
                 dst_ptr = dst_ptr.offset (len as isize);
@@ -484,4 +541,22 @@ impl<Char, DoubleChar> Renderer<Char, DoubleChar>
 
         dst_ptr
     }
+}
+
+
+#[inline (always)]
+unsafe fn copy_to_ptr (byte: u8, dst: *mut u8) -> *mut u8 {
+    *dst = byte;
+    dst.offset (1)
+}
+
+
+
+#[inline (always)]
+unsafe fn copy_to_ptr_times (byte: u8, mut dst: *mut u8, times: usize) -> *mut u8 {
+    for _ in 0 .. times {
+        *dst = byte;
+        dst = dst.offset (1);
+    }
+    dst
 }

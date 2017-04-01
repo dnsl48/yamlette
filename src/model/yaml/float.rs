@@ -8,10 +8,8 @@ use self::fraction::{ Fraction, BigFraction, Sign };
 use self::num::{ BigUint, ToPrimitive };
 use self::num::traits::Signed;
 
-use self::skimmer::symbol::{ CopySymbol, Combo };
 
-
-use txt::{ CharSet, Encoding, Unicode, Twine };
+use txt::Twine;
 
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
@@ -23,14 +21,11 @@ use std::fmt;
 use std::mem;
 use std::ops::{ AddAssign, DivAssign, MulAssign, Neg };
 use std::iter::Iterator;
-use std::marker::PhantomData;
-
 
 
 
 pub const TAG: &'static str = "tag:yaml.org,2002:float";
 static TWINE_TAG: Twine = Twine::Static (TAG);
-
 
 
 
@@ -192,7 +187,7 @@ impl fmt::Display for Mint {
 
 
 
-pub struct Float<Char, DoubleChar>
+pub struct Float; /* <Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
     DoubleChar: CopySymbol + Combo + 'static
@@ -226,16 +221,13 @@ pub struct Float<Char, DoubleChar>
 
     _dchr: PhantomData<DoubleChar>
 }
+*/
 
 
 
-impl<Char, DoubleChar> Float<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+impl Float {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
+/*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Float<Char, DoubleChar> {
         Float {
             encoding: cset.encoding,
@@ -268,8 +260,9 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
             _dchr: PhantomData
         }
     }
+*/
 
-
+/*
     fn inf (&self, value: &[u8], ptr: usize) -> usize {
         if self.letter_i.contained_at (value, ptr) &&
            self.letter_n.contained_at (value, ptr + self.letter_i.len ()) &&
@@ -290,8 +283,9 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
             } else { 0 }
         } else { 0 }
     }
+*/
 
-
+/*
     fn nan (&self, value: &[u8], ptr: usize) -> usize {
         if self.letter_n.contained_at (value, ptr) &&
            self.letter_a.contained_at (value, ptr + self.letter_n.len ()) &&
@@ -312,10 +306,12 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
             } else { 0 }
         } else { 0 }
     }
+*/
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], base60: bool, optional_dot: bool) -> Result<MaybeBigFraction, ()> {
-        if !explicit && !self.encoding.check_is_flo_num (value) { return Err ( () ) }
+        if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
+        // if !explicit && !self.encoding.check_is_flo_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
         const STATE_SIGN_N: u8 = 3;
@@ -353,122 +349,85 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
         let mut ptr: usize = 0;
         let mut state: u8 = 0;
 
-        'top: loop {
-            if ptr >= value.len () { break; }
+        loop {
+            match value.get (ptr).map (|b| *b) {
+                None => break,
 
+                Some (b'_') => { ptr += 1; }
 
-            if quote_state == 1 {
-                if self.s_quote.contained_at (value, ptr) {
-                    if ptr == self.s_quote.len () { return Err ( () ) }
-                    ptr += self.s_quote.len ();
-                    quote_state = 0;
-                    state = state | STATE_END;
-                    continue;
-                }
-            }
-
-
-            if quote_state == 2 {
-                if self.d_quote.contained_at (value, ptr) {
-                    if ptr == self.d_quote.len () { return Err ( () ) }
-                    ptr += self.d_quote.len ();
-                    quote_state = 0;
-                    state = state | STATE_END;
-                    continue;
-                }
-            }
-
-
-            if explicit && quote_state == 0 && state & STATE_END == 0 {
-                if self.s_quote.contained_at (value, ptr) {
-                    ptr += self.s_quote.len ();
-                    quote_state = 1;
-                }
-            }
-
-
-            if explicit && quote_state == 0 && state & STATE_END == 0 {
-                if self.d_quote.contained_at (value, ptr) {
-                    ptr += self.d_quote.len ();
-                    quote_state = 2;
-                }
-            }
-
-
-            if state & STATE_END == STATE_END {
-                if ptr == 0 { return Err ( () ) }
-                if quote_state > 0 { return Err ( () ) }
-
-                if self.space.contained_at (value, ptr) {
-                    ptr += self.space.len ();
-                    continue;
+                Some (b'\'') => {
+                    ptr += 1;
+                    if explicit && quote_state == 0 && state & STATE_END == 0 {
+                        quote_state = 1;
+                    } else if quote_state == 1 {
+                        if ptr == 2 { return Err ( () ) }
+                        quote_state = 0;
+                        state = state | STATE_END;
+                        break;
+                    } else {
+                        state = state | STATE_END;
+                        break;
+                    }
                 }
 
-                if self.line_feed.contained_at (value, ptr) {
-                    ptr += self.line_feed.len ();
-                    continue;
+                Some (b'"') => {
+                    ptr += 1;
+                    if explicit && quote_state == 0 && state & STATE_END == 0 {
+                        quote_state = 2;
+                    } else if quote_state == 2 {
+                        if ptr == 2 { return Err ( () ) }
+                        quote_state = 0;
+                        state = state | STATE_END;
+                        break;
+                    } else {
+                        state = state | STATE_END;
+                        break;
+                    }
                 }
 
-                if self.tab_h.contained_at (value, ptr) {
-                    ptr += self.tab_h.len ();
-                    continue;
-                }
-
-                if self.carriage_return.contained_at (value, ptr) {
-                    ptr += self.carriage_return.len ();
-                    continue;
-                }
-
-                return Err ( () )
-            }
-
-
-            if self.underscore.contained_at (value, ptr) {
-                ptr += self.underscore.len ();
-                continue;
-            }
-
-
-            if state & STATE_SIGN != STATE_SIGN {
-                if self.minus.contained_at (value, ptr) {
+                Some (b'-') if state & STATE_SIGN == 0 => {
+                    ptr += 1;
                     state = state | STATE_SIGN_N;
-                    ptr += self.minus.len ();
-                    continue;
-                } else if self.plus.contained_at (value, ptr) {
-                    state = state | STATE_SIGN;
-                    ptr += self.plus.len ();
-                    continue;
                 }
 
-                state = state | STATE_SIGN;
-            }
+                Some (b'+') if state & STATE_SIGN == 0 => {
+                    ptr += 1;
+                    state = state | STATE_SIGN;
+                }
 
-            if state & STATE_DOT != STATE_DOT {
-                if self.dot.contained_at (value, ptr) {
+                _ if state & STATE_SIGN == 0 => { state = state | STATE_SIGN; }
+
+                Some (b'.') if state & STATE_DOT != STATE_DOT => {
+                    ptr += 1;
                     state = state | STATE_DOT;
-                    ptr += self.dot.len ();
-                    continue;
-                } else if base60 && self.colon.contained_at (value, ptr) {
-                    ptr += self.colon.len ();
+                }
+
+                Some (b':') if base60 && state & STATE_DOT != STATE_DOT => {
+                    ptr += 1;
 
                     let digit: u32;
 
-                    if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                        digit = d as u32;
-                        ptr += l as usize;
-                    } else {
-                        state = state | STATE_END;
-                        continue 'top;
+                    match value.get (ptr).map (|b| *b) {
+                        Some (val @ b'0' ... b'9') => {
+                            ptr += 1;
+                            digit = (val - b'0') as u32;
+                        }
+                        _ => {
+                            state = state | STATE_END;
+                            break;
+                        }
                     }
 
                     let mut digit2: Option<u32> = None;
 
                     if digit < 6u32 {
-
-                        if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                            digit2 = Some (d as u32);
-                            ptr += l as usize;
-                        }
+                        match value.get (ptr).map (|b| *b) {
+                            Some (val @ b'0' ... b'9') => {
+                                ptr += 1;
+                                digit2 = Some ((val - b'0') as u32);
+                            }
+                            _ => ()
+                        };
                     };
 
                     let n: u32 = if digit2.is_some () {
@@ -478,92 +437,132 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
                     num *= 60u64;
                     num += n as u64;
 
-                    if value.len () == ptr {
-                        break;
-                    } else if self.dot.contained_at (value, ptr) {
-                        continue;
-                    } else if self.colon.contained_at (value, ptr) {
-                        continue;
-                    } else {
-                        state = state | STATE_END;
-                        continue 'top;
+                    match value.get (ptr).map (|b| *b) {
+                        None => break,
+
+                        Some (b'.') |
+                        Some (b':') => (),
+
+                        _ => { state = state | STATE_END; break }
                     }
                 }
-            } else if state & STATE_NUM != STATE_NUM {
-                let maybe_nan = self.nan (value, ptr);
-                if maybe_nan > 0 {
-                    ptr += maybe_nan;
-                    nan = true;
-                    state = state | STATE_END;
-                    continue 'top;
+
+                _ if state & STATE_NUM != STATE_NUM => {
+                    if
+                        value.starts_with ("nan".as_bytes ()) ||
+                        value.starts_with ("NaN".as_bytes ()) ||
+                        value.starts_with ("NAN".as_bytes ())
+                    {
+                        ptr += 3;
+                        nan = true;
+                        state = state | STATE_END;
+                        break;
+                    }
+                    else if
+                        value.starts_with ("inf".as_bytes ()) ||
+                        value.starts_with ("Inf".as_bytes ()) ||
+                        value.starts_with ("INF".as_bytes ())
+                    {
+                        ptr += 3;
+                        inf = true;
+                        state = state | STATE_END;
+                        break
+                    }
+
+                    /*
+                    match value.get (ptr .. ptr + 3) {
+                        Some ("nan") |
+                        Some ("NaN") |
+                        Some ("NAN") => {
+                            ptr += 3;
+                            nan = true;
+                            state = state | STATE_END;
+                            break;
+                        }
+
+                        Some ("inf") |
+                        Some ("Inf") |
+                        Some ("INF") => {
+                            ptr += 3;
+                            inf = true;
+                            state = state | STATE_END;
+                            break
+                        }
+
+                        _ => ()
+                    };
+                    */
+
+                    state = state | STATE_NUM;
                 }
 
-                let maybe_inf = self.inf (value, ptr);
-                if maybe_inf > 0 {
-                    ptr += maybe_inf;
-                    inf = true;
-                    state = state | STATE_END;
-                    continue 'top;
-                }
-            }
-            state = state | STATE_NUM;
-
-            if (actual_num && (optional_dot || state & STATE_DOT == STATE_DOT)) && state & STATE_E != STATE_E {
-                if self.letter_e.contained_at (value, ptr) {
+                Some (b'e') |
+                Some (b'E') if (actual_num && (optional_dot || state & STATE_DOT == STATE_DOT)) && state & STATE_E != STATE_E => {
+                    ptr += 1;
                     state = state | STATE_E;
-                    ptr += self.letter_e.len ();
                     exp = Mint::new ();
-                    continue;
                 }
 
-                if self.letter_t_e.contained_at (value, ptr) {
-                    state = state | STATE_E;
-                    ptr += self.letter_t_e.len ();
-                    exp = Mint::new ();
-                    continue;
-                }
-            } else if state & STATE_E == STATE_E && state & STATE_E_SIGN != STATE_E_SIGN {
-                if self.minus.contained_at (value, ptr) {
+                Some (b'-') if state & STATE_E == STATE_E && state & STATE_E_SIGN != STATE_E_SIGN => {
+                    ptr += 1;
                     state = state | STATE_E_SIGN_N;
-                    ptr += self.minus.len ();
-                    continue;
-                } else if self.plus.contained_at (value, ptr) {
-                    state = state | STATE_E_SIGN;
-                    ptr += self.plus.len ();
-                    continue;
                 }
 
-                state = state | STATE_E_SIGN;
+                Some (b'+') if state & STATE_E == STATE_E && state & STATE_E_SIGN != STATE_E_SIGN => {
+                    ptr += 1;
+                    state = state | STATE_E_SIGN;
+                }
+
+                _ if state & STATE_E == STATE_E && STATE_E_SIGN != STATE_E_SIGN => { state = state | STATE_E_SIGN; }
+
+                Some (b) => {
+                    let digit: u32;
+
+                    if b >= b'0' && b <= b'9' {
+                        ptr += 1;
+                        digit = (b - b'0') as u32;
+                    } else {
+                        state = state | STATE_END;
+                        break;
+                    }
+
+                    if state & STATE_E == STATE_E {
+                        exp *= 10u64;
+                        exp += digit as u64;
+                        continue;
+                    }
+
+
+                    if state & STATE_DOT == STATE_DOT {
+                        num *= 10u64;
+                        num += digit as u64;
+                        den *= 10u64;
+                        continue;
+                    }
+
+                    num *= 10u64;
+                    num += digit as u64;
+                    actual_num = true;
+                }
             }
+        }
 
+        if state & STATE_END == STATE_END {
+            if ptr == 0 { return Err ( () ) }
+            if quote_state > 0 { return Err ( () ) }
 
-            let digit: u32;
+            loop {
+                match value.get (ptr).map (|b| *b) {
+                    None => break,
 
-            if let Some ( (d, l) ) = self.encoding.extract_dec_digit (&value[ptr ..]) {
-                digit = d as u32;
-                ptr += l as usize;
-            } else {
-                state = state | STATE_END;
-                continue 'top;
+                    Some (b' ') |
+                    Some (b'\n') |
+                    Some (b'\t') |
+                    Some (b'\r') => { ptr += 1; }
+
+                    _ => return Err ( () )
+                };
             }
-
-            if state & STATE_E == STATE_E {
-                exp *= 10u64;
-                exp += digit as u64;
-                continue;
-            }
-
-
-            if state & STATE_DOT == STATE_DOT {
-                num *= 10u64;
-                num += digit as u64;
-                den *= 10u64;
-                continue;
-            }
-
-            num *= 10u64;
-            num += digit as u64;
-            actual_num = true;
         }
 
         if nan { return Ok (MaybeBigFraction::from (Fraction::nan ())); }
@@ -606,21 +605,12 @@ impl<Char, DoubleChar> Float<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Model for Float<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    type Char = Char;
-    type DoubleChar = DoubleChar;
-
+impl Model for Float {
     fn get_tag (&self) -> &Twine { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    fn get_encoding (&self) -> Encoding { self.encoding }
 
 
     fn is_decodable (&self) -> bool { true }
@@ -628,7 +618,7 @@ impl<Char, DoubleChar> Model for Float<Char, DoubleChar>
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer<Char, DoubleChar>, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
         let mut value: FloatValue = match <TaggedValue as Into<Result<FloatValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -639,21 +629,14 @@ impl<Char, DoubleChar> Model for Float<Char, DoubleChar>
         let value = value.value;
 
         if value.is_nan () {
-            let value = ".nan";
-            let node = Node::String (match self.encoding.str_to_bytes (value) {
-                Ok (s) => EncodedString::from (s),
-                Err (s) => EncodedString::from (s)
-            });
+            let node = Node::String (EncodedString::from (".nan".as_bytes ()));
             return Ok (model_issue_rope (self, node, issue_tag, alias, tags));
         }
 
         if value.is_infinite () {
             let value = if value.is_negative () { "-.inf" } else { ".inf" };
 
-            let node = Node::String (match self.encoding.str_to_bytes (value) {
-                Ok (s) => EncodedString::from (s),
-                Err (s) => EncodedString::from (s)
-            });
+            let node = Node::String (EncodedString::from (value.as_bytes ()));
             return Ok (model_issue_rope (self, node, issue_tag, alias, tags));
         }
 
@@ -667,7 +650,7 @@ impl<Char, DoubleChar> Model for Float<Char, DoubleChar>
             return Err (TaggedValue::from (val) )
         };
 
-        let node = Node::String (EncodedString::from (self.encoding.string_to_bytes (value)));
+        let node = Node::String (EncodedString::from (value.into_bytes ()));
         Ok (model_issue_rope (self, node, issue_tag, alias, tags))
     }
 
@@ -958,7 +941,7 @@ mod tests {
     use super::num::BigUint;
 
     use model::{ Tagged, Renderer };
-    use txt::get_charset_utf8;
+    // use txt::get_charset_utf8;
 
     use std::f64;
     use std::iter;
@@ -967,7 +950,7 @@ mod tests {
 
     macro_rules! encoded_fraction_is {
         ($coder:expr, $fraction:expr, $str:expr) => {{
-            let renderer = Renderer::new (&get_charset_utf8 ());
+            let renderer = Renderer; // ::new (&get_charset_utf8 ());
             if let Ok (rope) = $coder.encode (&renderer, TaggedValue::from (FloatValue::from ($fraction)), &mut iter::empty ()) {
                 let bytes = rope.render (&renderer);
                 assert_eq! (bytes, $str.as_bytes ())
@@ -978,7 +961,7 @@ mod tests {
 
     macro_rules! encoded_float_is {
         ($coder:expr, $float:expr, $str:expr) => {{
-            let renderer = Renderer::new (&get_charset_utf8 ());
+            let renderer = Renderer; // ::new (&get_charset_utf8 ());
             if let Ok (rope) = $coder.encode (&renderer, TaggedValue::from (FloatValue::from ($float)), &mut iter::empty ()) {
                 let bytes = rope.render (&renderer);
                 assert_eq! (bytes, $str.as_bytes ())
@@ -1032,7 +1015,7 @@ mod tests {
 
     #[test]
     fn tag () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
         assert_eq! (float.get_tag (), TAG);
     }
@@ -1041,7 +1024,7 @@ mod tests {
 
     #[test]
     fn encode () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
         encoded_fraction_is! (float, BigFraction::nan (), ".nan");
         encoded_fraction_is! (float, BigFraction::infinity (), ".inf");
@@ -1057,7 +1040,7 @@ mod tests {
 
     #[test]
     fn decode_inf () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = float.decode (true, &".inf".to_string ().into_bytes ()) {
             assert_eq! (tagged.get_tag (), float.get_tag ());
@@ -1104,7 +1087,7 @@ mod tests {
 
     #[test]
     fn decode_nan () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
 
         if let Ok (tagged) = float.decode (true, &".nan".to_string ().into_bytes ()) {
@@ -1142,7 +1125,7 @@ mod tests {
 
     #[test]
     fn decode () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
 
         decoded_is_f64! (float, "-.inf", f64::NEG_INFINITY);
@@ -1187,7 +1170,7 @@ mod tests {
 
     #[test]
     fn decode_nl () {
-        let float = Float::new (&get_charset_utf8 ());
+        let float = Float; // ::new (&get_charset_utf8 ());
 
         if let Ok (_) = float.decode (true, &"\n".to_string ().into_bytes ()) {
             assert! (false);
