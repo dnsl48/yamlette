@@ -547,11 +547,12 @@ impl Conductor {
 
 
     fn execute (mut self) -> Result<(), OrchError> {
-        let mut performer_buffers: [&[Node]; PERFORMERS_NUMBER] = [&[]; PERFORMERS_NUMBER];
-        let mut music: Vec<u8> = Vec::with_capacity (0);
-        let mut volumes: Vec<Volume> = Vec::with_capacity (0);
-
-        let result = self._execute (&mut performer_buffers, &mut music, &mut volumes);
+        let result = {
+            let mut volumes: Vec<Volume> = Vec::with_capacity (0);
+            let mut music: Vec<u8> = Vec::with_capacity (0);
+            let mut performer_buffers: [&[Node]; PERFORMERS_NUMBER] = [&[]; PERFORMERS_NUMBER];
+            self._execute (&mut performer_buffers, &mut music, &mut volumes)
+        };
 
         self.terminate ();
 
@@ -565,11 +566,11 @@ impl Conductor {
     }
 
 
-    fn _execute (
-        &mut self,
-        performer_buffers: &mut [&[Node]; PERFORMERS_NUMBER],
-        music: &mut Vec<u8>,
-        volumes: &mut Vec<Volume>
+    fn _execute<'a, 'b, 'c> (
+        &'a mut self,
+        performer_buffers: &'b mut [&'c [Node]; PERFORMERS_NUMBER],
+        music: &'b mut Vec<u8>,
+        volumes: &'c mut Vec<Volume>
     ) -> Result<(), OrchError> {
         let mut vols_num = 0;
 
@@ -723,7 +724,7 @@ impl Conductor {
         let mut perfs_busy = false;
         let mut perf_idx: usize = 0;
 
-        let mut rope: &Rope;
+        let mut rope: &'c Rope;
         let mut rope_idx: usize;
 
         let mut str_ptr: *mut u8 = music.as_mut_ptr ();
