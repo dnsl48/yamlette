@@ -7,8 +7,8 @@ use txt::Twine;
 
 use sage::{ Idea, YamlVersion, SageError };
 
-use self::skimmer::{ Chunk, Data, Marker, Rune };
-use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
+use self::skimmer::{ Chunk, Data, Datum, Marker };
+// use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
 
 use reader::{ Block, BlockType, Node, NodeKind };
 
@@ -16,31 +16,23 @@ use std::marker::PhantomData;
 
 
 
-pub struct Savant<Char, DoubleChar, S>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static,
-    S: Schema<Char, DoubleChar>
-{
+pub struct Savant<S, D> {
     yaml_version: YamlVersion,
-    data: Data,
+    data: Data<D>,
     schema: S,
     tag_handles: Vec<(Twine, Twine)>,
-    buf_literal_block: Option<(usize, Vec<Result<Marker, (Rune, usize)>>)>,
-
-    _char: PhantomData<Char>,
-    _dchr: PhantomData<DoubleChar>
+    buf_literal_block: Option<(usize, Vec<Result<Marker, (u8, usize)>>)>,
+    _datum: PhantomData<D>
 }
 
 
 
-impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
+impl<S, D> Savant<S, D>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static,
-    S: Schema<Char, DoubleChar>
+    S: Schema + 'static,
+    D: Datum + 'static
 {
-    pub fn new (schema: S) -> Savant<Char, DoubleChar, S> {
+    pub fn new (schema: S) -> Savant<S, D> {
         let mut tag_handles: Vec<(Twine, Twine)>;
 
         {
@@ -55,13 +47,12 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
             schema: schema,
             tag_handles: tag_handles,
             buf_literal_block: None,
-            _char: PhantomData,
-            _dchr: PhantomData
+            _datum: PhantomData
         }
     }
 
 
-    pub fn think (&mut self, block: Block) -> Result<Option<Idea>, SageError> {
+    pub fn think (&mut self, block: Block<D>) -> Result<Option<Idea>, SageError> {
         match block.cargo {
             BlockType::StreamEnd => {
                 self.data.clear ();
@@ -105,11 +96,11 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
                 Ok (None)
             }
 
-            BlockType::Rune ( .. ) if self.buf_literal_block.is_some () => {
-                if let BlockType::Rune (rune, amount) = block.cargo {
+            BlockType::Byte ( .. ) if self.buf_literal_block.is_some () => {
+                if let BlockType::Byte (byte, amount) = block.cargo {
                     if let Some ( (idx, ref mut vec) ) = self.buf_literal_block {
                         if idx != block.id.parent { panic! ("Unexpected literal!") }
-                        vec.push (Err ((rune, amount)));
+                        vec.push (Err ((byte, amount)));
                     }
                 };
 
@@ -126,7 +117,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
             BlockType::Alias ( .. ) |
             BlockType::BlockMap ( .. ) |
             BlockType::Literal ( .. ) |
-            BlockType::Rune ( .. ) |
+            BlockType::Byte ( .. ) |
             BlockType::Node ( .. ) => Ok (Some (self.read_block (block) ?))
         }
     }
@@ -164,7 +155,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
     }
 
 
-    fn read_block (&self, block: Block) -> Result<Idea, SageError> {
+    fn read_block (&self, block: Block<D>) -> Result<Idea, SageError> {
         match block.cargo {
             BlockType::Alias ( marker ) => Ok (Idea::Alias (block.id, self.read_alias (marker) ?)),
 
@@ -177,7 +168,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
 
             BlockType::Literal ( marker ) => Ok (Idea::NodeLiteral (block.id, None, self.read_literal (marker) ?)),
 
-            BlockType::Rune ( rune, amount ) => Ok (Idea::NodeLiteral (block.id, None, self.read_rune (rune, amount) ?)),
+            BlockType::Byte ( byte, amount ) => Ok (Idea::NodeLiteral (block.id, None, self.read_byte (byte, amount) ?)),
 
             BlockType::Node ( node ) => match node.content {
                 NodeKind::LiteralBlockOpen |
@@ -225,7 +216,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
         &mut self,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        vec: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>
+        vec: Result<Marker, Vec<Result<Marker, (u8, usize)>>>
     ) -> Result<(Option<String>, TaggedValue), SageError>
     { self.read_scalar (anchor, tag, vec) }
 
@@ -234,7 +225,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
         &self,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        marker: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>
+        marker: Result<Marker, Vec<Result<Marker, (u8, usize)>>>
     ) -> Result<(Option<String>, TaggedValue), SageError> {
         let anchor: Option<String> = self.read_anchor (anchor) ?;
         let tag: Option<String> = self.read_tag (tag) ?;
@@ -248,15 +239,15 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
                 for m in markers {
                     match *m {
                         Ok (ref marker) => { len += self.data.marker_len (marker); }
-                        Err ((ref rune, amount)) => { len += rune.len () * amount; }
+                        Err ((_, amount)) => { len += amount; }
                     }
                 }
                 let mut v: Vec<u8> = Vec::with_capacity (len);
                 for m in markers {
                     match *m {
                         Ok (ref marker) => { v.extend (self.data.chunk (marker).as_slice ()); }
-                        Err ((ref rune, amount)) => {
-                            for _ in 0 .. amount { v.extend (rune.as_slice ()); }
+                        Err ((byte, amount)) => {
+                            for _ in 0 .. amount { v.push (byte); }
                         }
                     }
                 }
@@ -265,7 +256,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
         };
         let chunk = chunk.as_slice ();
 
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
+        let model: Option<(&Model, bool)> = {
             if let Some (ref tag) = tag {
                 self.lookup_model (tag, |m, e| {
                     if !m.is_decodable () { return false }
@@ -442,8 +433,8 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
     }
 
 
-    fn read_rune (&self, rune: Rune, amount: usize) -> Result<String, SageError> {
-        let literal = self.schema.get_model_literal ().bytes_to_string_times (rune.as_slice (), amount);
+    fn read_byte (&self, byte: u8, amount: usize) -> Result<String, SageError> {
+        let literal = self.schema.get_model_literal ().bytes_to_string_times (&[byte], amount);
 
         match literal {
             Ok (literal) => Ok (literal),
@@ -452,8 +443,8 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
     }
 
 
-    fn read_model<F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: String, predicate: F) -> Result<&Model<Char=Char, DoubleChar=DoubleChar>, SageError> {
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = self.lookup_model (&tag, predicate);
+    fn read_model<F: FnMut (&Model, bool) -> bool> (&self, tag: String, predicate: F) -> Result<&Model, SageError> {
+        let model: Option<(&Model, bool)> = self.lookup_model (&tag, predicate);
 
         match model {
             Some ( (model, _) ) => Ok (model),
@@ -463,7 +454,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
     }
 
 
-    fn lookup_model<T: AsRef<str>, F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> {
+    fn lookup_model<T: AsRef<str>, F: FnMut (&Model, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model, bool)> {
         let tag = tag.as_ref ();
 
         if tag.starts_with ("!<") && tag.ends_with (">") {
@@ -561,7 +552,7 @@ impl<Char, DoubleChar, S> Savant<Char, DoubleChar, S>
     }
 
 
-    fn decode (&self, model: &Model<Char=Char, DoubleChar=DoubleChar>, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
+    fn decode (&self, model: &Model, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         match self.yaml_version {
             YamlVersion::V1x1 => model.decode11 (explicit, value),
             YamlVersion::V1x2 => model.decode   (explicit, value)

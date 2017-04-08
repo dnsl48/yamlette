@@ -186,7 +186,7 @@ impl fmt::Display for Mint {
 
 
 
-
+#[derive (Clone, Copy)]
 pub struct Float; /* <Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
@@ -310,7 +310,15 @@ impl Float {
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], base60: bool, optional_dot: bool) -> Result<MaybeBigFraction, ()> {
-        if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
+        if !explicit && ! match value.get (0).map (|b| *b) {
+            Some (b'+') |
+            Some (b'-') |
+            Some (b'.') |
+            Some (b'0' ... b'9') => true,
+            _ => false
+        } { return Err ( () ) }
+
+        // if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
         // if !explicit && !self.encoding.check_is_flo_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
@@ -448,6 +456,7 @@ impl Float {
                 }
 
                 _ if state & STATE_NUM != STATE_NUM => {
+                    let value = &value[ptr .. ];
                     if
                         value.starts_with ("nan".as_bytes ()) ||
                         value.starts_with ("NaN".as_bytes ()) ||
@@ -549,7 +558,13 @@ impl Float {
 
         if state & STATE_END == STATE_END {
             if ptr == 0 { return Err ( () ) }
-            if quote_state > 0 { return Err ( () ) }
+            if quote_state > 0 {
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'"') if quote_state == 2 => { ptr += 1; }
+                    Some (b'\'') if quote_state == 1 => { ptr += 1; }
+                    _ => return Err ( () )
+                };
+            }
 
             loop {
                 match value.get (ptr).map (|b| *b) {

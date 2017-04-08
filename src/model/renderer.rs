@@ -154,7 +154,7 @@ impl Node {
 
 
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Renderer; /* {
     newline: Result<Char, DoubleChar>,
 

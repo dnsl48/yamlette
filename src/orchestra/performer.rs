@@ -1,6 +1,6 @@
-extern crate skimmer;
+// extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
+// use self::skimmer::symbol::{ Combo, CopySymbol };
 
 
 use model::{ Rope, Tagged, TaggedValue, Schema };
@@ -9,6 +9,7 @@ use model::renderer::{ EncodedString, Renderer, Node };
 use orchestra::conductor::{ Coord, Gesture, NodeList, Signal, StringPointer, VolumeStyle };
 
 use txt::{ Twine, Unicode };
+use txt::encoding::UTF8;
 
 use std::io;
 use std::sync::Arc;
@@ -78,32 +79,27 @@ impl Play {
 
 
 
-pub struct Performer<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub struct Performer<S> {
     id: PerformerId,
     signals_in: Receiver<Signal>,
     cin: Receiver<Gesture>,
     out: SyncSender<(PerformerId, Play)>,
 
-    renderer: Arc<Renderer<Char, DoubleChar>>,
-    schema: Arc<Box<Schema<Char, DoubleChar>>>
+    renderer: Renderer,
+    schema: S
 }
 
 
 
-impl<Char, DoubleChar> Performer<Char, DoubleChar>
+impl<S> Performer<S>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
+    S: Schema + Clone + 'static
 {
     pub fn run (
         id: PerformerId,
         out: SyncSender<(PerformerId, Play)>,
-        renderer: Arc<Renderer<Char, DoubleChar>>,
-        schema: Arc<Box<Schema<Char, DoubleChar>>>
+        renderer: Renderer,
+        schema: S
     )
         -> io::Result<(SyncSender<Gesture>, SyncSender<Signal>, JoinHandle<()>)>
     {
@@ -126,8 +122,8 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
     }
 
     pub fn execute (self) {
-        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
-        let renderer: &Renderer<Char, DoubleChar> = self.renderer.as_ref ();
+        // let schema: &Schema = &self.schema;
+        // let renderer: Renderer = self.renderer;
 
         let mut volume_tags: Vec<Option<Arc<Vec<(Twine, Twine)>>>> = Vec::new ();
 
@@ -143,10 +139,10 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
             if let Ok (gesture) = self.cin.recv () {
                 match gesture {
                     Gesture::LookForSignal => (),
-                    Gesture::Render (node_list, string_pointer) => self.render (renderer, node_list, string_pointer),
-                    Gesture::Value (coord, value) => self.play_note (schema, renderer, coord, value, &volume_tags),
-                    Gesture::Chord (coord, value, children) => self.play_chord (schema, renderer, coord, value, &volume_tags, children),
-                    Gesture::Style (coord, style) => self.play_style (schema, renderer, coord, style, &volume_tags)
+                    Gesture::Render (node_list, string_pointer) => self.render (node_list, string_pointer),
+                    Gesture::Value (coord, value) => self.play_note (coord, value, &volume_tags),
+                    Gesture::Chord (coord, value, children) => self.play_chord (coord, value, &volume_tags, children),
+                    Gesture::Style (coord, style) => self.play_style (coord, style, &volume_tags)
                 };
             } else { break 'main_loop }
         };
@@ -155,13 +151,11 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
 
     fn play_note (
         &self,
-        schema: &Schema<Char, DoubleChar>,
-        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         value: TaggedValue,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
     ) {
-        if let Some (model) = schema.look_up_model (value.get_tag ().as_ref ()) {
+        if let Some (model) = self.schema.look_up_model (value.get_tag ().as_ref ()) {
             if model.is_collection () {
                 let res = self.out.send ((self.id, Play::Legato (coord, value)));
                 if res.is_err () { unimplemented! () };
@@ -170,12 +164,12 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
                 if !model.is_encodable () { unimplemented! () }
 
                 let encoded = match *unsafe { tags.get_unchecked (coord.vol) } {
-                    Some ( ref arc ) => model.encode (renderer, value, &mut arc.as_ref ().iter ().chain (schema.get_tag_handles ().iter ())),
-                    None => model.encode (renderer, value, &mut schema.get_tag_handles ().iter ())
+                    Some ( ref arc ) => model.encode (&self.renderer, value, &mut arc.as_ref ().iter ().chain (self.schema.get_tag_handles ().iter ())),
+                    None => model.encode (&self.renderer, value, &mut self.schema.get_tag_handles ().iter ())
                 };
 
                 if let Ok (rope) = encoded {
-                    let len = if coord.lvl == 0 { rope.bytes_len (renderer) } else { 0 };
+                    let len = if coord.lvl == 0 { rope.bytes_len (&self.renderer) } else { 0 };
                     let res = self.out.send ((self.id, Play::Note (coord, rope, len)));
                     if res.is_err () { unimplemented! () };
                 } else { unimplemented! () }
@@ -186,22 +180,20 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
 
     fn play_chord (
         &self,
-        schema: &Schema<Char, DoubleChar>,
-        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         value: TaggedValue,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>,
         mut children: Vec<Rope>
     ) {
-        if let Some (model) = schema.look_up_model (value.get_tag ().as_ref ()) {
+        if let Some (model) = self.schema.look_up_model (value.get_tag ().as_ref ()) {
             if !model.is_collection () { unimplemented! (); }
 
             let rope = match *unsafe { tags.get_unchecked (coord.vol) } {
-                Some ( ref arc ) => model.compose (renderer, value, &mut arc.as_ref ().iter ().chain (schema.get_tag_handles ().iter ()), children.as_mut_slice ()),
-                None => model.compose (renderer, value, &mut schema.get_tag_handles ().iter (), children.as_mut_slice ()),
+                Some ( ref arc ) => model.compose (&self.renderer, value, &mut arc.as_ref ().iter ().chain (self.schema.get_tag_handles ().iter ()), children.as_mut_slice ()),
+                None => model.compose (&self.renderer, value, &mut self.schema.get_tag_handles ().iter (), children.as_mut_slice ()),
             };
 
-            let len = if coord.lvl == 0 { rope.bytes_len (renderer) } else { 0 };
+            let len = if coord.lvl == 0 { rope.bytes_len (&self.renderer) } else { 0 };
             let res = self.out.send ((self.id, Play::Chord (coord, rope, len)));
 
             if res.is_err () { unimplemented! () }
@@ -211,17 +203,15 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
 
     fn play_style (
         &self,
-        schema: &Schema<Char, DoubleChar>,
-        renderer: &Renderer<Char, DoubleChar>,
         coord: Coord,
         style: VolumeStyle,
         tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
     ) {
         let rope = match style {
             VolumeStyle::Yaml => {
-                let (maj, min) = schema.get_yaml_version ();
+                let (maj, min) = self.schema.get_yaml_version ();
 
-                let encoding = schema.get_encoding ();
+                let encoding = UTF8; // schema.get_encoding ();
 
                 let node = if maj == 1 && min == 2 {
                     match encoding.str_to_bytes ("%YAML 1.2") {
@@ -241,7 +231,7 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
             }
 
             VolumeStyle::Tags => {
-                let encoding = schema.get_encoding ();
+                let encoding = UTF8; // schema.get_encoding ();
 
                 match *unsafe { tags.get_unchecked (coord.vol) } {
                     Some ( ref arc ) => {
@@ -262,7 +252,7 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
             VolumeStyle::BotBorder => Rope::from (Node::TripleDotNewline)
         };
 
-        let len = rope.bytes_len (renderer);
+        let len = rope.bytes_len (&self.renderer);
         let res = self.out.send ((self.id, Play::Note (coord, rope, len)));
         if res.is_err () { unimplemented! () };
     }
@@ -270,7 +260,6 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
 
     fn render (
         &self,
-        renderer: &Renderer<Char, DoubleChar>,
         node_list: NodeList,
         string_pointer: StringPointer
     ) {
@@ -279,7 +268,7 @@ impl<Char, DoubleChar> Performer<Char, DoubleChar>
             let mut ptr = string_pointer.as_ptr ();
 
             for node in nodes {
-                ptr = renderer.render_onto_ptr (ptr, node);
+                ptr = self.renderer.render_onto_ptr (ptr, node);
             }
         }
 

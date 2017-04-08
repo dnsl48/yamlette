@@ -1,43 +1,30 @@
 pub extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
-
-use txt::CharSet;
 use model::schema::Schema;
 
 
-pub struct Options<Char, DoubleChar, S>
+pub struct Options<S>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static,
-    S: Schema<Char, DoubleChar> + 'static
+    S: Schema + 'static
 {
-    pub cset: Option<CharSet<Char, DoubleChar>>,
     pub schema: Option<S>
 }
 
 
-impl<Char, DoubleChar, S> Options<Char, DoubleChar, S>
+impl<S> Options<S>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static,
-    S: Schema<Char, DoubleChar> + 'static
+    S: Schema + Clone + 'static
 {
-    pub fn new () -> Options<Char, DoubleChar, S> { Options { cset: None, schema: None } }
-
-    pub fn set_charset (&mut self, cset: CharSet<Char, DoubleChar>) { self.cset = Some (cset); }
+    pub fn new () -> Options<S> { Options { schema: None } }
 }
 
 
-impl<Char, DoubleChar, S, O> From<(S, Options<Char, DoubleChar, O>)> for Options<Char, DoubleChar, S>
+impl<S, O> From<(S, Options<O>)> for Options<S>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static,
-    S: Schema<Char, DoubleChar> + 'static,
-    O: Schema<Char, DoubleChar> + 'static
+    S: Schema + Clone + 'static,
+    O: Schema + Clone + 'static
 {
-    fn from (mut val: (S, Options<Char, DoubleChar, O>)) -> Options<Char, DoubleChar, S> { Options {
-        cset: val.1.cset.take (),
+    fn from (val: (S, Options<O>)) -> Options<S> { Options {
         schema: Some (val.0)
     }}
 }
@@ -134,10 +121,9 @@ macro_rules! yamlette {
     ( init ; reader ; $options:tt ) => {{
         yamlette! ( options ; $options ; options );
 
-        let cset = options.cset.take ().unwrap ();
         let schema = options.schema.take ().unwrap ();
 
-        let reader = $crate::reader::Reader::new ($crate::tokenizer::Tokenizer::new (cset));
+        let reader = $crate::reader::Reader::new ();
         let savant = $crate::savant::Savant::new (schema);
 
         Ok ( (reader, savant) )
@@ -149,14 +135,13 @@ macro_rules! yamlette {
     ( init ; sage ; $options:tt ) => {{
         yamlette! ( options ; $options ; options );
 
-        let cset = options.cset.take ().unwrap ();
         let schema = options.schema.take ().unwrap ();
 
         let (sender, receiver) = ::std::sync::mpsc::channel ();
 
-        let reader = $crate::reader::Reader::new ($crate::tokenizer::Tokenizer::new (cset.clone ()));
+        let reader = $crate::reader::Reader::new ();
 
-        match $crate::sage::Sage::new (cset, receiver, schema) {
+        match $crate::sage::Sage::new (receiver, schema) {
             Ok (sage) => Ok ( (reader, sender, sage) ),
             Err ( err ) => Err ( $crate::sage::SageError::IoError (err) )
         }
@@ -167,23 +152,21 @@ macro_rules! yamlette {
     ( init ; writer ; $options:tt ) => {{
         yamlette! ( options ; $options ; options );
 
-        match $crate::orchestra::Orchestra::new (options.cset.take ().unwrap (), options.schema.take ().unwrap ()) {
+        match $crate::orchestra::Orchestra::new (options.schema.take ().unwrap ()) {
             Ok ( orch ) => Ok ( orch ),
             Err ( err ) => Err ( $crate::orchestra::OrchError::IoError ( err ) )
         }
     }};
 
     ( options ; { $( $key:ident : $val:expr ),* } ; $var:ident ) => {
-        let mut $var: $crate::face::Options<$crate::txt::charset::utf8::Char1, $crate::txt::charset::utf8::Char2, $crate::model::schema::core::Core<$crate::txt::charset::utf8::Char1, $crate::txt::charset::utf8::Char2>> = $crate::face::Options::new ();
+        let mut $var: $crate::face::Options<$crate::model::schema::core::Core> = $crate::face::Options::new ();
 
         $(
             $var = yamlette! ( option ; $var ; $key ; $val );
         )*
 
-        if $var.cset.is_none () { $var.set_charset ($crate::txt::get_charset_utf8 ()); }
-
         $var = if $var.schema.is_none () {
-            let schema = $crate::model::schema::core::Core::new ($var.cset.as_ref ().unwrap ());
+            let schema = $crate::model::schema::core::Core::new ();
             $crate::face::Options::from ((schema, $var))
         } else {
             $var
@@ -191,20 +174,6 @@ macro_rules! yamlette {
     };
 
     ( option ; $options:expr ; schema ; $schema:expr ) => {{ $crate::face::Options::from (($schema, $options)) }};
-
-    ( option ; $options:expr ; encoding ; $encoding:tt ) => {{
-        let cset = match stringify! ($encoding) {
-            "UTF8" |
-            "utf8" |
-            "UTF-8" |
-            "utf-8" => $crate::txt::get_charset_utf8 (),
-            enc @ _ => panic! ("unknown encoding: {}", enc)
-        };
-
-        $options.set_charset (cset); $options
-    }};
-
-    ( option ; $options:expr ; charset ; $cset:expr ) => {{ $options.set_charset ($cset); $options }};
 
     ( option ; $options:expr ; $unu:tt ; $dua:tt ) => {{ $options }};
 

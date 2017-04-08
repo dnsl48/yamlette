@@ -73,8 +73,8 @@ impl Null {
     fn read_null (&self, value: &[u8], ptr: usize) -> usize {
         match value.get (ptr).map (|b| *b) {
             Some (b'~') => 1,
-            Some (b'n') => if value.starts_with ("null".as_bytes ()) { 4 } else { 0 },
-            Some (b'N') => if value.starts_with ("Null".as_bytes ()) || value.starts_with ("NULL".as_bytes ()) { 4 } else { 0 },
+            Some (b'n') => if value[ptr .. ].starts_with ("null".as_bytes ()) { 4 } else { 0 },
+            Some (b'N') => if value[ptr .. ].starts_with ("Null".as_bytes ()) || value[ptr .. ].starts_with ("NULL".as_bytes ()) { 4 } else { 0 },
             _ => 0
         }
 
@@ -163,6 +163,7 @@ impl Model for Null {
         }
 
         let maybe_null = self.read_null (value, ptr);
+
         if maybe_null > 0 {
             ptr += maybe_null;
 

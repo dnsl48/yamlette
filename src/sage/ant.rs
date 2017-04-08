@@ -1,7 +1,7 @@
 extern crate skimmer;
 
-use self::skimmer::{ Chunk, Data, Datum, Marker, Rune };
-use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
+use self::skimmer::{ Chunk, Data, Datum, Marker };
+// use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
 
 
 use model::{ Model, TaggedValue, Schema };
@@ -45,26 +45,26 @@ pub enum Node {
 
 
 #[derive (Debug)]
-pub enum Message {
-    Request (Request),
-    Signal (Signal)
+pub enum Message<D> {
+    Request (Request<D>),
+    Signal (Signal<D>)
 }
 
 
 
 #[derive (Debug)]
-pub enum Request {
-    ReadBlock (Block),
+pub enum Request<D> {
+    ReadBlock (Block<D>),
     ReadDirectiveTag ( Id, Marker, Marker ),
-    ReadLiteralBlock ( Id, Option<Marker>, Option<Marker>, Vec<Result<Marker, (Rune, usize)>> )
+    ReadLiteralBlock ( Id, Option<Marker>, Option<Marker>, Vec<Result<Marker, (u8, usize)>> )
 }
 
 
 
 #[derive (Debug)]
-pub enum Signal {
+pub enum Signal<D> {
     Reset,
-    Datum (Arc<Datum>),
+    Datum (D),
     TagHandle (Arc<(Twine, Twine)>),
     Terminate,
     Version (YamlVersion)
@@ -73,17 +73,13 @@ pub enum Signal {
 
 
 
-pub struct Ant<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub struct Ant<S, D> {
     idx: u8,
-    cin: Receiver<Message>,
+    cin: Receiver<Message<D>>,
     out: SyncSender<(u8, Clue)>,
 
-    data: Data,
-    schema: Arc<Box<Schema<Char, DoubleChar>>>,
+    data: Data<D>,
+    schema: Arc<S>,
     tag_handles: Vec<Arc<(Twine, Twine)>>,
 
     yaml_version: YamlVersion
@@ -91,19 +87,19 @@ pub struct Ant<Char, DoubleChar>
 
 
 
-impl<Char, DoubleChar> Ant<Char, DoubleChar>
+impl<S, D> Ant<S, D>
   where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
+    S: Schema + 'static,
+    D: Datum + Sync + Send + 'static
 {
     pub fn run (
         idx: u8,
         out: SyncSender<(u8, Clue)>,
-        schema: Arc<Box<Schema<Char, DoubleChar>>>,
+        schema: Arc<S>,
         yaml_version: YamlVersion,
         tag_handles: Vec<Arc<(Twine, Twine)>>
     )
-        -> io::Result<(SyncSender<Message>, JoinHandle<()>)>
+        -> io::Result<(SyncSender<Message<D>>, JoinHandle<()>)>
     {
         let (to_me, cin) = sync_channel (1);
 
@@ -126,18 +122,18 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
 
 
     pub fn execute (mut self) -> () {
-        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
+        let schema: &S = &self.schema.as_ref ();
 
-        let model_literal_opt: Option<&Model<Char=Char, DoubleChar=DoubleChar>> = schema.look_up_model (literal::TAG);
+        let model_literal_opt: Option<&Model> = schema.look_up_model (literal::TAG);
 
-        let model_literal: &Model<Char=Char, DoubleChar=DoubleChar> = if model_literal_opt.is_some ()
+        let model_literal: &Model = if model_literal_opt.is_some ()
                          && model_literal_opt.as_ref ().unwrap ().is_decodable ()
                          && model_literal_opt.as_ref ().unwrap ().is_encodable ()
             { model_literal_opt.unwrap () }
         else
             { panic! ("Undefined literal model") };
 
-        let model_literal: &Literal<Char, DoubleChar> = if let Some (model) = model_literal.as_any ().downcast_ref::<Literal<Char, DoubleChar>> () {
+        let model_literal: &Literal = if let Some (model) = model_literal.as_any ().downcast_ref::<Literal> () {
             model
         } else { panic! ("Cannot downcast Literal model") };
 
@@ -164,20 +160,18 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
 
     fn handle (
         &self,
-        request: Request,
-        model_literal: &Literal<Char, DoubleChar>
+        request: Request<D>,
+        model_literal: &Literal
     ) -> Result<(), ()> {
         match request {
-            Request::ReadDirectiveTag ( id, shorthand, prefix ) => self.read_directive_tag (id, shorthand, prefix, model_literal),
-
             Request::ReadBlock ( block ) => self.read_block ( block, model_literal ),
-
+            Request::ReadDirectiveTag ( id, shorthand, prefix ) => self.read_directive_tag (id, shorthand, prefix, model_literal),
             Request::ReadLiteralBlock ( id, anchor, tag, vec ) => self.read_literal_block ( id, anchor, tag, Err (vec), model_literal )
         }
     }
 
 
-    fn decode (&self, model: &Model<Char=Char, DoubleChar=DoubleChar>, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
+    fn decode (&self, model: &Model, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         match self.yaml_version {
             YamlVersion::V1x1 => model.decode11 (explicit, value),
             YamlVersion::V1x2 => model.decode   (explicit, value)
@@ -190,7 +184,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
         id: Id,
         shorthand: Marker,
         prefix: Marker,
-        model_literal: &Literal<Char, DoubleChar>
+        model_literal: &Literal
     ) -> Result<(), ()> {
         let shorthand = self.data.chunk (&shorthand);
         let shorthand: Result<String, ()> = model_literal.bytes_to_string (shorthand.as_slice ());
@@ -215,8 +209,8 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
         id: Id,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        vec: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>,
-        model_literal: &Literal<Char, DoubleChar>
+        vec: Result<Marker, Vec<Result<Marker, (u8, usize)>>>,
+        model_literal: &Literal
     ) -> Result<(), ()> {
         self.read_scalar (id, anchor, tag, model_literal, vec)
     }
@@ -224,8 +218,8 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
 
     fn read_block (
         &self,
-        block: Block,
-        model_literal: &Literal<Char, DoubleChar>
+        block: Block<D>,
+        model_literal: &Literal
     ) -> Result<(), ()> {
         match block.cargo {
             BlockType::Alias ( marker ) => self.read_alias (block.id, marker, model_literal),
@@ -233,7 +227,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
             BlockType::BlockMap ( firstborn_id, anchor, tag ) => self.read_map ( block.id, Some (firstborn_id), anchor, tag, model_literal ),
 
             BlockType::Literal ( marker ) => self.read_literal (block.id, marker, model_literal),
-            BlockType::Rune ( rune, amount ) => self.read_rune (block.id, model_literal, rune, amount),
+            BlockType::Byte ( byte, amount ) => self.read_byte (block.id, model_literal, byte, amount),
 
             BlockType::Node ( node ) => match node.content {
                 NodeKind::LiteralBlockOpen |
@@ -259,7 +253,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_alias (&self, id: Id, marker: Marker, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
+    fn read_alias (&self, id: Id, marker: Marker, model_literal: &Literal) -> Result<(), ()> {
         let chunk = self.data.chunk (&marker);
         let alias = model_literal.bytes_to_string (chunk.as_slice ());
 
@@ -272,7 +266,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_literal (&self, id: Id, marker: Marker, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
+    fn read_literal (&self, id: Id, marker: Marker, model_literal: &Literal) -> Result<(), ()> {
         let chunk = self.data.chunk (&marker);
         let literal = model_literal.bytes_to_string (chunk.as_slice ());
 
@@ -285,8 +279,8 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_rune (&self, id: Id, model_literal: &Literal<Char, DoubleChar>, rune: Rune, amount: usize) -> Result<(), ()> {
-        let literal = model_literal.bytes_to_string_times (rune.as_slice (), amount);
+    fn read_byte (&self, id: Id, model_literal: &Literal, byte: u8, amount: usize) -> Result<(), ()> {
+        let literal = model_literal.bytes_to_string_times (&[byte], amount);
 
         match literal {
             Ok (string) => self.out.send ((self.idx, Clue::Response (Response::Node (id, None, Node::Literal (string))))),
@@ -297,7 +291,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_anchor (&self, block_id: Id, model_literal: &Literal<Char, DoubleChar>, anchor: Option<Marker>) -> Result<Option<String>, ()> {
+    fn read_anchor (&self, block_id: &Id, model_literal: &Literal, anchor: Option<Marker>) -> Result<Option<String>, ()> {
         if let Some (anchor) = anchor {
             let chunk = self.data.chunk (&anchor);
             let result = model_literal.bytes_to_string (chunk.as_slice ());
@@ -305,7 +299,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
             match result {
                 Ok (string) => Ok (Some (string)),
                 Err ( () ) => {
-                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id, Twine::from ("Cannot decode anchor"))))).unwrap ();
+                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from ("Cannot decode anchor"))))).unwrap ();
                     return Err ( () );
                 }
             }
@@ -313,14 +307,14 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_tag (&self, block_id: Id, model_literal: &Literal<Char, DoubleChar>, tag: Option<Marker>) -> Result<Option<String>, ()> {
+    fn read_tag (&self, block_id: &Id, model_literal: &Literal, tag: Option<Marker>) -> Result<Option<String>, ()> {
         let tag = if let Some (tag) = tag {
             let chunk = self.data.chunk (&tag);
             let result = model_literal.bytes_to_string (chunk.as_slice ());
 
             match result {
                 Err ( () ) => {
-                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id, Twine::from ("Cannot decode tag"))))).unwrap ();
+                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from ("Cannot decode tag"))))).unwrap ();
                     return Err ( () )
                 }
                 Ok (tag) => Some (tag)
@@ -331,14 +325,14 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_model<F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: Option<String>, block_id: Id, predicate: F) -> Result<&Model<Char=Char, DoubleChar=DoubleChar>, ()> {
+    fn read_model<F: FnMut (&Model, bool) -> bool> (&self, tag: Option<String>, block_id: &Id, predicate: F) -> Result<&Model, ()> {
         let tag = if let Some (tag) = tag { tag } else { String::with_capacity (0) };
 
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = self.lookup_model (&tag, predicate);
+        let model: Option<(&Model, bool)> = self.lookup_model (&tag, predicate);
 
         match model {
             None => {
-                self.out.send ((self.idx, Clue::Response (Response::Error (block_id, Twine::from (format! ("Could not find appropriate model (tag {})", tag)))))).unwrap ();
+                self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from (format! ("Could not find appropriate model (tag {})", tag)))))).unwrap ();
                 Err ( () )
             }
 
@@ -353,27 +347,24 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
         firstborn_id: Option<Id>,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        model_literal: &Literal<Char, DoubleChar>
+        model_literal: &Literal
     ) -> Result<(), ()> {
-        let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
-        let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
+        let anchor: Option<String> = try! (self.read_anchor (&block_id, model_literal, anchor));
+        let tag: Option<String> = try! (self.read_tag (&block_id, model_literal, tag));
 
-
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
+        let model: Option<(&Model, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
             self.lookup_model (&tag, |m, _| { m.is_dictionary () })
         };
 
-
         let node = match model {
             Some ( (model, _) ) => Node::Dictionary (model.get_tag ().clone (), firstborn_id),
             None => Node::MetaMap (tag, firstborn_id)
         };
 
-
-        let response = Response::Node (block_id, anchor, node);
+        let response = Response::Node (block_id.clone (), anchor, node);
 
         self.out.send ((self.idx, Clue::Response (response))).unwrap ();
 
@@ -386,12 +377,12 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
         block_id: Id,
         anchor: Option<Marker>,
         tag: Option<Marker>,
-        model_literal: &Literal<Char, DoubleChar>
+        model_literal: &Literal
     ) -> Result<(), ()> {
-        let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
-        let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
+        let anchor: Option<String> = try! (self.read_anchor (&block_id, model_literal, anchor));
+        let tag: Option<String> = try! (self.read_tag (&block_id, model_literal, tag));
 
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
+        let model: Option<(&Model, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
@@ -413,11 +404,11 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_null (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal<Char, DoubleChar>) -> Result<(), ()> {
-        let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
-        let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
+    fn read_null (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal) -> Result<(), ()> {
+        let anchor: Option<String> = try! (self.read_anchor (&block_id, model_literal, anchor));
+        let tag: Option<String> = try! (self.read_tag (&block_id, model_literal, tag));
 
-        let model = try! (self.read_model (tag, block_id, |m, _| { !m.is_collection () && m.has_default () }));
+        let model = try! (self.read_model (tag, &block_id, |m, _| { !m.is_collection () && m.has_default () }));
 
         let node = Node::Scalar (model.get_default ());
         let response = Response::Node (block_id, anchor, node);
@@ -428,9 +419,9 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn read_scalar (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal<Char, DoubleChar>, marker: Result<Marker, Vec<Result<Marker, (Rune, usize)>>>) -> Result<(), ()> {
-        let anchor: Option<String> = try! (self.read_anchor (block_id, model_literal, anchor));
-        let tag: Option<String> = try! (self.read_tag (block_id, model_literal, tag));
+    fn read_scalar (&self, block_id: Id, anchor: Option<Marker>, tag: Option<Marker>, model_literal: &Literal, marker: Result<Marker, Vec<Result<Marker, (u8, usize)>>>) -> Result<(), ()> {
+        let anchor: Option<String> = try! (self.read_anchor (&block_id, model_literal, anchor));
+        let tag: Option<String> = try! (self.read_tag (&block_id, model_literal, tag));
 
         let mut decoded: Result<TaggedValue, ()> = Err ( () );
 
@@ -441,15 +432,15 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
                 for m in markers {
                     match *m {
                         Ok (ref marker) => { len += self.data.marker_len (marker); }
-                        Err ((ref rune, amount)) => { len += rune.len () * amount; }
+                        Err ((_, amount)) => { len += amount; }
                     }
                 }
                 let mut v: Vec<u8> = Vec::with_capacity (len);
                 for m in markers {
                     match *m {
                         Ok (ref marker) => { v.extend (self.data.chunk (marker).as_slice ()); }
-                        Err ((ref rune, amount)) => {
-                            for _ in 0 .. amount { v.extend (rune.as_slice ()); }
+                        Err ((byte, amount)) => {
+                            for _ in 0 .. amount { v.push (byte); }
                         }
                     }
                 }
@@ -457,7 +448,7 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
             }
         };
 
-        let model: Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> = {
+        let model: Option<(&Model, bool)> = {
             let empty = String::with_capacity (0);
             let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
@@ -521,8 +512,8 @@ impl<Char, DoubleChar> Ant<Char, DoubleChar>
     }
 
 
-    fn lookup_model<T: AsRef<str>, F: FnMut (&Model<Char=Char, DoubleChar=DoubleChar>, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model<Char=Char, DoubleChar=DoubleChar>, bool)> {
-        let schema: &Schema<Char, DoubleChar> = self.schema.as_ref ().as_ref ();
+    fn lookup_model<T: AsRef<str>, F: FnMut (&Model, bool) -> bool> (&self, tag: &T, mut predicate: F) -> Option<(&Model, bool)> {
+        let schema: &Schema = self.schema.as_ref ();
 
         let tag = tag.as_ref ();
         let tag = if tag.len () == 0 { "" } else { tag.as_ref () };

@@ -139,16 +139,16 @@ impl Volume {
         if self.complete { return }
 
         let ix = match idea {
-            Idea::Alias (id, _) => id.index,
-            Idea::Error (id, _) => id.index,
-            Idea::NodeMetaMap (id, _, _, _) => id.index,
-            Idea::NodeMetaSeq (id, _, _) => id.index,
-            Idea::NodeDictionary (id, _, _, _) => id.index,
-            Idea::NodeSequence (id, _, _) => id.index,
-            Idea::NodeScalar (id, _, _) => id.index,
-            Idea::NodeLiteral (id, _, _) => id.index,
-            Idea::ReadError (id, _, _) => id.index,
-            Idea::ReadWarning (id, _, _) => id.index,
+            Idea::Alias (ref id, _) => id.index,
+            Idea::Error (ref id, _) => id.index,
+            Idea::NodeMetaMap (ref id, _, _, _) => id.index,
+            Idea::NodeMetaSeq (ref id, _, _) => id.index,
+            Idea::NodeDictionary (ref id, _, _, _) => id.index,
+            Idea::NodeSequence (ref id, _, _) => id.index,
+            Idea::NodeScalar (ref id, _, _) => id.index,
+            Idea::NodeLiteral (ref id, _, _) => id.index,
+            Idea::ReadError (ref id, _, _) => id.index,
+            Idea::ReadWarning (ref id, _, _) => id.index,
 
             _ => 0
         };

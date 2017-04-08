@@ -6,7 +6,7 @@ macro_rules! data {
 macro_rules! read {
     ($src:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
@@ -21,7 +21,7 @@ macro_rules! read {
 macro_rules! read_with_error {
     ($src:expr, $err_desc:expr, $err_pos:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
 
         reader
             .read (
@@ -43,7 +43,7 @@ macro_rules! read_with_error {
 macro_rules! read_bytes {
     ($src:expr) => {{
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (get_charset_utf8 ()));
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
 
         reader.read (
             SliceReader::new ($src),
@@ -68,9 +68,9 @@ macro_rules! the_end {
 
 macro_rules! assert_id {
     ( $id:expr, $level:expr, $parent:expr, $index:expr ) => {{
-        assert! ($id.level == $level, format! ("Level; actual != expected; {} != {}", $id.level, $level));
-        assert! ($id.parent == $parent, format! ("Parent; actual != expected; {} != {}", $id.parent, $parent));
-        assert! ($id.index == $index, format! ("Index; actual != expected; {} != {}", $id.index, $index));
+        assert! ($id.level == $level, format! ("Level; actual != expected; {} != {}; ID: {:?}", $id.level, $level, $id));
+        assert! ($id.parent == $parent, format! ("Parent; actual != expected; {} != {}; ID: {:?}", $id.parent, $parent, $id));
+        assert! ($id.index == $index, format! ("Index; actual != expected; {} != {}; ID: {:?}", $id.index, $index, $id));
     }}
 }
 
@@ -239,6 +239,7 @@ macro_rules! expect {
 
     ( $receiver:expr, ( $level:expr, $parent:expr, $index:expr ), node, null ) => {{
         if let Ok (block) = $receiver.try_recv () {
+            println! ("yoba: {:?}", block);
             assert_id! (block.id, $level, $parent, $index);
 
             if let BlockType::Node (node) = block.cargo {
@@ -363,9 +364,9 @@ macro_rules! expect {
 
             if let BlockType::Literal (ref marker) = block.cargo {
                 assert_eq! ($data.chunk (marker).as_slice (), $val.as_bytes ());
-            } else if let BlockType::Rune (ref rune, amount) = block.cargo {
-                let mut vec: Vec<u8> = Vec::with_capacity (rune.len () * amount);
-                for _ in 0 .. amount { vec.extend (rune.as_slice ()); }
+            } else if let BlockType::Byte (byte, amount) = block.cargo {
+                let mut vec: Vec<u8> = Vec::with_capacity (amount);
+                for _ in 0 .. amount { vec.push (byte); }
                 assert_eq! (vec.as_slice (), $val.as_bytes ());
             } else { assert! (false, format! ("Unexpected result: {:?}", block)) }
         } else { assert! (false, "No result") }
@@ -403,7 +404,7 @@ macro_rules! expect {
         if let Ok (block) = $receiver.try_recv () {
             assert_id! (block.id, $level, $parent, $index);
 
-            if let BlockType::BlockMap (id, Some (ref anchor), None) = block.cargo {
+            if let BlockType::BlockMap (ref id, Some (ref anchor), None) = block.cargo {
                 assert_id! (id, $m_level, $m_parent, $m_index);
                 assert_eq! ($data.chunk (anchor).as_slice (), $anchor.as_bytes ());
             } else { assert! (false, "Unexpected result") }
@@ -500,16 +501,14 @@ mod stable {
     extern crate skimmer;
     extern crate yamlette;
 
-    use self::skimmer::{ Data, Symbol };
+    use self::skimmer::Data;
     use self::skimmer::reader::SliceReader;
 
-    use self::yamlette::txt::{ Twine, get_charset_utf8 };
+    use self::yamlette::txt::Twine;
 
-    use self::yamlette::reader::BlockType;
-    use self::yamlette::reader::NodeKind;
-    use self::yamlette::reader::Reader;
-
-    use self::yamlette::tokenizer::Tokenizer;
+    use self::yamlette::reader::reader::BlockType;
+    use self::yamlette::reader::reader::NodeKind;
+    use self::yamlette::reader::reader::Reader;
 
     use std::sync::mpsc::channel;
 

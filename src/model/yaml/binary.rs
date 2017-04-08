@@ -17,6 +17,7 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
+#[derive (Clone, Copy)]
 pub struct Binary; /* {
     // tbl: [Char; 64],
     // pad: Char,
@@ -291,7 +292,7 @@ impl Model for Binary {
                 }
 
                 Some (v @ b'a' ... b'z') |
-                Some (v @ b'A' ... b'z') |
+                Some (v @ b'A' ... b'Z') |
                 Some (v @ b'0' ... b'9') |
                 Some (v @ b'+') |
                 Some (v @ b'/') => {
@@ -344,6 +345,11 @@ impl Model for Binary {
 
                     production.push (idx);
                 }
+
+                Some (b' ') |
+                Some (b'\t') |
+                Some (b'\n') |
+                Some (b'\r') => { ptr += 1; }
 
                 _ => return Err ( () )
             }

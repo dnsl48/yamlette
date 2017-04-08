@@ -1,6 +1,6 @@
-extern crate skimmer;
+// extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
+// use self::skimmer::symbol::{ Combo, CopySymbol };
 
 
 mod composer;
@@ -13,7 +13,7 @@ pub mod chord;
 use self::conductor::{ Conductor, Hint, Message };
 
 use model::{ Renderer, CommonStyles, TaggedValue, Schema };
-use txt::{ CharSet, Twine };
+use txt::Twine;
 
 use std::io;
 use std::sync::mpsc::{ sync_channel, Receiver, SyncSender };
@@ -34,20 +34,18 @@ pub struct Orchestra {
 
 
 impl Orchestra {
-    pub fn new<Char, DoubleChar, S> (cset: CharSet<Char, DoubleChar>, schema: S) -> io::Result<Orchestra>
+    pub fn new<S> (schema: S) -> io::Result<Orchestra>
       where
-        Char: CopySymbol + 'static,
-        DoubleChar: CopySymbol + Combo + 'static,
-        S: Schema<Char, DoubleChar> + 'static
+        S: Schema + Clone + 'static
     {
         let (sender, receiver) = sync_channel (32);
 
         let styles = schema.get_common_styles ();
 
-        let renderer = Renderer::new (&cset);
-        let schema = Box::new (schema);
+        let renderer = Renderer; // ::new (&cset);
+        let schema = schema;
 
-        let cond = try! (Conductor::run (cset, receiver, renderer, schema));
+        let cond = try! (Conductor::run (receiver, renderer, schema));
 
         Ok (Orchestra {
             styles: styles,
@@ -137,7 +135,6 @@ impl Orchestra {
         }
     }
 }
-
 
 
 

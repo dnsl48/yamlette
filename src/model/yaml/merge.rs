@@ -16,6 +16,7 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
+#[derive (Clone, Copy)]
 pub struct Merge; /* <Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
@@ -106,7 +107,7 @@ impl Model for Merge {
             */
         }
 
-        if value.starts_with ("<<".as_bytes ()) {
+        if value[ptr .. ].starts_with ("<<".as_bytes ()) {
             ptr += 2;
 
             if quote_state > 0 {

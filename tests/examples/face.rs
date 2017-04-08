@@ -9,7 +9,7 @@ mod stable {
     - list2
 bar:
     - 1
-    - 2.0"#.to_string ());
+    - 2.0"#);
 
         yamlette! ( read ; should_be.as_ref ().unwrap ().clone () ; [[ {
                 "foo" => [ (list1:&str), (list2:&str) ],
@@ -64,7 +64,7 @@ bar:
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
-"#.to_string ());
+"#);
 
         yamlette! ( read ; should_be.as_ref ().unwrap ().clone () ; [[ [ (mark:&str), (sammy:&str), (ken:&str) ] ]] ; { book: book, result: result } );
 
@@ -77,7 +77,7 @@ bar:
 
         let result = yamlette! ( write ; [[ [ (mark.unwrap ().to_string ()), (sammy.unwrap ().to_string ()), (ken.unwrap ().to_string ()) ] ]] ).ok ();
 
-        assert_eq! (should_be, result);
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 
 
@@ -87,7 +87,7 @@ bar:
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
-"#.to_string ());
+"#);
 
         yamlette! ( sage ; should_be.as_ref ().unwrap ().clone () ; [[ [ (mark:&str), (sammy:&str), (ken:&str) ] ]] ; { book: book, result: result } );
 
@@ -100,7 +100,7 @@ bar:
 
         let result = yamlette! ( write ; [[ [ (mark.unwrap ().to_string ()), (sammy.unwrap ().to_string ()), (ken.unwrap ().to_string ()) ] ]] ).ok ();
 
-        assert_eq! (should_be, result);
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 
 
@@ -110,7 +110,7 @@ bar:
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
-"#.to_string ());
+"#);
 
         yamlette! ( read ; should_be.as_ref ().unwrap ().clone () ; [[ [ (mark:&str), (sammy:&str), (ken:&str) ] ]] );
 
@@ -120,7 +120,7 @@ bar:
 
         let result = yamlette! ( write ; [[ [ (mark.unwrap ().to_string ()), (sammy.unwrap ().to_string ()), (ken.unwrap ().to_string ()) ] ]] ).ok ();
 
-        assert_eq! (should_be, result);
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 
 
@@ -130,7 +130,7 @@ bar:
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
-"#.to_string ());
+"#);
 
         yamlette! ( sage ; should_be.as_ref ().unwrap ().clone () ; [[ [ (mark:&str), (sammy:&str), (ken:&str) ] ]] );
 
@@ -140,10 +140,11 @@ bar:
 
         let result = yamlette! ( write ; [[ [ (mark.unwrap ().to_string ()), (sammy.unwrap ().to_string ()), (ken.unwrap ().to_string ()) ] ]] ).ok ();
 
-        assert_eq! (should_be, result);
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 
 
+/*
     #[test]
     fn example_02_01_block_custom_charset () {
         let should_be = 
@@ -156,9 +157,10 @@ bar:
 
         assert_eq! (should_be, result);
     }
+*/
 
 
-
+/*
     #[test]
     fn example_02_01_block_custom_encoding () {
         let should_be = 
@@ -171,6 +173,7 @@ bar:
 
         assert_eq! (should_be, result);
     }
+*/
 
 
     #[test]
@@ -179,12 +182,12 @@ bar:
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
-"#.to_string ());
+"#);
 
-        let cset = yamlette::txt::charset::get_charset_utf8 ();
-        let schema = yamlette::model::schema::core::Core::new (&cset);
-        let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ; { schema: schema, cset: cset } ).ok ();
+        // let cset = yamlette::txt::charset::get_charset_utf8 ();
+        let schema = yamlette::model::schema::core::Core::new ();
+        let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ; { schema: schema } ).ok ();
 
-        assert_eq! (should_be, result);
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 }

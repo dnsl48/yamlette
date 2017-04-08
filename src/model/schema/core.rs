@@ -27,10 +27,11 @@ use model::yamlette::incognitum::Incognitum;
 
 use txt::Twine;
 
+use std::clone::Clone;
 use std::default::Default;
 
 
-
+// #[derive (Clone)]
 pub struct Core {
     styles: CommonStyles,
     tag_handles: [(Twine, Twine); 3],
@@ -180,4 +181,11 @@ impl Core {
         mod_literal: Literal,
         mod_incognitum: Incognitum
     } }
+}
+
+
+
+
+impl Clone for Core {
+    fn clone (&self) -> Core { Core::new () }
 }

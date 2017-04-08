@@ -1,9 +1,9 @@
 macro_rules! savant {
     ($src:expr) => {{
-        let cset = get_charset_utf8 ();
+        // let cset = get_charset_utf8 ();
 
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let schema = Core::new (&cset);
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (cset.clone ()));
+        let schema = Core::new (); // ::new (&cset);
         let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
@@ -23,10 +23,10 @@ macro_rules! savant {
 
 macro_rules! savant_with_error {
     ($src:expr, $err_desc:expr, $err_pos:expr) => {{
-        let cset = get_charset_utf8 ();
+        // let cset = get_charset_utf8 ();
 
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let schema = Core::new (&cset);
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (cset.clone ()));
+        let schema = Core::new (); // ::new (&cset);
         let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
@@ -53,10 +53,10 @@ macro_rules! savant_with_error {
 
 macro_rules! savant_bytes {
     ($src:expr) => {{
-        let cset = get_charset_utf8 ();
+        // let cset = get_charset_utf8 ();
 
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let schema = Core::new (&cset);
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (cset.clone ()));
+        let schema = Core::new (); // ::new (&cset);
         let mut savant = Savant::new (schema);
         let mut data: Vec<Idea> = Vec::with_capacity (256);
 
@@ -109,16 +109,16 @@ macro_rules! lookup {
 
         for idea in $vec.iter () {
             let id = match *idea {
-                Idea::Alias ( id, _ ) => id,
-                Idea::Error ( id, _ ) => id,
-                Idea::NodeDictionary ( id, _, _, _ ) => id,
-                Idea::NodeSequence ( id, _, _ ) => id,
-                Idea::NodeScalar ( id, _, _ ) => id,
-                Idea::NodeLiteral ( id, _, _ ) => id,
-                Idea::NodeMetaMap ( id, _, _, _ ) => id,
-                Idea::NodeMetaSeq ( id, _, _ ) => id,
-                Idea::ReadError ( id, _, _ ) => id,
-                Idea::ReadWarning ( id, _, _ ) => id,
+                Idea::Alias ( ref id, _ ) => id,
+                Idea::Error ( ref id, _ ) => id,
+                Idea::NodeDictionary ( ref id, _, _, _ ) => id,
+                Idea::NodeSequence ( ref id, _, _ ) => id,
+                Idea::NodeScalar ( ref id, _, _ ) => id,
+                Idea::NodeLiteral ( ref id, _, _ ) => id,
+                Idea::NodeMetaMap ( ref id, _, _, _ ) => id,
+                Idea::NodeMetaSeq ( ref id, _, _ ) => id,
+                Idea::ReadError ( ref id, _, _ ) => id,
+                Idea::ReadWarning ( ref id, _, _ ) => id,
 
                 Idea::Done |
                 Idea::Dawn |
@@ -212,11 +212,11 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeSequence ( id , ref anchor, ref tag ) if tag == "tag:yaml.org,2002:seq" => {
+                Idea::NodeSequence ( ref id, ref anchor, ref tag ) if tag == "tag:yaml.org,2002:seq" => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                 },
-                Idea::NodeMetaSeq ( id , ref anchor, _ ) => {
+                Idea::NodeMetaSeq ( ref id, ref anchor, _ ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                 },
@@ -232,12 +232,12 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeSequence ( id , ref anchor, ref tag ) => {
+                Idea::NodeSequence ( ref id, ref anchor, ref tag ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! (*tag, $tag);
                 },
-                Idea::NodeMetaSeq ( id , ref anchor, ref tag ) => {
+                Idea::NodeMetaSeq ( ref id, ref anchor, ref tag ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     if tag.is_none () { assert! (false, format! ("Tag is None")) }
@@ -255,11 +255,11 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeSequence ( id , ref anchor, ref _tag ) => {
+                Idea::NodeSequence ( ref id, ref anchor, ref _tag ) => {
                     assert_id! (id, $id);
                     assert_eq! (*anchor, Some(String::from ($anchor)));
                 },
-                Idea::NodeMetaSeq ( id , ref anchor, ref _tag ) => {
+                Idea::NodeMetaSeq ( ref id, ref anchor, ref _tag ) => {
                     assert_id! (id, $id);
                     assert_eq! (*anchor, Some(String::from ($anchor)));
                 },
@@ -275,16 +275,16 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeDictionary ( id, ref anchor, ref tag, firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
+                Idea::NodeDictionary ( ref id, ref anchor, ref tag, ref firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
                     assert_id! (id, $id);
                     if firstborn_option.is_none () { assert! (false, "Lazy map must have a firstborn!") };
-                    assert_id! (firstborn_option.unwrap (), $firstborn);
+                    assert_id! (firstborn_option.as_ref ().unwrap (), $firstborn);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                 },
-                Idea::NodeMetaMap ( id, ref anchor, _, firstborn_option ) => {
+                Idea::NodeMetaMap ( ref id, ref anchor, _, ref firstborn_option ) => {
                     assert_id! (id, $id);
                     if firstborn_option.is_none () { assert! (false, "Lazy map must have a firstborn!") };
-                    assert_id! (firstborn_option.unwrap (), $firstborn);
+                    assert_id! (firstborn_option.as_ref ().unwrap (), $firstborn);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                 },
                 _ => assert! (false, format! ("Not a lazy map {:?}", idea))
@@ -299,17 +299,17 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeDictionary ( id, ref anchor, ref tag, firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
+                Idea::NodeDictionary ( ref id, ref anchor, ref tag, ref firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
                     assert_id! (id, $id);
                     if firstborn_option.is_none () { assert! (false, "Lazy map must have a firstborn!") };
-                    assert_id! (firstborn_option.unwrap (), $firstborn);
+                    assert_id! (firstborn_option.as_ref ().unwrap (), $firstborn);
                     if anchor.is_none () { assert! (false, format! ("Anchor is None, must be {}", $anchor)) };
                     assert_eq! (anchor.as_ref ().unwrap (), $anchor);
                 },
-                Idea::NodeMetaMap ( id, ref anchor, _, firstborn_option ) => {
+                Idea::NodeMetaMap ( ref id, ref anchor, _, ref firstborn_option ) => {
                     assert_id! (id, $id);
                     if firstborn_option.is_none () { assert! (false, "Lazy map must have a firstborn!") };
-                    assert_id! (firstborn_option.unwrap (), $firstborn);
+                    assert_id! (firstborn_option.as_ref ().unwrap (), $firstborn);
                     if anchor.is_none () { assert! (false, format! ("Anchor is None, must be {}", $anchor)) };
                     assert_eq! (anchor.as_ref ().unwrap (), $anchor);
                 },
@@ -325,12 +325,12 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeDictionary ( id, ref anchor, ref tag, firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
+                Idea::NodeDictionary ( ref id, ref anchor, ref tag, ref firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
                     assert_id! (id, $id);
                     if firstborn_option.is_some () { assert! (false, "Non-lazy map cannot have a firstborn!") };
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                 },
-                Idea::NodeMetaMap ( id, ref anchor, _, firstborn_option ) => {
+                Idea::NodeMetaMap ( ref id, ref anchor, _, ref firstborn_option ) => {
                     assert_id! (id, $id);
                     if firstborn_option.is_some () { assert! (false, "Non-lazy map cannot have a firstborn!") };
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
@@ -347,13 +347,13 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeDictionary ( id, ref anchor, ref tag, firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
+                Idea::NodeDictionary ( ref id, ref anchor, ref tag, ref firstborn_option ) if tag == "tag:yaml.org,2002:map" => {
                     assert_id! (id, $id);
                     if firstborn_option.is_some () { assert! (false, "Non-lazy map cannot have a firstborn!") };
                     if anchor.is_none () { assert! (false, format! ("Anchor is None, must be {}", $anchor)) };
                     assert_eq! (anchor.as_ref ().unwrap (), $anchor);
                 },
-                Idea::NodeMetaMap ( id, ref anchor, _, firstborn_option ) => {
+                Idea::NodeMetaMap ( ref id, ref anchor, _, ref firstborn_option ) => {
                     assert_id! (id, $id);
                     if firstborn_option.is_some () { assert! (false, "Non-lazy map cannot have a firstborn!") };
                     if anchor.is_none () { assert! (false, format! ("Anchor is None, must be {}", $anchor)) };
@@ -371,7 +371,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeDictionary ( id, ref anchor, ref tag, firstborn_option ) => {
+                Idea::NodeDictionary ( ref id, ref anchor, ref tag, ref firstborn_option ) => {
                     assert_id! (id, $id);
                     if firstborn_option.is_some () { assert! (false, "Non-lazy map cannot have a firstborn!") };
                     if anchor.is_some () { assert! (false, format! ("Anchor must be None, however it is {:?}", anchor.as_ref ().unwrap ())) };
@@ -389,11 +389,11 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeMetaMap ( id, ref anchor, ref tag_option, firstborn_option ) => {
+                Idea::NodeMetaMap ( ref id, ref anchor, ref tag_option, ref firstborn_option ) => {
                     assert_id! (id, $id);
 
                     if firstborn_option.is_none () { assert! (false, "Lazy map must have a firstborn!") };
-                    assert_id! (firstborn_option.unwrap (), $firstborn);
+                    assert_id! (firstborn_option.as_ref ().unwrap (), $firstborn);
 
                     match $tag {
                         Some (atag) => {
@@ -420,7 +420,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeMetaSeq ( id , ref anchor_option, ref tag_option ) => {
+                Idea::NodeMetaSeq ( ref id , ref anchor_option, ref tag_option ) => {
                     assert_id! (id, $id);
                     if anchor_option.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor_option)) };
 
@@ -447,7 +447,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::Alias ( id, ref value ) => {
+                Idea::Alias ( ref id, ref value ) => {
                     assert_id! (id, $id);
                     assert_eq! ($value, value);
                 },
@@ -463,7 +463,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:str", tagged_value.get_tag ());
@@ -481,7 +481,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
 
                     match *anchor {
@@ -504,7 +504,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! (tagged_value.get_tag (), "tag:yaml.org,2002:int");
@@ -522,7 +522,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:timestamp", tagged_value.get_tag ());
@@ -553,7 +553,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:float", tagged_value.get_tag ());
@@ -571,7 +571,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:float", tagged_value.get_tag ());
@@ -589,7 +589,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:float", tagged_value.get_tag ());
@@ -608,7 +608,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:float", tagged_value.get_tag ());
@@ -627,7 +627,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:null", tagged_value.get_tag ());
@@ -645,7 +645,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:merge", tagged_value.get_tag ());
@@ -663,7 +663,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:value", tagged_value.get_tag ());
@@ -682,7 +682,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:yaml", tagged_value.get_tag ());
@@ -706,7 +706,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:yaml", tagged_value.get_tag ());
@@ -730,7 +730,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:yaml", tagged_value.get_tag ());
@@ -754,7 +754,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:bool", tagged_value.get_tag ());
@@ -772,7 +772,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yaml.org,2002:binary", tagged_value.get_tag ());
@@ -790,7 +790,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_some () { assert! (false, format! ("Anchor is not None: {:?}", anchor)) };
                     assert_eq! ("tag:yamlette.org,1:incognitum", tagged_value.get_tag ());
@@ -810,7 +810,7 @@ macro_rules! expect {
         match element {
             None => assert! (false, format! ("Cannot find element with address {:?}", $id)),
             Some ( idea ) => match *idea {
-                Idea::NodeScalar ( id, ref anchor, ref tagged_value ) => {
+                Idea::NodeScalar ( ref id, ref anchor, ref tagged_value ) => {
                     assert_id! (id, $id);
                     if anchor.is_none () { assert! (false, format! ("Anchor is None")) };
                     assert_eq! ($anchor, anchor.as_ref ().unwrap ());
@@ -845,9 +845,6 @@ mod stable {
     use self::yamlette::savant::Savant;
 
     use self::yamlette::reader::Reader;
-
-    use self::yamlette::tokenizer::Tokenizer;
-    use self::yamlette::txt::{ get_charset_utf8 };
 
     use self::yamlette::model::Tagged;
 

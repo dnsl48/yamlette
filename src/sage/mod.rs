@@ -1,41 +1,46 @@
 extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
-
-
 mod ant;
 pub mod conveyor;
 
 
 use self::conveyor::{ Conveyor, Clue };
 
+use self::skimmer::data::Datum;
+
 use model::TaggedValue;
 use model::schema::Schema;
 use reader::{ Block, Id };
-use txt::{ CharSet, Twine };
+use txt::Twine;
 
 use std::io;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::mpsc::{ Receiver, SyncSender };
 use std::thread::{ self, JoinHandle };
 
 
 
-pub struct Sage {
-    conv: (JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>)
+pub struct Sage<S, D> {
+    conv: (JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>),
+    _sage: PhantomData<S>,
+    _datum: PhantomData<D>
 }
 
 
 
-impl Sage {
-    pub fn new<Char, DoubleChar, S> (cset: CharSet<Char, DoubleChar>, pipe: Receiver<Block>, schema: S) -> io::Result<Sage>
-      where
-        Char: CopySymbol + 'static,
-        DoubleChar: CopySymbol + Combo + 'static,
-        S: Schema<Char, DoubleChar> + 'static
-    {
-        let conv = try! (Conveyor::run (cset, pipe, Box::new (schema)));
-        Ok (Sage { conv: conv })
+impl<S, D> Sage<S, D>
+  where
+    S: Schema + 'static,
+    D: Datum + Sync + Send + 'static
+{
+    pub fn new (pipe: Receiver<Block<D>>, schema: S) -> io::Result<Sage<S, D>> {
+        let conv = try! (Conveyor::run (pipe, schema));
+        Ok (Sage {
+            conv: conv,
+            _sage: PhantomData,
+            _datum: PhantomData
+        })
     }
 
 
@@ -60,7 +65,11 @@ impl Sage {
 
 
 
-impl Deref for Sage {
+impl<S, D> Deref for Sage<S, D>
+  where
+    S: Schema + 'static,
+    D: Datum + Sync + Send + 'static
+{
     type Target = Receiver<Idea>;
 
     fn deref (&self) -> &Receiver<Idea> { &self.conv.2 }

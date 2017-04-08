@@ -22,8 +22,8 @@ pub enum Token {
     BOM32LE,
     BOM16BE,
     BOM16LE,
-    BOM8,
     */
+    BOM8,
 
     DirectiveTag,  // %TAG
     DirectiveYaml, // %YAML
@@ -726,7 +726,7 @@ pub fn scan_while_spaces_and_line_breakers<Reader: Read> (reader: &mut Reader, a
     let mut scanned = at;
 
     loop {
-        match reader.get_byte_at (at) {
+        match reader.get_byte_at (scanned) {
             Some (b' ') => scanned += 1,
             Some (b'\n') => scanned += 1,
             Some (b'\t') => scanned += 1,
@@ -901,6 +901,7 @@ pub fn line_at<Reader: Read> (reader: &mut Reader, at: usize) -> usize {
 
 pub fn get_token<Reader: Read> (reader: &mut Reader) -> Option<(Token, usize, usize)> {
     match reader.get_byte_at_start () {
+        None => return None,
         Some (b',') => return Some ((Token::Comma, 1, 1)),
         Some (b':') => return Some ((Token::Colon, 1, 1)),
         Some (b'{') => return Some ((Token::DictionaryStart, 1, 1)),
@@ -964,11 +965,13 @@ pub fn get_token<Reader: Read> (reader: &mut Reader) -> Option<(Token, usize, us
         Some (b'%') => match reader.get_bytes_4_at (1) {
             None => match reader.get_bytes_3_at (1) {
                 Some ((b'T', b'A', b'G')) => return Some ((Token::DirectiveTag, 4, 0)),
-                _ => return Some ((Token::DirectiveYaml, line_at (reader, 1) + 1, 0))
+                // _ => return Some ((Token::DirectiveYaml, line_at (reader, 1) + 1, 0))
+                _ => return Some ((Token::Directive, line_at (reader, 1) + 1, 0))
             },
             Some ((b'Y', b'A', b'M', b'L')) => return Some ((Token::DirectiveYaml, 5, 0)),
             Some ((b'T', b'A', b'G', _)) => return Some ((Token::DirectiveTag, 4, 0)),
-            _ => return Some ((Token::DirectiveYaml, line_at (reader, 1) + 1, 0))
+            // _ => return Some ((Token::DirectiveYaml, line_at (reader, 1) + 1, 0))
+            _ => return Some ((Token::Directive, line_at (reader, 1) + 1, 0))
         },
 
         Some (b'-') => match reader.get_byte_at (1) {
@@ -995,6 +998,11 @@ pub fn get_token<Reader: Read> (reader: &mut Reader) -> Option<(Token, usize, us
             }
             return Some ((Token::Tab, scanned, scanned))
         }
+
+        Some (0xEF) => match reader.get_bytes_2_at (1) {
+            Some ((0xBB, 0xBF)) => return Some ((Token::BOM8, 3, 1)),
+            _ => ()
+        },
 
         _ => ()
     };

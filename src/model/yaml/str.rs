@@ -23,21 +23,26 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 // TODO: do warnings for incorrect escapes on decode (and encode)
 
 
+
+#[derive (Clone, Copy)]
 pub struct Str;
 
 
 impl Str {
     pub fn get_tag () -> &'static Twine { &TWINE_TAG }
 
-    fn extract_hex_at (&self, src: &[u8], mut at: usize) -> Option<(u32, usize)> {
+    fn extract_hex_at (&self, src: &[u8], mut at: usize, mut len_limit: u8) -> Option<u32> {
         let mut result: u32 = 0;
 
         loop {
+            if len_limit == 0 { break; }
+            len_limit -= 1;
+
             let val = match src.get (at).map (|b| *b) {
                 Some (val @ b'0' ... b'9') => { val - b'0' }
                 Some (val @ b'a' ... b'f') => { 10 + (val - b'a') }
                 Some (val @ b'A' ... b'F') => { 10 + (val - b'A') }
-                _ => break
+                _ => return None
             };
 
             at += 1;
@@ -49,7 +54,7 @@ impl Str {
             } else { return None }
         }
 
-        return Some ((result, at))
+        return Some (result)
     }
 
 
@@ -475,6 +480,248 @@ impl Model for Str {
     }
 
 
+    // TODO: check if value.get_unchecked goes faster
+    fn decode (&self, _explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
+        let mut ptr: usize = 0;
+        let mut state: u8 = 0;
+
+        const STATE_SPACE: u8 = 1;
+        const STATE_BREAK: u8 = 2;
+
+        match value.get (ptr).map (|b| *b) {
+            Some (b'"') => {
+                let mut result: Vec<u8> = Vec::with_capacity (value.len ());
+                let mut spaces: usize = 0;
+
+                ptr += 1;
+
+                loop {
+                    match value.get (ptr).map (|b| *b) {
+                        None => break,
+
+                        Some (b @ b' ') |
+                        Some (b @ b'\t') => {
+                            ptr += 1;
+
+                            if state & STATE_BREAK > 0 { continue }
+
+                            spaces += 1;
+
+                            state = state | STATE_SPACE;
+                            result.push (b);
+                        }
+
+                        Some (b @ b'\n') |
+                        Some (b @ b'\r') => {
+                            ptr += if b == b'\r' && value.get (ptr + 1).map (|b| *b) == Some (b'\n') { 2 } else { 1 };
+
+                            if spaces > 1 {
+                                let len = result.len () - spaces + 1;
+                                result.truncate (len);
+                            } else if spaces == 0 {
+                                spaces = 1;
+                                result.push (b' ');
+                            }
+
+                            if state & STATE_BREAK > 0 {
+                                if spaces > 0 {
+                                    let len = result.len () - spaces;
+                                    result.truncate (len);
+                                    spaces = 0;
+                                }
+
+                                result.push (b'\n');
+                            }
+
+                            state = state | STATE_BREAK;
+                            state = state & !STATE_SPACE;
+                        }
+
+                        Some (b'"') => {
+                            ptr += 1;
+
+                            if ptr == value.len () {
+                                break
+                            } else {
+                                return Err ( () )
+                            }
+                        }
+
+                        Some (b'\\') => {
+                            ptr += 1;
+
+                            if state & STATE_BREAK > 0 { state = state & !STATE_BREAK; spaces = 0; }
+                            if state & STATE_SPACE > 0 { state = state & !STATE_SPACE; spaces = 0; }
+
+                            match value.get (ptr).map (|b| *b) {
+                                Some (b @ b'\n') |
+                                Some (b @ b'\r') => {
+                                    ptr += if b == b'\r' && value.get (ptr + 1).map (|b| *b) == Some (b'\n') { 2 } else { 1 };
+
+                                    spaces = 0;
+
+                                    state = state | STATE_BREAK;
+                                    state = state & !STATE_SPACE;
+                                }
+
+                                Some (b @ b'\t') |
+                                Some (b @ b' ') => {
+                                    ptr += 1;
+
+                                    spaces = 0;
+
+                                    state = state & !STATE_BREAK;
+                                    state = state & !STATE_SPACE;
+
+                                    result.push (b);
+                                }
+
+                                Some (b'0') => { ptr += 1; result.push (0); }
+                                Some (b'a') => { ptr += 1; result.push (7); }
+                                Some (b'b') => { ptr += 1; result.push (8); }
+                                Some (b't') => { ptr += 1; result.push (9); }
+                                Some (b'n') => { ptr += 1; result.push (10); }
+                                Some (b'v') => { ptr += 1; result.push (11); }
+                                Some (b'f') => { ptr += 1; result.push (12); }
+                                Some (b'r') => { ptr += 1; result.push (13); }
+                                Some (b'e') => { ptr += 1; result.push (27); }
+                                Some (b'"') => { ptr += 1; result.push (34); }
+                                Some (b'/') => { ptr += 1; result.push (47); }
+                                Some (b'\\') => { ptr += 1; result.push (92); }
+                                Some (b'N') => { ptr += 1; result.push (0xC2); result.push (0x85); }
+                                Some (b'_') => { ptr += 1; result.push (0xC2); result.push (0xA0); }
+                                Some (b'L') => { ptr += 1; result.push (0xE2); result.push (0x80); result.push (0xA8); }
+                                Some (b'P') => { ptr += 1; result.push (0xE2); result.push (0x80); result.push (0xA9); }
+
+                                Some (b'x') => {
+                                    // ptr += 1;
+
+                                    if let Some (code) = self.extract_hex_at (value, ptr + 1, 2) {
+                                        ptr += 3;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                }
+
+                                Some (b'u') => {
+                                    // ptr += 1;
+
+                                    if let Some (code) = self.extract_hex_at (value, ptr + 1, 4) {
+                                        ptr += 5;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                }
+
+                                Some (b'U') => {
+                                    // ptr += 1;
+
+                                    if let Some (code) = self.extract_hex_at (value, ptr + 1, 8) {
+                                        ptr += 9;
+                                        let code = UTF8.from_unicode (code);
+                                        result.extend (&code[ .. code[4] as usize]);
+                                    } else { result.push (b'\\'); }
+                                }
+
+                                _ => { result.push (b'\\'); }
+                            }
+                        }
+
+                        Some (b @ _) => {
+                            ptr += 1;
+
+                            if state & STATE_BREAK > 0 { state = state & !STATE_BREAK; spaces = 0; }
+                            if state & STATE_SPACE > 0 { state = state & !STATE_SPACE; spaces = 0; }
+
+                            result.push (b);
+                        }
+                    }
+                }
+
+                Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (result) })) )
+            }
+
+            Some (b'\'') => {
+                let mut result: Vec<u8> = Vec::with_capacity (value.len ());
+
+                let mut spaces: usize = 0;
+
+                ptr += 1;
+
+                loop {
+                    match value.get (ptr).map (|b| *b) {
+                        None => break,
+
+                        Some (b @ b' ') |
+                        Some (b @ b'\t') => {
+                            ptr += 1;
+
+                            if state & STATE_BREAK > 0 { continue }
+
+                            spaces += 1;
+
+                            state = state | STATE_SPACE;
+                            result.push (b);
+                        }
+
+                        Some (b @ b'\n') |
+                        Some (b @ b'\r') => {
+                            ptr += if b == b'\r' && value.get (ptr + 1).map (|b| *b) == Some (b'\n') { 2 } else { 1 };
+
+                            if spaces > 1 {
+                                let len = result.len () - spaces + 1;
+                                result.truncate (len);
+                            } else if spaces == 0 {
+                                spaces = 1;
+                                result.push (b' ');
+                            }
+
+                            if state & STATE_BREAK > 0 {
+                                if spaces > 0 {
+                                    let len = result.len () - spaces;
+                                    result.truncate (len);
+                                    spaces = 0;
+                                }
+
+                                result.push (b'\n');
+                            }
+
+                            state = state | STATE_BREAK;
+                            state = state & !STATE_SPACE;
+                        }
+
+                        Some (b'\'') => {
+                            ptr += 1;
+
+                            match value.get (ptr).map (|b| *b) {
+                                Some (b'\'') => {
+                                    ptr += 1;
+                                    result.push (b'\'');
+                                }
+                                None => break,
+                                _ => return Err ( () )
+                            };
+                        }
+
+                        Some (b @ _) => {
+                            ptr += 1;
+
+                            if state & STATE_BREAK > 0 { state = state & !STATE_BREAK; spaces = 0; }
+                            if state & STATE_SPACE > 0 { state = state & !STATE_SPACE; spaces = 0; }
+
+                            result.push (b);
+                        }
+                    }
+                }
+
+                Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (result) })) )
+            }
+
+            _ => Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (Vec::from (value)) })) )
+        }
+    }
+
+/*
     fn decode (&self, _explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         let mut ptr: usize = 0;
         let mut state: u8 = 0;
@@ -492,8 +739,10 @@ impl Model for Str {
 
                 ptr += 1; // self.d_quote.len ();
 
+                let mut byte: u8 = value.get (ptr).map (|b| *b);
+
                 loop {
-                    match value.get (ptr).map (|b| *b) {
+                    match byte {
                         None => break,
 
                         Some (b' ') => {
@@ -521,6 +770,7 @@ impl Model for Str {
                             if state & STATE_BREAK == 0 {
                                 buffer.clear ();
                                 state = state | STATE_BREAK | STATE_SPACE;
+                                if state & STATE_ESCNL == 0 { buffer.push (b'\n'); }
                             } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
                                 buffer.push (b'\n');
                             } else {
@@ -534,6 +784,7 @@ impl Model for Str {
                             if state & STATE_BREAK == 0 {
                                 buffer.clear ();
                                 state = state | STATE_BREAK | STATE_SPACE;
+                                if state & STATE_ESCNL == 0 { buffer.push (b'\n'); }
                             } else if state & (STATE_ESCNL | STATE_BREAK) != (STATE_ESCNL | STATE_BREAK) {
                                 buffer.push (b'\n');
                             } else {
@@ -740,6 +991,7 @@ impl Model for Str {
         }
 
     }
+*/
 }
 
 
@@ -913,7 +1165,8 @@ mod tests {
 
         let ops = [
             ("Hey, this is a string!", "Hey, this is a string!"),
-            (r"'Hey, that\'s the string!'", "Hey, that's the string!"),
+            (r"'Hey, that''s the string!'", "Hey, that's the string!"),
+            (r#""Hey, that\"s the string!""#, "Hey, that\"s the string!"),
             (r#""Hey,\n\ that's\tthe\0string\\""#, "Hey,\n that's\tthe\0string\\"),
             (r#""This\x0Ais\x09a\x2c\x20test""#, "This\nis\ta, test"),
             (r#""\u0422\u0435\u0441\u0442\x0a""#, "Тест\n"),
@@ -963,65 +1216,6 @@ to a line feed, or 	\
 
   baz
 ""#, " foo\nbar\nbaz ")
-        ];
-
-
-        for i in 0 .. ops.len () {
-            if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
-
-                let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
-
-                assert_eq! (val, ops[i].1);
-            } else { assert! (false) }
-        }
-    }
-}
-
-
-#[cfg (test)]
-mod dev_tests {
-    use super::*;
-
-    use model::{ Tagged, Renderer };
-    // use txt::get_charset_utf8;
-
-    use std::iter;
-
-
-    #[test]
-    fn folding () {
-        let str = Str; // ::new (&get_charset_utf8 ());
-
-        let ops = [
-            // (r#""Four    spaces""#, "Four    spaces"),
-
-            // (r#""Four  \  spaces""#, "Four    spaces"),
-
-            (r#""Four  
-  spaces""#, "Four spaces"),
-
-/*
-(r#"" 1st non-empty
-
- 2nd non-empty 
-	3rd non-empty ""#, " 1st non-empty\n2nd non-empty 3rd non-empty "),
-
-            (r#""folded 
-to a space,	
- 
-to a line feed, or 	\
- \ 	non-content""#, "folded to a space,\nto a line feed, or \t \tnon-content"),
-
-
-(r#""
-  foo 
- 
-  	 bar
-
-  baz
-""#, " foo\nbar\nbaz ")
-            */
         ];
 
 

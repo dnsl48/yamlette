@@ -19,9 +19,9 @@ macro_rules! ex {
             $( use $import; )*
 
             let expect = $expect;
-            let cset = get_charset_utf8 ();
-            let schema = Core::new (&cset);
-            let orc = Orchestra::new (cset, schema).ok ().unwrap ();
+            // let cset = get_charset_utf8 ();
+            let schema = Core::new (); // ::new (&cset);
+            let orc = Orchestra::new (schema).ok ().unwrap ();
 
             yamlette_compose! ( orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
@@ -34,9 +34,9 @@ macro_rules! ex {
         #[test]
         fn $title () {
             let expect = $expect;
-            let cset = get_charset_utf8 ();
-            let schema = Core::new (&cset);
-            let orc = Orchestra::new (cset, schema).ok ().unwrap ();
+            // let cset = get_charset_utf8 ();
+            let schema = Core::new (); // ::new (&cset);
+            let orc = Orchestra::new (schema).ok ().unwrap ();
 
             yamlette_compose! ( orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
@@ -54,7 +54,7 @@ extern crate skimmer;
 extern crate yamlette;
 
 use self::yamlette::model::schema::core::Core;
-use self::yamlette::txt::get_charset_utf8;
+// use self::yamlette::txt::get_charset_utf8;
 
 use self::yamlette::orchestra::Orchestra;
 use self::yamlette::orchestra::chord::{ Omap, Set };
@@ -64,9 +64,9 @@ use std::collections::{ BTreeMap, HashMap };
 
 
 fn get_orc () -> Orchestra {
-    let cset = get_charset_utf8 ();
-    let schema = Core::new (&cset);
-    Orchestra::new (cset, schema).ok ().unwrap ()
+    // let cset = get_charset_utf8 ();
+    let schema = Core::new (); // ::new (&cset);
+    Orchestra::new (schema).ok ().unwrap ()
 }
 
 

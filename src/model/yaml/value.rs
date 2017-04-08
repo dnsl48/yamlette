@@ -18,7 +18,7 @@ static TWINE_TAG: Twine = Twine::Static (TAG);
 
 
 
-
+#[derive (Clone, Copy)]
 pub struct Value;
 
 

@@ -1,13 +1,12 @@
 extern crate skimmer;
 
-use self::skimmer::{ Datum, Marker, Rune };
-use self::skimmer::symbol::{ Combo, CopySymbol };
+use self::skimmer::{ Datum, Marker };
 
 use model::Schema;
 use reader::{ Block, BlockType, Node, NodeKind };
 use sage::{ SageError, Idea, YamlVersion };
 use sage::ant::{ self, Ant, Message, Response, Request, Signal };
-use txt::{ CharSet, Twine };
+use txt::Twine;
 
 use std::io;
 use std::sync::Arc;
@@ -25,14 +24,14 @@ pub enum Clue {
 
 
 
-pub struct Conveyor {
-    pipe: Receiver<Block>,
+pub struct Conveyor<D> {
+    pipe: Receiver<Block<D>>,
     cin: Receiver<(u8, Clue)>,
     ex_cin: Receiver<Clue>,
     out: Sender<Idea>,
 
     // data: Data,
-    ants: [(SyncSender<Message>, JoinHandle<()>); 3],
+    ants: [(SyncSender<Message<D>>, JoinHandle<()>); 3],
     msgs: usize,
 
     buff: Option<Clue>,
@@ -40,8 +39,9 @@ pub struct Conveyor {
     /* Defaults */
     yaml_version: YamlVersion,
 
-    // schema: Schema,
     tag_handles: Vec<Arc<(Twine, Twine)>>
+
+    // _schema: PhantomData<S>
 }
 
 
@@ -64,17 +64,14 @@ macro_rules! _conveyor_signal {
 
 
 
-impl Conveyor {
-    pub fn run<Char, DoubleChar> (
-        cset: CharSet<Char, DoubleChar>,
-        pipe: Receiver<Block>,
-        mut schema: Box<Schema<Char, DoubleChar>>
-    )
-        -> io::Result<(JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>)>
-      where
-        Char: CopySymbol + 'static,
-        DoubleChar: CopySymbol + Combo + 'static
-    {
+impl<D> Conveyor<D>
+  where
+    D: Datum + Sync + Send + 'static
+{
+    pub fn run<S: Schema + 'static> (
+        pipe: Receiver<Block<D>>,
+        schema: S
+    ) -> io::Result<(JoinHandle<Result<(), SageError>>, SyncSender<Clue>, Receiver<Idea>)> {
         let (ex_to_me, ex_cin) = sync_channel (2);
         let (idea_sdr, idea_rvr) = channel ();
 
@@ -82,8 +79,6 @@ impl Conveyor {
             .name ("sage_conveyor".to_string ())
             .spawn (move || {
                 let (to_me, cin) = sync_channel (3);
-
-                schema.init (&cset);
 
                 let mut atag_handles: Vec<Arc<(Twine, Twine)>>;
 
@@ -119,8 +114,10 @@ impl Conveyor {
                                         buff: None,
 
                                         yaml_version: YamlVersion::V1x2,
-                                        // schema: schema,
-                                        tag_handles: atag_handles
+
+                                        tag_handles: atag_handles,
+
+                                        // _schema: PhantomData,
                                     }).execute ()
                                 })
                         })
@@ -142,9 +139,9 @@ impl Conveyor {
         let mut job_is_done = false;
         let mut job_is_done_sent = false;
 
-        let mut datum: Option<Arc<Datum>> = None;
+        let mut datum: Option<D> = None;
 
-        let mut buf_literal_block: Option<(usize, Vec<Result<Marker, (Rune, usize)>>)> = None;
+        let mut buf_literal_block: Option<(usize, Vec<Result<Marker, (u8, usize)>>)> = None;
 
 
         'top: loop {
@@ -202,8 +199,8 @@ impl Conveyor {
 
                 flush_ants = false;
 
-                if let Some (arc) = datum {
-                    _conveyor_signal! (self, Signal::Datum (arc.clone ())) ?;
+                if let Some (d) = datum {
+                    _conveyor_signal! (self, Signal::Datum (d.clone ())) ?;
                 }
                 datum = None;
 
@@ -286,11 +283,11 @@ impl Conveyor {
                         }
                     }
 
-                    BlockType::Rune ( .. ) if buf_literal_block.is_some () => {
-                        if let BlockType::Rune (rune, amount) = block.cargo {
+                    BlockType::Byte ( .. ) if buf_literal_block.is_some () => {
+                        if let BlockType::Byte (byte, amount) = block.cargo {
                             if let Some ( (idx, ref mut vec) ) = buf_literal_block {
                                 if idx != block.id.parent { panic! ("Unexpected literal!") }
-                                vec.push (Err ((rune, amount)));
+                                vec.push (Err ((byte, amount)));
                             }
                         }
                     }
@@ -304,7 +301,7 @@ impl Conveyor {
                     BlockType::Alias ( .. ) |
                     BlockType::BlockMap ( .. ) |
                     BlockType::Literal ( .. ) |
-                    BlockType::Rune ( .. ) |
+                    BlockType::Byte ( .. ) |
                     BlockType::Node ( .. ) => try! (self.convey_request (Request::ReadBlock (block))),
                 }
 
@@ -357,7 +354,7 @@ impl Conveyor {
     }
 
 
-    fn convey_request (&mut self, request: Request) -> Result<(), SageError> {
+    fn convey_request (&mut self, request: Request<D>) -> Result<(), SageError> {
         let mut message = Message::Request (request);
 
         'top: loop {

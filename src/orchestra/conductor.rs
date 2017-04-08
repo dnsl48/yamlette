@@ -1,11 +1,11 @@
-extern crate skimmer;
+// extern crate skimmer;
 
-use self::skimmer::symbol::{ Combo, CopySymbol };
+// use self::skimmer::symbol::{ Combo, CopySymbol };
 
 
 use model::{ Rope, TaggedValue, Schema };
 use model::renderer::{ Renderer, Node };
-use txt::{ CharSet, Twine };
+use txt::Twine;
 
 use orchestra::OrchError;
 use orchestra::performer::{ Performer, PerformerId, Play };
@@ -495,11 +495,7 @@ impl Volume {
 
 const PERFORMERS_NUMBER: usize = 3;
 
-pub struct Conductor<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
+pub struct Conductor {
     pipe: Receiver<Message>,
     cin: Receiver<(PerformerId, Play)>,
 
@@ -509,20 +505,15 @@ pub struct Conductor<Char, DoubleChar>
     msgs: usize,
     buff: Option<Play>,
 
-    renderer: Arc<Renderer<Char, DoubleChar>>
+    renderer: Renderer
 }
 
 
-impl<Char, DoubleChar> Conductor<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    pub fn run (
-        cset: CharSet<Char, DoubleChar>,
+impl Conductor {
+    pub fn run<S: Schema + Clone + 'static> (
         pipe: Receiver<Message>,
-        renderer: Renderer<Char, DoubleChar>,
-        mut schema: Box<Schema<Char, DoubleChar>>
+        renderer: Renderer,
+        schema: S
     )
         -> io::Result<(JoinHandle<Result<(), OrchError>>, Receiver<Vec<u8>>)>
     {
@@ -531,14 +522,12 @@ impl<Char, DoubleChar> Conductor<Char, DoubleChar>
         let handle = Builder::new ().name ("conductor".to_string ()).spawn (move || {
             let (to_conductor, cin): (SyncSender<(PerformerId, Play)>, Receiver<(PerformerId, Play)>) = sync_channel (PERFORMERS_NUMBER);
 
-            schema.as_mut ().init (&cset);
+            // let schema = Arc::new (schema;
+            // let renderer = Arc::new (renderer);
 
-            let schema = Arc::new (schema);
-            let renderer = Arc::new (renderer);
-
-            let permer_0 = Performer::run (0, to_conductor.clone (), renderer.clone (), schema.clone ()) ?;
-            let permer_1 = Performer::run (1, to_conductor.clone (), renderer.clone (), schema.clone ()) ?;
-            let permer_2 = Performer::run (2, to_conductor, renderer.clone (), schema) ?;
+            let permer_0 = Performer::run (0, to_conductor.clone (), renderer, schema.clone ()) ?;
+            let permer_1 = Performer::run (1, to_conductor.clone (), renderer, schema.clone ()) ?;
+            let permer_2 = Performer::run (2, to_conductor, renderer, schema) ?;
 
             (Conductor {
                 pipe: pipe,
@@ -741,7 +730,7 @@ impl<Char, DoubleChar> Conductor<Char, DoubleChar>
 
         let mut str_ptr: *mut u8 = music.as_mut_ptr ();
 
-        let renderer: &Renderer<Char, DoubleChar> = &self.renderer;
+        // let renderer = &self.renderer;
 
         for vol in vols.iter () {
             let mut rec_ptr: usize = 0;
@@ -763,7 +752,7 @@ impl<Char, DoubleChar> Conductor<Char, DoubleChar>
 
                 rope_idx = 0;
                 'rope_loop: loop {
-                    let (size, new_index, done) = rope.unrope (&mut performer_buffers[perf_idx], renderer, rope_idx, tho);
+                    let (size, new_index, done) = rope.unrope (&mut performer_buffers[perf_idx], &self.renderer, rope_idx, tho);
                     rope_idx = new_index;
 
                     if size == 0 {

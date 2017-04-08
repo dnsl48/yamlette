@@ -1,11 +1,11 @@
 macro_rules! sage {
     ($src:expr) => {{
-        let cset = get_charset_utf8 ();
+        // let cset = get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let schema = Core::new (&cset);
-        let sage = Sage::new (cset, receiver, schema);
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (cset.clone ()));
+        let schema = Core::new (); // ::new (&cset);
+        let sage = Sage::new (receiver, schema);
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
@@ -19,12 +19,12 @@ macro_rules! sage {
 
 macro_rules! sage11 {
     ($src:expr) => {{
-        let cset = get_charset_utf8 ();
+        // let cset = @get_charset_utf8 ();
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (Tokenizer::new (cset.clone ()));
-        let schema = Core::new (&cset);
-        let sage = Sage::new (cset, receiver, schema).and_then (|sg| {
+        let mut reader = Reader::new (); // ::new (Tokenizer::new (cset.clone ()));
+        let schema = Core::new (); // ::new (&cset);
+        let sage = Sage::new (receiver, schema).and_then (|sg| {
             sg.set_yaml_version (YamlVersion::V1x1).ok ();
             Ok ( sg )
         });
@@ -65,8 +65,8 @@ mod stable {
     use self::yamlette::model::schema::core::Core;
     use self::yamlette::reader::Reader;
     use self::yamlette::sage::{ Sage, YamlVersion };
-    use self::yamlette::tokenizer::Tokenizer;
-    use self::yamlette::txt::{ Twine, get_charset_utf8 };
+    // use self::yamlette::tokenizer::Tokenizer;
+    use self::yamlette::txt::Twine;
     use std::sync::mpsc::channel;
 
 
@@ -793,21 +793,3 @@ r"scene:
         assert_eq! (tri, Some (3u8));
     }
 }
-
-/*
-extern crate skimmer;
-extern crate yamlette;
-
-
-use self::skimmer::reader::SliceReader;
-use self::yamlette::book::Book;
-use self::yamlette::model::schema::core::get_schema;
-use self::yamlette::reader::Reader;
-use self::yamlette::sage::{ Sage, YamlVersion };
-use self::yamlette::tokenizer::Tokenizer;
-use self::yamlette::txt::get_charset_utf8;
-use std::sync::mpsc::channel;
-
-
-
-*/

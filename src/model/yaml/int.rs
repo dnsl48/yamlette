@@ -133,6 +133,7 @@ impl fmt::Display for Mint {
 
 
 
+#[derive (Clone, Copy)]
 pub struct Int; /*<Char, DoubleChar>
   where
     Char: CopySymbol + 'static,
@@ -194,7 +195,14 @@ impl Int {
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], sexagesimals: bool, shortocts: bool) -> Result<Mint, ()> {
-        if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
+        // println! ("yoba, {}, explicit: {:?}", unsafe { String::from_utf8_unchecked (Vec::from (value)) }, explicit);
+        if !explicit && ! match value.get (0).map (|b| *b) {
+            Some (b'+') |
+            Some (b'-') |
+            Some (b'0' ... b'9') => true,
+            _ => false
+        } { return Err ( () ) }
+        // if !explicit && ! if let Some (b'0' ... b'9') = value.get (0).map (|b| *b) { true } else { false } { return Err ( () ) }
         // if !explicit && !self.encoding.check_is_dec_num (value) { return Err ( () ) }
 
         const STATE_SIGN: u8 = 1;
@@ -272,7 +280,6 @@ impl Int {
                         Some (b'o') => { ptr += 1; state = state | STATE_OCT; }
                         Some (b'x') => { ptr += 1; state = state | STATE_HEX; }
                         Some (v @ b'0' ... b'9') => {
-                            ptr += 1;
                             state = state | if (v - b'0') < 8 && shortocts { STATE_OCT } else { STATE_DEC };
                         }
                         _ => { state = state | STATE_END; }
@@ -412,7 +419,13 @@ impl Int {
 
         if state & STATE_END == STATE_END {
             if ptr == 0 { return Err ( () ) }
-            if quote_state > 0 { return Err ( () ) }
+            if quote_state > 0 {
+                match value.get (ptr).map (|b| *b) {
+                    Some (b'"') if quote_state == 2 => { ptr += 1; }
+                    Some (b'\'') if quote_state == 1 => { ptr += 1; }
+                    _ => return Err ( () )
+                }
+            }
 
             loop {
                 match value.get (ptr).map (|b| *b) {
@@ -670,7 +683,7 @@ mod tests {
                 let val = i64val.unwrap ();
 
                 assert_eq! (val, results[i] as i64);
-            } else { assert! (false) }
+            } else { assert! (false, format! ("Could not decode {}", &options[i])) }
         }
 
 

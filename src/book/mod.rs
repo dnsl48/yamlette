@@ -1,8 +1,13 @@
+extern crate skimmer;
+
+use self::skimmer::data::Datum;
+
+
 pub mod volume;
 pub mod word;
 pub mod extractor;
 
-
+use model::schema::Schema;
 use sage::{ Sage, Idea };
 
 use self::volume::Volume;
@@ -21,7 +26,11 @@ impl Book {
         Book::with_capacity (1)
     }
 
-    pub fn get_written (&mut self, author: &Sage) {
+    pub fn get_written<S, D> (&mut self, author: &Sage<S, D>)
+      where
+        S: Schema + 'static,
+        D: Datum + Sync + Send + 'static
+    {
         let ideas: &Receiver<Idea> = author;
         for idea in ideas {
             if self.stamp (idea) { break; }

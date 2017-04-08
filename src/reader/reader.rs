@@ -431,6 +431,7 @@ impl Reader {
         'top: loop {
             // self.timer.stamp ("reader->get_token");
             if let Some ( (token, len, chars) ) = tokenizer::get_token (reader) {
+
                 // self.timer.stamp ("reader->get_token");
                 loop {
                     match token {
@@ -439,11 +440,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
 
                         Token::DirectiveYaml if is (state, YAML_PASSED) => {
@@ -623,7 +624,7 @@ impl Reader {
                                 content: NodeKind::Sequence
                             })), callback));
 
-                            try! (self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) )));
+                            self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) )) ?;
 
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -751,11 +752,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
 
                         _ if is (state, ALWAYS_KEEP) && not (state, KEEPER) => {
@@ -1051,11 +1052,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
                         Token::GT |
                         Token::Pipe if not (state, HEAD_PASSED) && not (state, TYPE_DEFINED) => {
@@ -1268,11 +1269,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
                         Token::Comment |
                         Token::Newline => {
@@ -1330,7 +1331,7 @@ impl Reader {
                         }
 
                         Token::Dash if is (state, INDENT_PASSED) => {
-                            try! (self.read_seq_block_item (reader, callback, &mut ctx, level, parent_idx, &mut prev_indent, Some ( (token, len, chars) )));
+                            self.read_seq_block_item (reader, callback, &mut ctx, level, parent_idx, &mut prev_indent, Some ( (token, len, chars) )) ?;
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                             on (&mut state, NODE_READ);
                         }
@@ -1396,11 +1397,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level + 1, idx, len));
+                            // try! (self.check_bom (reader, callback, level + 1, idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
 
                         Token::SequenceEnd => {
@@ -1578,11 +1579,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
                         Token::Comment |
                         Token::Newline => {
@@ -1640,14 +1641,15 @@ impl Reader {
                         Token::Colon if is (state, KEY_PASSED) && not (state, SEP_PASSED) => {
                             if is (state, QST_EXPLICIT) && qst_explicit_line == self.line {
                                 // let (len_, _) = scan_while_at (len, reader, &tokenizer::spaces_and_tabs);
+                                
                                 let len_ = tokenizer::scan_while_spaces_and_tabs (reader, len);
+                                
                                 // let (len__, idx) = scan_until_at (len + len_, reader, &tokenizer::colon_and_line_breakers);
                                 let len__ = tokenizer::scan_until_colon_and_line_breakers (reader, len + len_);
 
                                 // println! ("LEN IS: {}, idx is {:?}", len__, idx);
-                                println! ("len_ is {}", len_);
-                                println! ("len__ is {}", len__);
-
+                                // println! ("len_ is {}", len_);
+                                // println! ("len__ is {}", len__);
                                 // if let Some ( (idx, _) ) = idx {
                                 if reader.has_long (len + len_ + len__ + 1) {
                                     // if idx > 0 {
@@ -1681,6 +1683,7 @@ impl Reader {
                                     }
                                 }
                             }
+                            
 
                             self.skip (reader, len, chars);
                             on (&mut state, SEP_PASSED);
@@ -1840,11 +1843,11 @@ impl Reader {
                     Token::BOM32LE |
                     Token::BOM16BE |
                     Token::BOM16LE |
+                    */
                     Token::BOM8 => {
-                        try! (self.check_bom (reader, callback, level + 1, idx, len));
+                        // try! (self.check_bom (reader, callback, level + 1, idx, len));
                         self.skip (reader, len, chars);
                     }
-                    */
 
                     Token::DictionaryEnd => {
                         self.skip (reader, len, chars);
@@ -2209,6 +2212,7 @@ impl Reader {
 
     fn read_seq_block_item<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         // let prev_indent: usize = *indent;
+
         if let Some ( (token, len, chars) ) = if accel.is_none () { tokenizer::get_token (reader) } else { accel.take () } {
             match token {
                 Token::Dash => {
@@ -2229,7 +2233,6 @@ impl Reader {
             return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! ("Unexpected end of the document ({}:{})", file! (), line! ())))
         }
 
-
         'top: loop {
             if let Some ( (token, len, chars) ) = tokenizer::get_token (reader) {
                 match token {
@@ -2238,11 +2241,12 @@ impl Reader {
                     Token::BOM32LE |
                     Token::BOM16BE |
                     Token::BOM16LE |
+                    */
                     Token::BOM8 => {
-                        try! (self.check_bom (reader, callback, level, parent_idx, len));
+                        // try! (self.check_bom (reader, callback, level, parent_idx, len));
                         self.skip (reader, len, chars);
                     }
-                    */
+
 
                     Token::Indent => {
                         self.skip (reader, len, chars);
@@ -2252,7 +2256,7 @@ impl Reader {
                     _ => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_sblockval (reader, callback, ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                        self.read_node_sblockval (reader, callback, ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None) ?;
                         break 'top;
                     }
                 };
@@ -2355,12 +2359,11 @@ impl Reader {
         // _seq_block_indent: Option<usize>
     ) -> Result<(), ReadError> {
         // self.timer.stamp ("rn");
-
         // self.timer.stamp ("rn->context");
         let mut ctx = &mut Context::new (ctx, ContextKind::Node, self.cursor, level);
+
         // let ctx = &mut ctx;
         // self.timer.stamp ("rn->context");
-
         // self.timer.stamp ("rn->vars");
 
         const ALIAS_READ: u8 = 4;
@@ -2390,7 +2393,6 @@ impl Reader {
         } else { false };
 
         // self.timer.stamp ("rn->vars");
-
         // self.timer.stamp ("rn->loop");
 
         'top: loop {
@@ -2402,11 +2404,11 @@ impl Reader {
                         Token::BOM32LE |
                         Token::BOM16BE |
                         Token::BOM16LE |
+                        */
                         Token::BOM8 => {
-                            try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
-                        */
 
 
                         Token::Tab    |
@@ -2485,20 +2487,20 @@ impl Reader {
 
                         Token::Indent if flow_idx > 0 && is (state, NEWLINE_PASSED) && not (state, INDENT_PASSED) => {
                             let mut pass = false;
-                            let mut ctxptr: &mut Context<D> = &mut ctx;
+
+                            let mut ctxptr: Option<&mut Context<D>> = Some(&mut ctx);
+
                             loop {
-                                // if ctxptr.parent.is_none () { break; }
-                                // ctxptr = ctxptr.parent.as_ref ().unwrap ();
+                                if ctxptr.is_none () { break; }
+                                let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
-                                let ctxptr = if let Some (parent) = ctxptr.get_parent () { parent } else { break; };
-
-                                match ctxptr.kind {
+                                match parent.kind {
                                     ContextKind::SequenceFlow |
                                     ContextKind::MappingFlow => { pass = true; }
-                                    ContextKind::MappingBlock if ctxptr.level == level => {
-                                        pass = chars > ctxptr.indent;
+                                    ContextKind::MappingBlock if parent.level == level => {
+                                        pass = chars > parent.indent;
                                     }
-                                    _ => { continue }
+                                    _ => { ctxptr = Some (parent); continue }
                                 };
 
                                 break;
@@ -2630,14 +2632,14 @@ impl Reader {
                             let mut skip = false;
 
                             {
-                                let mut ctxptr: &mut Context<D> = &mut ctx;
+                                let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                 loop {
                                     // if ctxptr.parent.is_none () { break; }
                                     // ctxptr = ctxptr.parent.as_ref ().unwrap ();
+                                    if ctxptr.is_none () { break; }
+                                    let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
-                                    let ctxptr = if let Some (parent) = ctxptr.get_parent () { parent } else { break; };
-
-                                    match ctxptr.kind {
+                                    match parent.kind {
                                         ContextKind::SequenceFlow => {
                                             // skip = self.check_next_is_right_square (reader, 0, false);
                                             // skip = self.check_next_is_char (tokenizer::cset.bracket_square_right, reader, 0, false);
@@ -2648,7 +2650,7 @@ impl Reader {
                                             // skip = self.check_next_is_char (tokenizer::cset.bracket_curly_right, reader, 0, false);
                                             skip = self.check_next_is_byte (b'}', reader, 0, false);
                                         }
-                                        _ => { continue }
+                                        _ => { ctxptr = Some (parent); continue }
                                     };
 
                                     break;
@@ -2803,18 +2805,18 @@ impl Reader {
                                     if indent == 0 { true } else {
                                         let mut result = true;
                                         {
-                                            let mut ctxptr: &mut Context<D> = &mut ctx;
+                                            let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                             loop {
                                                 // if ctxptr.parent.is_none () { break; }
                                                 // ctxptr = ctxptr.parent.as_ref ().unwrap ();
+                                                if ctxptr.is_none () { break; }
+                                                let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
-                                                let ctxptr = if let Some (parent) = ctxptr.get_parent () { parent } else { break; };
-
-                                                match ctxptr.kind {
+                                                match parent.kind {
                                                     ContextKind::SequenceBlock => {
-                                                        result = self.cursor + len > ctxptr.indent;
+                                                        result = self.cursor + len > parent.indent;
                                                     },
-                                                    _ => { continue }
+                                                    _ => { ctxptr = Some (parent); continue }
                                                 };
 
                                                 break;
@@ -2929,18 +2931,19 @@ impl Reader {
                                 match token {
                                     Token::Dash => {
                                         let mut result = true;
-                                        let mut ctxptr: &mut Context<D> = &mut ctx;
+                                        let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                         loop {
                                             // if ctxptr.parent.is_none () { break; }
                                             // ctxptr = ctxptr.parent.as_ref ().unwrap ();
 
-                                            let ctxptr = if let Some (parent) = ctxptr.get_parent () { parent } else { break; };
+                                            if ctxptr.is_none () { break; }
+                                            let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
-                                            match ctxptr.kind {
+                                            match parent.kind {
                                                 ContextKind::SequenceBlock => {
-                                                    result = self.cursor > ctxptr.indent;
+                                                    result = self.cursor > parent.indent;
                                                 },
-                                                _ => { continue }
+                                                _ => { ctxptr = Some (parent); continue }
                                             };
 
                                             break;
@@ -2949,18 +2952,14 @@ impl Reader {
                                     },
                                     _ => {
                                         let mut result = false;
-                                        let mut ctxptr: &mut Context<D> = &mut ctx;
+                                        let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                         loop {
-                                            // if ctxptr.parent.is_none () { break; }
-                                            // ctxptr = ctxptr.parent.as_ref ().unwrap ();
+                                            if ctxptr.is_none () { break; }
+                                            let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
-                                            let ctxptr = if let Some (parent) = ctxptr.get_parent () { parent } else { break; };
-
-                                            match ctxptr.kind {
-                                                ContextKind::Layer => {
-                                                    result = ctxptr.indent == 0;
-                                                },
-                                                _ => { }
+                                            match parent.kind {
+                                                ContextKind::Layer => { result = parent.indent == 0; }
+                                                _ => ()
                                             };
 
                                             break;
@@ -3336,11 +3335,11 @@ impl Reader {
 
                 *cur_idx = id.index;
 
-                try! (self.yield_block (Block::new (id, BlockType::Node (Node {
+                self.yield_block (Block::new (id, BlockType::Node (Node {
                     anchor: anchor,
                     tag: tag,
                     content: NodeKind::Scalar (chunk)
-                })), callback));
+                })), callback) ?;
                 // self.timer.stamp ("rn->flopt<-scalar");
             }
 
@@ -3472,8 +3471,7 @@ impl Reader {
 
 
 
-// #[cfg (all (test, not (feature = "dev")))]
-#[cfg (test)]
+#[cfg (all (test, not (feature = "dev")))]
 mod tests {
     use super::*;
 
