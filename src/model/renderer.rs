@@ -155,74 +155,10 @@ impl Node {
 
 
 #[derive(Copy, Clone)]
-pub struct Renderer; /* {
-    newline: Result<Char, DoubleChar>,
-
-    ampersand: Char,
-    asterisk: Char,
-
-    space: Char,
-    comma: Char,
-    colon: Char,
-
-    gt: Char,
-    lt: Char,
-
-    exclamation: Char,
-    hyphen: Char,
-    dot: Char,
-
-    apostrophe: Char,
-    quotation: Char,
-
-    question: Char,
-
-    square_bracket_open: Char,
-    square_bracket_close: Char,
-
-    curly_bracket_open: Char,
-    curly_bracket_close: Char
-} */
+pub struct Renderer;
 
 
 impl Renderer {
-    /*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
-        Renderer {
-            newline: Result::Ok (cset.line_feed),
-            ampersand: cset.ampersand,
-            asterisk: cset.asterisk,
-            gt: cset.greater_than,
-            lt: cset.less_than,
-            exclamation: cset.exclamation,
-            hyphen: cset.hyphen_minus,
-            dot: cset.full_stop,
-            apostrophe: cset.apostrophe,
-            quotation: cset.quotation,
-            question: cset.question,
-            space: cset.space,
-            comma: cset.comma,
-            colon: cset.colon,
-            square_bracket_open: cset.bracket_square_left,
-            square_bracket_close: cset.bracket_square_right,
-            curly_bracket_open: cset.bracket_curly_left,
-            curly_bracket_close: cset.bracket_curly_right
-        }
-    }
-    */
-
-    /*
-    pub fn new_crlf (cset: &CharSet<Char, DoubleChar>) -> Renderer<Char, DoubleChar> {
-        let mut renderer = Renderer::new (cset);
-        renderer.newline = Result::Err (cset.crlf);
-        renderer
-    }
-    */
-
-
-    // fn _indent_space_len (&self, size: usize) -> usize { size * self.space.len () }
-
-
     pub fn render_into_vec (&self, vec: &mut Vec<u8>, node: Node) {
         let node_len = self.node_len (&node);
         let vec_len = vec.len ();

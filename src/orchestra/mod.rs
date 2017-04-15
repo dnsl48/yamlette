@@ -1,4 +1,3 @@
-mod composer;
 mod conductor;
 mod performer;
 

@@ -1,11 +1,9 @@
-pub mod txt;
-pub mod reader;
+pub mod book;
+pub mod composer;
+pub mod face;
 pub mod model;
+pub mod orchestra;
+pub mod reader;
 pub mod sage;
 pub mod savant;
-
-pub mod book;
-
-pub mod orchestra;
-
-pub mod face;
+pub mod txt;
