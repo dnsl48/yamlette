@@ -7,106 +7,15 @@ Comprehensive YAML 1.2 processor implemented in Rust
 ------
 
 
-# Contents
+## Features
 
- 1. [Goals of the project](#goals-of-the-project)  
- 2. [Some more words about it](#some-extra-words-about-it)  
- 2.1. [Complete support of YAML 1.2 specification](#complete-support-of-yaml-12-specification)  
- 2.2. [Multithreading](#multithreading)  
- 2.3. [Performance](#performance)  
- 2.4. [Text encoding agnostic implementation](#text-encoding-agnostic-implementation)  
- 2.5. [Thorough documentation coverage](#thorough-documentation-coverage)  
- 3. [Examples](#examples)  
- 3.1. [Basic reader example](#basic-reader-example)  
- 3.2. [Basic writer example](#basic-writer-example)  
- 3.3. [The format description](#the-format-description)  
- 4. [License](#license)  
-
-
-# Goals of the project
-
-## Reader
-
- - [x] complete support of the YAML 1.2 specification
- - [x] multithreading / to effectively distribute load among several CPU cores
- - [ ] performance / to do work faster than other YAML libraries
- - [x] text encoding agnostic implementation
- - [ ] thorough documentation coverage
-
-## Writer
-
- - [ ] complete support of the YAML 1.2 specification
- - [x] multithreading / to effectively distribute load among several CPU cores
- - [ ] performance / to do work faster than other YAML libraries
- - [x] text encoding agnostic implementation
- - [ ] thorough documentation coverage
-
-
-# Some extra words about it
-
-## Complete support of YAML 1.2 specification
-
-[YAML 1.2 Specification Reference](http://www.yaml.org/spec/1.2/spec.html)
-
-### Reader:
- - does not follow the specification description of the processor architecture
- - supports every single feature of the YAML serialization format
-
-### Writer:
- - does not follow the specification description of the processor architecture
- - supports most features of the YAML serialization format
- - missing features are not prevented by the library architecture and to be implemented in the future versions
-
-
-## Multithreading
-
-### Reader:
- Current reader implementation performs work in several threads.
- `Reader` (the main thread) splits up a byte stream and passes tokens to a `conveyor`. Conveyor distributes the tokens among
- several `ant` threads. Ants perform actual parsing of the bytes, definition and construction of the data types and passing them back to the conveyor.
- Conveyor releases data in the same order as it came in originally (as tokens), so that all the data gets collected in a `Book`.
- Main thread then maps data from the book onto a data structure for the end user.
-
-### Writer:
- Current writer implementation performs work in several threads.
- `Writer` (the main thread) passes user data to a `conductor` thread, which then distributes between several `performer` threads the actual convertion of data into
- bytes. When all the data pieces are bytes, conductor makes performers to fill it in a final single vector of bytes.
-
-
-## Performance
- No any work in this area has been done so far. There is room for optimisations for sure.
-
- One of the bottlenecks is multithreading, because initialization of a new thread takes lots of resources.
- There are 2 possible remedies:
-  - [x] For long living applications it is possible to initialize all the threads once, and simply reuse them afterwards
-  - [ ] The architecture is flexible enough for alternate single-threaded implementations that could be used where necessary
-
- Another bottleneck might be the data processing, since safety requires data to be copied between threads (or Arc'ed).
- There are some possibilities to explore:
-  - [ ] light side of the force: do buffering and non-blocking reading
-  - [ ] dark side of the force: do unsafe to avoid data copying
-
- Another bottleneck might be anywhere, since no measurings have been done. That is a thing to do.
-
-
-## Text encoding agnostic implementation
- The only condition is that encoding symbols must be able to be represented by Unicode code points (and not vice-versa).
-
- Encodings are mplemented already:
-  - [x] UTF-8
-
- Existing plans for:
-  - [ ] UTF-16
-  - [ ] UTF-32
-
- Other encodings are welcome to be contributed. Particularly encodings that are more friendly for non-latin languages.
-
-
-## Thorough documentation coverage
- No any work in this area has been done so far. Rustdoc and docs.rs are in plans as well as maybe some wiki content.
- Also this README is just a scratch on the surface, so please feel free to create
- github issues so that we can add some documentation around.
-
+ - complete support of the YAML 1.2 specification
+ - test coverage for every example of YAML 1.2 specification
+ - handy macros for YAML reading and writing
+ - control over output formatting in writing mode
+ - easy to deserialize your own types through a trait implementation (`FromPointer<'a>`)
+ - somewhat unstable although possible to serialize your own types through a trait implementation (orchestra::chord::Chord)
+ - experimental multithreading model (although at the moment it's much slower than single-threaded implementation and not recommended)
 
 
 # Examples
@@ -227,6 +136,51 @@ Its first argument is not a variable, but rather a literal that says we need to 
 The second argument is the data structure description. Its format is described below (after the examples).
 
 `yamlette!` macro returns `Result<String, yamlette::orchestra::OrchError>` instance by default when called as a writer.
+
+
+## Custom type read example
+
+You simply need to implement `FromPointer<'a>` trait for your type
+
+```rust
+extern crate yamlette;
+
+use self::yamlette::book::extractor::pointer::Pointer;
+use self::yamlette::book::extractor::traits::FromPointer;
+
+#[derive (PartialEq, Eq, Debug)]
+struct State {
+    pub state: bool,
+    pub transition: u8,
+    pub brightness: u8
+}
+
+impl State {
+    pub fn new (state: bool, transition: u8, brightness: u8) -> State {
+        State {
+            state: state,
+            transition: transition,
+            brightness: brightness
+        }
+    }
+}
+
+impl<'a> FromPointer<'a> for State {
+    fn from_pointer (pointer: Pointer<'a>) -> Option<Self> {
+        yamlette_reckon! ( ptr ; Some (pointer) ; {
+            (state:bool),
+            (transition:u8),
+            (brightness:u8)
+        } );
+
+        Some (State {
+            state: if let Some (s) = state { s } else { false },
+            transition: if let Some (t) = transition { t } else { 0u8 },
+            brightness: if let Some (b) = brightness { b } else { 0u8 }
+        })
+    }
+}
+```
 
 
 ## The format description
