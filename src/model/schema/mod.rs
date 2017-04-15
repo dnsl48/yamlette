@@ -4,12 +4,13 @@ extern crate skimmer;
 pub mod core;
 
 
-use txt::Twine;
 use model::{ Model, TaggedValue };
 use model::style::CommonStyles;
 
 use model::yaml::null::Null;
 use model::yamlette::literal::Literal;
+
+use std::borrow::Cow;
 
 
 
@@ -18,7 +19,7 @@ pub trait Schema: Send + Sync {
 
     fn get_yaml_version (&self) -> (u8, u8);
 
-    fn get_tag_handles (&self) -> &[(Twine, Twine)];
+    fn get_tag_handles (&self) -> &[(Cow<'static, str>, Cow<'static, str>)];
 
     fn look_up_model<'a, 'b> (&'a self, &'b str) -> Option<&'a Model>;
 
@@ -34,7 +35,7 @@ pub trait Schema: Send + Sync {
 
     fn get_model_null (&self) -> Null;
 
-    fn get_tag_model_map (&self) -> &Twine;
+    fn get_tag_model_map (&self) -> Cow<'static, str>;
 
-    fn get_tag_model_seq (&self) -> &Twine;
+    fn get_tag_model_seq (&self) -> Cow<'static, str>;
 }

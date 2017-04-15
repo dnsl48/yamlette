@@ -6,8 +6,8 @@ use model::Schema;
 use reader::{ Block, BlockType, Node, NodeKind };
 use sage::{ SageError, Idea, YamlVersion };
 use sage::ant::{ self, Ant, Message, Response, Request, Signal };
-use txt::Twine;
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 use std::sync::mpsc::{ channel, sync_channel, Sender, SyncSender, Receiver, TrySendError, TryRecvError };
@@ -39,7 +39,7 @@ pub struct Conveyor<D> {
     /* Defaults */
     yaml_version: YamlVersion,
 
-    tag_handles: Vec<Arc<(Twine, Twine)>>
+    tag_handles: Vec<Arc<(Cow<'static, str>, Cow<'static, str>)>>
 
     // _schema: PhantomData<S>
 }
@@ -51,7 +51,7 @@ macro_rules! _conveyor_signal {
         for idx in 0 .. $slf.ants.len () {
             try! ($slf.ants[idx].0.send (Message::Signal ($signal)).or_else (|_| {
                 $slf.terminate ();
-                Err ( SageError::Error (Twine::from ("One of ants has passed away")) )
+                Err ( SageError::Error (Cow::from ("One of ants has passed away")) )
             }).and_then (|_| { Ok ( () ) }));
         }
 
@@ -80,7 +80,7 @@ impl<D> Conveyor<D>
             .spawn (move || {
                 let (to_me, cin) = sync_channel (3);
 
-                let mut atag_handles: Vec<Arc<(Twine, Twine)>>;
+                let mut atag_handles: Vec<Arc<(Cow<'static, str>, Cow<'static, str>)>>;
 
                 {
                     let tag_handles = schema.get_tag_handles ();
@@ -152,12 +152,12 @@ impl<D> Conveyor<D>
             } else {
                 match self.ex_cin.try_recv () {
                     Err (TryRecvError::Empty) => match self.cin.try_recv () {
-                        Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Twine::from ("abandoned sage"))) ),
+                        Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Cow::from ("abandoned sage"))) ),
                         Ok ((_, msg)) => Some (msg),
                         Err (TryRecvError::Empty) => None
                     },
                     Ok (msg) => Some (msg),
-                    Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Twine::from ("abandoned sage"))) )
+                    Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Cow::from ("abandoned sage"))) )
                 }
             } {
                 match msg {
@@ -322,7 +322,7 @@ impl<D> Conveyor<D>
 
 
     fn set_version (&mut self, version: (u8, u8)) -> Result<(), SageError> {
-        if version.0 != 1 { return Err (SageError::Error (Twine::from (format! ("Unsupported yaml version {}.{}", version.0, version.1)))) }
+        if version.0 != 1 { return Err (SageError::Error (Cow::from (format! ("Unsupported yaml version {}.{}", version.0, version.1)))) }
 
         let ver = if version.1 == 1 { YamlVersion::V1x1 } else { YamlVersion::V1x2 };
 
@@ -332,7 +332,7 @@ impl<D> Conveyor<D>
     }
 
 
-    fn reg_tag_handle (&mut self, shorthand: Twine, prefix: Twine) -> Result<(), SageError> {
+    fn reg_tag_handle (&mut self, shorthand: Cow<'static, str>, prefix: Cow<'static, str>) -> Result<(), SageError> {
         let arc = Arc::new ((shorthand, prefix));
 
         _conveyor_signal! (self, Signal::TagHandle (arc.clone ()))
@@ -342,7 +342,7 @@ impl<D> Conveyor<D>
     fn think (&mut self, message: Idea) -> Result<(), SageError> {
         self.out.send (message).or_else (|_| {
             self.terminate ();
-            Err ( SageError::Error (Twine::from ("Sage is alone; nobody listens")) )
+            Err ( SageError::Error (Cow::from ("Sage is alone; nobody listens")) )
         })
     }
 
@@ -365,7 +365,7 @@ impl<D> Conveyor<D>
                     match result {
                         Err (TrySendError::Disconnected (_)) => {
                             self.terminate ();
-                            return Err ( SageError::Error (Twine::from ("One of ants passed away")) );
+                            return Err ( SageError::Error (Cow::from ("One of ants passed away")) );
                         }
 
                         Err (TrySendError::Full (msg)) => {
@@ -387,18 +387,18 @@ impl<D> Conveyor<D>
                     Ok ((i, m)) => {
                         self.ants[i as usize].0.send (message).or_else (|_| {
                             self.terminate ();
-                            return Err ( SageError::Error (Twine::from ("One of ants has passed away")) )
+                            return Err ( SageError::Error (Cow::from ("One of ants has passed away")) )
                         }).and_then (|_| { self.msgs += 1; Ok ( () ) }).ok ();
                         Some (m)
                     },
-                    Err (_) => return Err ( SageError::Error (Twine::from ("The ants have passed away")) )
+                    Err (_) => return Err ( SageError::Error (Cow::from ("The ants have passed away")) )
                 };
 
                 break;
             } else if self.msgs == 0 {
                 self.ants[0].0.send (message).or_else (|_| {
                     self.terminate ();
-                    return Err ( SageError::Error (Twine::from ("One of ants has passed away")) )
+                    return Err ( SageError::Error (Cow::from ("One of ants has passed away")) )
                 }).and_then (|_| { self.msgs += 1; Ok ( () ) }).ok ();
                 break;
             }

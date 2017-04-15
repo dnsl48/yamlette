@@ -14,11 +14,10 @@ extern crate skimmer;
 
 // use self::skimmer::symbol::{ CopySymbol, Combo };
 
-use txt::Twine;
 // use txt::encoding::{ Encoding, Unicode };
 
 use std::any::Any;
-
+use std::borrow::Cow;
 use std::iter::Iterator;
 
 
@@ -35,7 +34,7 @@ pub use self::tagged_value::TaggedValue;
 
 
 pub trait Tagged : Any {
-    fn get_tag (&self) -> &Twine;
+    fn get_tag (&self) -> Cow<'static, str>;
 
     fn as_any (&self) -> &Any;
 
@@ -49,7 +48,7 @@ pub trait Model : Send + Sync {
     // type Char: CopySymbol;
     // type DoubleChar: CopySymbol + Combo;
 
-    fn get_tag (&self) -> &Twine;
+    fn get_tag (&self) -> Cow<'static, str>;
 
     fn as_any (&self) -> &Any;
 
@@ -86,15 +85,15 @@ pub trait Model : Send + Sync {
     fn decode11 (&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> { self.decode (explicit, value) }
 
 
-    fn encode (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
+    fn encode (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> { panic! ("Model is not encodable"); }
 
-    fn compose (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
+    fn compose (&self, _renderer: &Renderer, _value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, _children: &mut [Rope]) -> Rope { panic! ("Model is not composable"); }
 }
 
 
 
 
-pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Option<Twine>, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
+pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Option<Cow<'static, str>>, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Rope {
     if let Some (alias) = alias {
         if issue_tag {
             Rope::from (vec! [model_tag (model, tags), Node::Space, model_alias (model, alias), Node::Space, node])
@@ -112,37 +111,37 @@ pub fn model_issue_rope (model: &Model, node: Node, issue_tag: bool, alias: Opti
 
 
 
-pub fn model_alias (_model: &Model, alias: Twine) -> Node {
+pub fn model_alias (_model: &Model, alias: Cow<'static, str>) -> Node {
     match alias {
-        Twine::Static (alias) => Node::AmpersandString (EncodedString::from (alias.as_bytes ())),
-        Twine::String (alias) => Node::AmpersandString (EncodedString::from (alias.into_bytes ()))
+        Cow::Borrowed (alias) => Node::AmpersandString (EncodedString::from (alias.as_bytes ())),
+        Cow::Owned (alias) => Node::AmpersandString (EncodedString::from (alias.into_bytes ()))
     }
 }
 
 
 
-pub fn model_tag (model: &Model, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
-    match *model.get_tag () {
-        Twine::Static (tag) => _model_tag_static_str (tag, tags),
-        Twine::String (ref tag) => _model_tag_string (tag, tags)
+pub fn model_tag (model: &Model, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Node {
+    match model.get_tag () {
+        Cow::Borrowed (tag) => _model_tag_static_str (tag, tags),
+        Cow::Owned (ref tag) => _model_tag_string (tag, tags)
     }
 }
 
 
 
-fn _model_tag_static_str (tag: &'static str, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
+fn _model_tag_static_str (tag: &'static str, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Node {
     for &(ref shortcut, ref handle) in tags {
         let h = handle.as_ref ();
         if h.len () == 0 || h.contains (' ') { continue; }
 
         if tag.starts_with (h) {
             return match *shortcut {
-                Twine::Static (s) => {
+                Cow::Borrowed (s) => {
                     let f = s.as_bytes ();
                     let l = tag[h.len () ..].as_bytes ();
                     Node::StringConcat (EncodedString::from (f), EncodedString::from (l))
                 }
-                Twine::String (ref s) => {
+                Cow::Owned (ref s) => {
                     let mut string = Vec::with_capacity (s.len () + (tag.len () - h.len ()));
 
                     string.extend (s.as_bytes ());
@@ -159,14 +158,14 @@ fn _model_tag_static_str (tag: &'static str, tags: &mut Iterator<Item=&(Twine, T
 
 
 
-fn _model_tag_string (tag: &str, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Node {
+fn _model_tag_string (tag: &str, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Node {
     for &(ref shortcut, ref handle) in tags {
         let h = handle.as_ref ();
         if h.len () == 0 || h.contains (' ') { continue; }
 
         if tag.starts_with (h) {
             return match *shortcut {
-                Twine::Static (s) => {
+                Cow::Borrowed (s) => {
                     let f = s.as_bytes ();
                     let l = tag[h.len () ..].as_bytes ();
 
@@ -176,7 +175,7 @@ fn _model_tag_string (tag: &str, tags: &mut Iterator<Item=&(Twine, Twine)>) -> N
                     Node::String (EncodedString::from (string))
 
                 }
-                Twine::String (ref s) => {
+                Cow::Owned (ref s) => {
                     let mut string = Vec::with_capacity (s.len () + (tag.len () - h.len ()));
 
                     /*

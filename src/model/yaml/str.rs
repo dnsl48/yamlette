@@ -1,7 +1,6 @@
 extern crate skimmer;
 
 
-use txt::Twine;
 use txt::encoding::{ Unicode, UTF8 };
 
 use model::{ model_issue_rope, Model, Rope, Tagged, TaggedValue };
@@ -9,15 +8,14 @@ use model::renderer::{ EncodedString, Node, Renderer };
 use model::style::{ CommonStyles, Style };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::mem;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 use std::ptr;
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:str";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:str";
 
 
 // TODO: do warnings for incorrect escapes on decode (and encode)
@@ -29,7 +27,7 @@ pub struct Str;
 
 
 impl Str {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
     fn extract_hex_at (&self, src: &[u8], mut at: usize, mut len_limit: u8) -> Option<u32> {
         let mut result: u32 = 0;
@@ -59,7 +57,7 @@ impl Str {
 
 
     // TODO: redo it safely
-    unsafe fn encode_auto_quoted (&self, mut value: StrValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
+    unsafe fn encode_auto_quoted (&self, mut value: StrValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Rope {
         let issue_tag = value.issue_tag ();
         let alias = value.take_alias ();
         let string = value.take_twine ();
@@ -453,7 +451,7 @@ impl Str {
 
 
 impl Model for Str {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -470,7 +468,7 @@ impl Model for Str {
     fn get_default (&self) -> TaggedValue { TaggedValue::from (StrValue::from (String::new ())) }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let value: StrValue = match <TaggedValue as Into<Result<StrValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -1036,15 +1034,15 @@ impl Style for PreferDoubleQuotes {
 pub struct StrValue {
     style: u8,
 
-    alias: Option<Twine>,
+    alias: Option<Cow<'static, str>>,
 
-    value: Twine
+    value: Cow<'static, str>
 }
 
 
 
 impl StrValue {
-    pub fn new (val: Twine, styles: CommonStyles, alias: Option<Twine>) -> StrValue { StrValue {
+    pub fn new (val: Cow<'static, str>, styles: CommonStyles, alias: Option<Cow<'static, str>>) -> StrValue { StrValue {
         style: if styles.issue_tag () { 1 } else { 0 },
         alias: alias,
         value: val
@@ -1062,17 +1060,17 @@ impl StrValue {
 
     pub fn set_prefer_double_quotes (&mut self, val: bool) { if val { self.style |= 4; } else { self.style &= !4; } }
 
-    pub fn take_twine (&mut self) -> Twine { mem::replace (&mut self.value, Twine::empty ()) }
+    pub fn take_twine (&mut self) -> Cow<'static, str> { mem::replace (&mut self.value, Cow::from (String::with_capacity (0))) }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 
-    pub fn to_twine (self) -> Twine { self.value }
+    pub fn to_twine (self) -> Cow<'static, str> { self.value }
 }
 
 
 
 impl Tagged for StrValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -1082,24 +1080,24 @@ impl Tagged for StrValue {
 
 
 impl From<char> for StrValue {
-    fn from (value: char) -> StrValue { StrValue { style: 0, alias: None, value: Twine::from (value.to_string ()) } }
+    fn from (value: char) -> StrValue { StrValue { style: 0, alias: None, value: Cow::from (value.to_string ()) } }
 }
 
 
 
-impl From<Twine> for StrValue {
-    fn from (value: Twine) -> StrValue { StrValue { style: 0, alias: None, value: value } }
+impl From<Cow<'static, str>> for StrValue {
+    fn from (value: Cow<'static, str>) -> StrValue { StrValue { style: 0, alias: None, value: value } }
 }
 
 
 
 impl From<String> for StrValue {
-    fn from (value: String) -> StrValue { StrValue { style: 0, alias: None, value: Twine::from (value) } }
+    fn from (value: String) -> StrValue { StrValue { style: 0, alias: None, value: Cow::from (value) } }
 }
 
 
 impl From<&'static str> for StrValue {
-    fn from (value: &'static str) -> StrValue { StrValue { style: 0, alias: None, value: Twine::from (value) } }
+    fn from (value: &'static str) -> StrValue { StrValue { style: 0, alias: None, value: Cow::from (value) } }
 }
 
 
@@ -1177,7 +1175,7 @@ mod tests {
 
         for i in 0 .. ops.len () {
             if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
 
@@ -1221,7 +1219,7 @@ to a line feed, or 	\
 
         for i in 0 .. ops.len () {
             if let Ok (tagged) = str.decode (true, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: &str = tagged.as_any ().downcast_ref::<StrValue> ().unwrap ().as_ref ();
 

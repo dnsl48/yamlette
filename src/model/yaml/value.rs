@@ -1,20 +1,14 @@
 extern crate skimmer;
 
-// use self::skimmer::symbol::{ CopySymbol, Combo };
-
-
-use txt::Twine;
-
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:value";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:value";
 
 
 
@@ -24,44 +18,24 @@ pub struct Value;
 
 
 impl Value {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Value<Char, DoubleChar> {
-        Value {
-            encoding: cset.encoding,
-
-            marker: cset.equal,
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            _dchr: PhantomData
-        }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 }
 
 
 
 impl Model for Value {
-    // type Char = Char;
-    // type DoubleChar = DoubleChar;
-
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<ValueValue, TaggedValue>>>::into (value) {
             Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from ("=".as_bytes ()))) ),
             Err (value) => Err (value)
@@ -156,7 +130,7 @@ pub struct ValueValue;
 
 
 impl Tagged for ValueValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -211,7 +185,7 @@ mod tests {
         let value = Value; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = value.decode (true, "=".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
             if let None = tagged.as_any ().downcast_ref::<ValueValue> () { assert! (false) }
         } else { assert! (false) }

@@ -1,22 +1,17 @@
 extern crate skimmer;
 
-// use self::skimmer::symbol::{ CopySymbol, Combo };
-
-use txt::Twine;
-
 use model::{ model_alias, model_tag, Model, Rope, Renderer, Tagged, TaggedValue };
 use model::renderer::Node;
 use model::style::CommonStyles;
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:seq";
-pub static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:seq";
 
 
 
@@ -26,7 +21,7 @@ pub struct Seq;
 
 
 impl Seq {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 /*
     pub fn new (cset: &CharSet<Char, DoubleChar>) -> Seq<Char, DoubleChar> { Seq {
         encoding: cset.encoding,
@@ -39,7 +34,7 @@ impl Seq {
 
 
 impl Model for Seq {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -49,14 +44,14 @@ impl Model for Seq {
 
     fn is_sequence (&self) -> bool { true }
 
-    fn compose (&self, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+    fn compose (&self, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
         compose (self, renderer, value, tags, children)
     }
 }
 
 
 
-pub fn compose (model: &Model, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+pub fn compose (model: &Model, renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
     let value: SeqValue = match <TaggedValue as Into<Result<SeqValue, TaggedValue>>>::into (value) {
         Ok (value) => value,
         Err (_) => panic! ("Not a SeqValue")
@@ -81,7 +76,7 @@ pub fn compose (model: &Model, renderer: &Renderer, value: TaggedValue, tags: &m
 
 
 
-fn compose_empty (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Rope {
+fn compose_empty (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Rope {
     if let Some (alias) = value.take_alias () {
         if value.styles.issue_tag () {
             Rope::from (vec! [model_tag (model, tags), Node::Space, model_alias (model, alias), Node::Space, Node::SquareBrackets])
@@ -99,7 +94,7 @@ fn compose_empty (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&
 
 
 
-fn compose_flow_respect_threshold (model: &Model, renderer: &Renderer, mut value: SeqValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+fn compose_flow_respect_threshold (model: &Model, renderer: &Renderer, mut value: SeqValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let compact = value.styles.compact ();
     let threshold = value.styles.threshold () as usize;
@@ -173,7 +168,7 @@ fn compose_flow_respect_threshold (model: &Model, renderer: &Renderer, mut value
 
 
 
-fn compose_flow_no_threshold (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+fn compose_flow_no_threshold (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let compact = value.styles.compact ();
     let issue_tag = value.styles.issue_tag ();
@@ -229,7 +224,7 @@ fn compose_flow_no_threshold (model: &Model, mut value: SeqValue, tags: &mut Ite
 
 
 
-fn compose_flow_multiline (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+fn compose_flow_multiline (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let issue_tag = value.styles.issue_tag ();
     let alias = value.take_alias ();
@@ -280,7 +275,7 @@ fn compose_flow_multiline (model: &Model, mut value: SeqValue, tags: &mut Iterat
 
 
 
-fn compose_block (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Twine, Twine)>, children: &mut [Rope]) -> Rope {
+fn compose_block (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>, children: &mut [Rope]) -> Rope {
     let indent_len = value.styles.indent () as usize;
     let issue_tag = value.styles.issue_tag ();
     let alias = value.take_alias ();
@@ -336,21 +331,21 @@ fn compose_block (model: &Model, mut value: SeqValue, tags: &mut Iterator<Item=&
 #[derive (Debug)]
 pub struct SeqValue {
     styles: CommonStyles,
-    alias: Option<Twine>
+    alias: Option<Cow<'static, str>>
 }
 
 
 
 impl SeqValue {
-    pub fn new (styles: CommonStyles, alias: Option<Twine>) -> SeqValue { SeqValue { styles: styles, alias: alias } }
+    pub fn new (styles: CommonStyles, alias: Option<Cow<'static, str>>) -> SeqValue { SeqValue { styles: styles, alias: alias } }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 }
 
 
 
 impl Tagged for SeqValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 

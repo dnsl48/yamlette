@@ -1,8 +1,3 @@
-// extern crate skimmer;
-
-// use self::skimmer::symbol::{ Combo, CopySymbol };
-
-
 mod composer;
 mod conductor;
 mod performer;
@@ -13,8 +8,8 @@ pub mod chord;
 use self::conductor::{ Conductor, Hint, Message };
 
 use model::{ Renderer, CommonStyles, TaggedValue, Schema };
-use txt::Twine;
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::mpsc::{ sync_channel, Receiver, SyncSender };
 use std::thread::JoinHandle;
@@ -86,7 +81,7 @@ impl Orchestra {
     }
 
 
-    pub fn directive_tags (&self, tags: Vec<(Twine, Twine)>) -> Result<(), OrchError> {
+    pub fn directive_tags (&self, tags: Vec<(Cow<'static, str>, Cow<'static, str>)>) -> Result<(), OrchError> {
         self.pipe.send (Message::Hint (Hint::DirectiveTags (tags))).or_else (|_| {
             Err ( OrchError::Error ("Conductor has quit already".to_string ()) )
         })

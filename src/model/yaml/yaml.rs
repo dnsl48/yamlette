@@ -1,21 +1,14 @@
 extern crate skimmer;
 
-// use self::skimmer::symbol::{ CopySymbol, Combo };
-
-
-use txt::Twine;
-
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:yaml";
-static TWINE_TAG: Twine = Twine::Static (TAG);
-
+pub static TAG: &'static str = "tag:yaml.org,2002:yaml";
 
 
 
@@ -25,7 +18,7 @@ pub struct Yaml;
 
 
 impl Yaml {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
 
     /*
@@ -49,23 +42,18 @@ impl Yaml {
 
 
 impl Model for Yaml {
-    // type Char = Char;
-    // type DoubleChar = DoubleChar;
-
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<YamlValue, TaggedValue>>>::into (value) {
             Ok (yp) => Ok (Rope::from (Node::String (EncodedString::from (match yp {
                 YamlValue::Alias => "*".as_bytes (), // self.marker_alias.new_vec (),
@@ -174,7 +162,7 @@ pub enum YamlValue {
 
 
 impl Tagged for YamlValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -235,19 +223,19 @@ mod tests {
 
 
         if let Ok (tagged) = yaml.decode (true, "!".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
             if let Some (&YamlValue::Tag) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 
 
         if let Ok (tagged) = yaml.decode (true, "*".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
             if let Some (&YamlValue::Alias) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 
 
         if let Ok (tagged) = yaml.decode (true, "&".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
             if let Some (&YamlValue::Anchor) = tagged.as_any ().downcast_ref::<YamlValue> () {} else { assert! (false) }
         } else { assert! (false) }
 

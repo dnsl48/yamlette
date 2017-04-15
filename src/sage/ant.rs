@@ -10,8 +10,7 @@ use reader::{ Id, Block, BlockType, NodeKind };
 use sage::conveyor::Clue;
 use sage::YamlVersion;
 
-use txt::Twine;
-
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 use std::sync::mpsc::{ sync_channel, SyncSender, Receiver };
@@ -22,8 +21,8 @@ use std::thread::{ Builder, JoinHandle };
 
 #[derive (Debug)]
 pub enum Response {
-    Error (Id, Twine),
-    TagHandle (Id, Twine, Twine),
+    Error (Id, Cow<'static, str>),
+    TagHandle (Id, Cow<'static, str>, Cow<'static, str>),
     Alias (Id, String),
     Node (Id, Option<String>, Node)
 }
@@ -35,8 +34,8 @@ pub enum Node {
     MetaMap (Option<String>, Option<Id>),
     MetaSeq (Option<String>),
 
-    Dictionary (Twine, Option<Id>),
-    Sequence (Twine),
+    Dictionary (Cow<'static, str>, Option<Id>),
+    Sequence (Cow<'static, str>),
 
     Scalar (TaggedValue),
     Literal (String)
@@ -65,7 +64,7 @@ pub enum Request<D> {
 pub enum Signal<D> {
     Reset,
     Datum (D),
-    TagHandle (Arc<(Twine, Twine)>),
+    TagHandle (Arc<(Cow<'static, str>, Cow<'static, str>)>),
     Terminate,
     Version (YamlVersion)
 }
@@ -80,7 +79,7 @@ pub struct Ant<S, D> {
 
     data: Data<D>,
     schema: Arc<S>,
-    tag_handles: Vec<Arc<(Twine, Twine)>>,
+    tag_handles: Vec<Arc<(Cow<'static, str>, Cow<'static, str>)>>,
 
     yaml_version: YamlVersion
 }
@@ -97,7 +96,7 @@ impl<S, D> Ant<S, D>
         out: SyncSender<(u8, Clue)>,
         schema: Arc<S>,
         yaml_version: YamlVersion,
-        tag_handles: Vec<Arc<(Twine, Twine)>>
+        tag_handles: Vec<Arc<(Cow<'static, str>, Cow<'static, str>)>>
     )
         -> io::Result<(SyncSender<Message<D>>, JoinHandle<()>)>
     {
@@ -193,11 +192,11 @@ impl<S, D> Ant<S, D>
         let prefix: Result<String, ()> = model_literal.bytes_to_string (prefix.as_slice ());
 
         if shorthand.is_err () {
-            self.out.send ((self.idx, Clue::Response (Response::Error ( id, Twine::from ("Cannot decode shorthand") )))).unwrap ();
+            self.out.send ((self.idx, Clue::Response (Response::Error ( id, Cow::from ("Cannot decode shorthand") )))).unwrap ();
         } else if prefix.is_err () {
-            self.out.send ((self.idx, Clue::Response (Response::Error ( id, Twine::from ("Cannot decode prefix") )))).unwrap ();
+            self.out.send ((self.idx, Clue::Response (Response::Error ( id, Cow::from ("Cannot decode prefix") )))).unwrap ();
         } else {
-            self.out.send ((self.idx, Clue::Response (Response::TagHandle (id, Twine::from (shorthand.unwrap ()), Twine::from (prefix.unwrap ()))))).unwrap ();
+            self.out.send ((self.idx, Clue::Response (Response::TagHandle (id, Cow::from (shorthand.unwrap ()), Cow::from (prefix.unwrap ()))))).unwrap ();
         }
 
         Ok ( () )
@@ -259,7 +258,7 @@ impl<S, D> Ant<S, D>
 
         match alias {
             Ok (string) => self.out.send ((self.idx, Clue::Response (Response::Alias (id, string)))),
-            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Twine::from ("Cannot decode alias")))))
+            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Cow::from ("Cannot decode alias")))))
         }.unwrap ();
 
         Ok ( () )
@@ -272,7 +271,7 @@ impl<S, D> Ant<S, D>
 
         match literal {
             Ok (string) => self.out.send ((self.idx, Clue::Response (Response::Node (id, None, Node::Literal (string))))),
-            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Twine::from ("Cannot decode literal")))))
+            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Cow::from ("Cannot decode literal")))))
         }.unwrap ();
 
         Ok ( () )
@@ -284,7 +283,7 @@ impl<S, D> Ant<S, D>
 
         match literal {
             Ok (string) => self.out.send ((self.idx, Clue::Response (Response::Node (id, None, Node::Literal (string))))),
-            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Twine::from ("Cannot decode literal")))))
+            Err ( () ) => self.out.send ((self.idx, Clue::Response (Response::Error (id, Cow::from ("Cannot decode literal")))))
         }.unwrap ();
 
         Ok ( () )
@@ -299,7 +298,7 @@ impl<S, D> Ant<S, D>
             match result {
                 Ok (string) => Ok (Some (string)),
                 Err ( () ) => {
-                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from ("Cannot decode anchor"))))).unwrap ();
+                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Cow::from ("Cannot decode anchor"))))).unwrap ();
                     return Err ( () );
                 }
             }
@@ -314,7 +313,7 @@ impl<S, D> Ant<S, D>
 
             match result {
                 Err ( () ) => {
-                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from ("Cannot decode tag"))))).unwrap ();
+                    self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Cow::from ("Cannot decode tag"))))).unwrap ();
                     return Err ( () )
                 }
                 Ok (tag) => Some (tag)
@@ -332,7 +331,7 @@ impl<S, D> Ant<S, D>
 
         match model {
             None => {
-                self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Twine::from (format! ("Could not find appropriate model (tag {})", tag)))))).unwrap ();
+                self.out.send ((self.idx, Clue::Response (Response::Error (block_id.clone (), Cow::from (format! ("Could not find appropriate model (tag {})", tag)))))).unwrap ();
                 Err ( () )
             }
 
@@ -484,7 +483,7 @@ impl<S, D> Ant<S, D>
                                 (self.idx, Clue::Response (
                                     Response::Error (
                                         block_id,
-                                        Twine::from (format! (
+                                        Cow::from (format! (
                                             "Could not find appropriate model (tag {})",
                                             match tag {
                                                 Some (t) => t,
@@ -531,7 +530,7 @@ impl<S, D> Ant<S, D>
             let mut parts: Option<(&str, &str)> = None;
 
             for arc in self.tag_handles.iter ().rev () {
-                let prefix_value: &(Twine, Twine) = arc;
+                let prefix_value: &(Cow<'static, str>, Cow<'static, str>) = arc;
                 let prefix: &str = prefix_value.0.as_ref ();
 
                 if tag.starts_with (prefix) {
@@ -547,7 +546,8 @@ impl<S, D> Ant<S, D>
             if let Some ( (start, end) ) = parts {
                 if start.len () > 0 && end.len () > 0 && !start.contains(' ') {
                     if let Some (m) = schema.look_up_model_callback (&mut |m| {
-                        let t: &str = m.get_tag ().as_ref ();
+                        let t = m.get_tag ();
+                        let t: &str = t.as_ref ();
                         if t.len () == start.len () + end.len () && t.starts_with (start) && t.ends_with (end) && predicate (m, true) {
                             result = true;
                             true
@@ -557,7 +557,8 @@ impl<S, D> Ant<S, D>
                 } else if tag.len () > 0 && start.len () > 0 && end.len () == 0 {
                     for word in start.split_whitespace () {
                         if let Some (m) = schema.look_up_model_callback (&mut |m| {
-                            let t: &str = m.get_tag ().as_ref ();
+                            let t = m.get_tag ();
+                            let t: &str = t.as_ref ();
                             if t == word {
                                 if predicate (m, true) {
                                     result = true;
@@ -571,7 +572,8 @@ impl<S, D> Ant<S, D>
                     }
                 } else if tag.len () == 0 || (start.len () > 0 && (start.ends_with (":") || start.ends_with (","))) {
                     if let Some (m) = schema.look_up_model_callback (&mut |m| {
-                        let t: &str = m.get_tag ().as_ref ();
+                        let t = m.get_tag ();
+                        let t: &str = t.as_ref ();
                         if t.len () > start.len () && t.starts_with (start) && predicate (m, false) {
                             result = false;
                             true
@@ -598,7 +600,7 @@ impl<S, D> Ant<S, D>
         let mut parts: Option<(&str, &str)> = None;
 
         for arc in self.tag_handles.iter ().rev () {
-            let prefix_value: &(Twine, Twine) = arc;
+            let prefix_value: &(Cow<'static, str>, Cow<'static, str>) = arc;
             let prefix: &str = prefix_value.0.as_ref ();
             let value: &str = prefix_value.1.as_ref ();
 
@@ -616,12 +618,12 @@ impl<S, D> Ant<S, D>
     }
 
 
-    fn set_tag_handle (tag_handles: &mut Vec<Arc<(Twine, Twine)>>, tag_handle: Arc<(Twine, Twine)>) {
+    fn set_tag_handle (tag_handles: &mut Vec<Arc<(Cow<'static, str>, Cow<'static, str>)>>, tag_handle: Arc<(Cow<'static, str>, Cow<'static, str>)>) {
         let mut fnd: bool = false;
         let mut idx: usize = 0;
 
         for i in 0 .. tag_handles.len () {
-            let th: &(Twine, Twine) = &tag_handles[i];
+            let th: &(Cow<'static, str>, Cow<'static, str>) = &tag_handles[i];
 
             if th.0.as_ref () == *&tag_handle.0.as_ref () {
                 fnd = true;

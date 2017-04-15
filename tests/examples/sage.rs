@@ -9,7 +9,7 @@ macro_rules! sage {
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
@@ -30,7 +30,7 @@ macro_rules! sage_with_error {
         reader
             .read (
                 SliceReader::new ($src.as_bytes ()),
-                &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+                &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
             )
             .and_then (|_| { assert! (false, format! ("Must be an error in here; {}: {}", $err_pos, $err_desc)); Ok ( () ) })
             .or_else (|err| {
@@ -56,7 +56,7 @@ macro_rules! sage_bytes {
 
         reader.read (
             SliceReader::new ($src),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
@@ -826,8 +826,6 @@ mod stable {
 
     use self::yamlette::reader::Reader;
 
-    use self::yamlette::txt::Twine;
-
     use self::yamlette::model::Tagged;
 
     use self::yamlette::model::yaml::binary::BinaryValue;
@@ -842,6 +840,7 @@ mod stable {
     use self::yamlette::model::yaml::yaml::YamlValue;
     use self::yamlette::model::yamlette::incognitum::IncognitumValue;
 
+    use std::borrow::Cow;
     use std::f64;
     use std::sync::mpsc::channel;
 

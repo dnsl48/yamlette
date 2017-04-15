@@ -7,7 +7,7 @@ use book::word::Word;
 use model::yaml::seq;
 use model::yaml::map;
 
-use txt::Twine;
+use std::borrow::Cow;
 
 
 
@@ -72,19 +72,19 @@ impl Volume {
 
     fn process (&mut self, idea: Idea) {
         match idea {
-            Idea::Error (id, value) => self.gist.push ((None, id.level, Word::Err (Twine::from (value)))),
-            Idea::ReadError (id, _, string) => self.gist.push ((None, id.level, Word::Err (Twine::from (string)))),
-            Idea::ReadWarning (id, _, string) => self.gist.push ((None, id.level, Word::Wrn (Twine::from (string)))),
+            Idea::Error (id, value) => self.gist.push ((None, id.level, Word::Err (Cow::from (value)))),
+            Idea::ReadError (id, _, string) => self.gist.push ((None, id.level, Word::Err (Cow::from (string)))),
+            Idea::ReadWarning (id, _, string) => self.gist.push ((None, id.level, Word::Wrn (Cow::from (string)))),
 
             Idea::NodeLiteral (id, alias, value) => self.gist.push ((alias, id.level, Word::Str (value))),
             Idea::NodeScalar (id, alias, value) => self.gist.push ((alias, id.level, Word::extract_scalar (value))),
 
-            Idea::NodeSequence (id, alias, tag) => self.gist.push ((alias, id.level, Word::Seq (Twine::from (tag)))),
-            Idea::NodeMetaSeq (id, alias, None) => self.gist.push ((alias, id.level, Word::Seq (seq::TWINE_TAG.clone ()))),
-            Idea::NodeMetaSeq (id, alias, Some (tag)) => self.gist.push ((alias, id.level, Word::Seq (Twine::from (tag)))),
+            Idea::NodeSequence (id, alias, tag) => self.gist.push ((alias, id.level, Word::Seq (Cow::from (tag)))),
+            Idea::NodeMetaSeq (id, alias, None) => self.gist.push ((alias, id.level, Word::Seq (Cow::from (seq::TAG)))),
+            Idea::NodeMetaSeq (id, alias, Some (tag)) => self.gist.push ((alias, id.level, Word::Seq (Cow::from (tag)))),
 
             Idea::NodeDictionary (id, alias, _, firstborn_id) => {
-                self.gist.push ((alias, id.level, Word::Map (map::TWINE_TAG.clone ())));
+                self.gist.push ((alias, id.level, Word::Map (Cow::from (map::TAG))));
 
                 if firstborn_id.is_some () {
                     // TODO: check whether it's ALWAYS the previous node?
@@ -97,9 +97,9 @@ impl Volume {
 
             Idea::NodeMetaMap (id, alias, tag, firstborn_id) => {
                 if let Some (tag) = tag {
-                    self.gist.push ((alias, id.level, Word::Map (Twine::from (tag))));
+                    self.gist.push ((alias, id.level, Word::Map (Cow::from (tag))));
                 } else {
-                    self.gist.push ((alias, id.level, Word::Map (map::TWINE_TAG.clone ())));
+                    self.gist.push ((alias, id.level, Word::Map (Cow::from (map::TAG))));
                 }
 
                 if firstborn_id.is_some () {

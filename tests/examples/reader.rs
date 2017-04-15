@@ -10,7 +10,7 @@ macro_rules! read {
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         receiver
@@ -26,7 +26,7 @@ macro_rules! read_with_error {
         reader
             .read (
                 SliceReader::new ($src.as_bytes ()),
-                &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+                &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
             )
             .and_then (|_| { assert! (false, format! ("Must be an error in here; {}: {}", $err_pos, $err_desc)); Ok ( () ) })
             .or_else (|err| {
@@ -47,7 +47,7 @@ macro_rules! read_bytes {
 
         reader.read (
             SliceReader::new ($src),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         receiver
@@ -504,12 +504,11 @@ mod stable {
     use self::skimmer::Data;
     use self::skimmer::reader::SliceReader;
 
-    use self::yamlette::txt::Twine;
-
     use self::yamlette::reader::reader::BlockType;
     use self::yamlette::reader::reader::NodeKind;
     use self::yamlette::reader::reader::Reader;
 
+    use std::borrow::Cow;
     use std::sync::mpsc::channel;
 
 

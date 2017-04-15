@@ -237,24 +237,24 @@ impl Rope {
     }
 
 
-    pub fn unrope<'a, 'b, 'c> (&'a self, ptr: &'b mut &'a [Node], renderer: &'c Renderer, index: usize, threshold: usize) -> (usize, usize, bool) {
+    pub fn unrope<'a, 'b, 'c> (&'a self, ptr: &'b mut *const [Node], renderer: &'c Renderer, index: usize, threshold: usize) -> (usize, usize, bool) {
         match *self {
             Rope::Empty => {
-                *ptr = &[];
+                *ptr = &[] as *const [Node];
                 (0, 0, true)
             }
             Rope::Node (ref node) => {
                 if index == 0 {
-                    *ptr = node;
+                    *ptr = node as *const [Node];
                     (renderer.node_len (&node[0]), 0, true)
                 } else {
-                    *ptr = &[];
+                    *ptr = &[] as *const [Node];
                     (0, 0, true)
                 }
             }
             Rope::Many (ref nodes) => {
                 if index >= nodes.len () {
-                    *ptr = &[];
+                    *ptr = &[] as *const [Node];
                     (0, 0, true)
                 } else {
                     let len = nodes.len ();
@@ -283,7 +283,7 @@ impl Rope {
 
                     last += 1;
 
-                    *ptr = &nodes[first .. last];
+                    *ptr = &nodes[first .. last] as *const [Node];
                     (tot_len, last, last == len)
                 }
             }

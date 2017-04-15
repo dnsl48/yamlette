@@ -3,15 +3,13 @@ extern crate skimmer;
 use model::schema::Schema;
 use model::{ Model, TaggedValue };
 
-use txt::Twine;
-
 use sage::{ Idea, YamlVersion, SageError };
 
 use self::skimmer::{ Chunk, Data, Datum, Marker };
-// use self::skimmer::symbol::{ Combo, CopySymbol, Symbol };
 
 use reader::{ Block, BlockType, Node, NodeKind };
 
+use std::borrow::Cow;
 use std::marker::PhantomData;
 
 
@@ -20,7 +18,7 @@ pub struct Savant<S, D> {
     yaml_version: YamlVersion,
     data: Data<D>,
     schema: S,
-    tag_handles: Vec<(Twine, Twine)>,
+    tag_handles: Vec<(Cow<'static, str>, Cow<'static, str>)>,
     buf_literal_block: Option<(usize, Vec<Result<Marker, (u8, usize)>>)>,
     _datum: PhantomData<D>
 }
@@ -33,7 +31,7 @@ impl<S, D> Savant<S, D>
     D: Datum + 'static
 {
     pub fn new (schema: S) -> Savant<S, D> {
-        let mut tag_handles: Vec<(Twine, Twine)>;
+        let mut tag_handles: Vec<(Cow<'static, str>, Cow<'static, str>)>;
 
         {
             let th = schema.get_tag_handles ();
@@ -67,8 +65,8 @@ impl<S, D> Savant<S, D>
             BlockType::DirectiveYaml (version) => self.set_version (version),
 
             BlockType::DirectiveTag ( (tag, handle) ) => {
-                let s = Twine::from (self.read_literal (tag) ?);
-                let h = Twine::from (self.read_literal (handle) ?);
+                let s = Cow::from (self.read_literal (tag) ?);
+                let h = Cow::from (self.read_literal (handle) ?);
                 self.reg_tag_handle (s, h)
             }
 
@@ -124,14 +122,14 @@ impl<S, D> Savant<S, D>
 
 
     fn set_version (&mut self, version: (u8, u8)) -> Result<Option<Idea>, SageError> {
-        if version.0 != 1 { return Err (SageError::Error (Twine::from (format! ("Unsupported yaml version {}.{}", version.0, version.1)))) }
+        if version.0 != 1 { return Err (SageError::Error (Cow::from (format! ("Unsupported yaml version {}.{}", version.0, version.1)))) }
         let ver = if version.1 == 1 { YamlVersion::V1x1 } else { YamlVersion::V1x2 };
         self.yaml_version = ver;
         Ok (None)
     }
 
 
-    fn reg_tag_handle (&mut self, shorthand: Twine, prefix: Twine) -> Result<Option<Idea>, SageError> {
+    fn reg_tag_handle (&mut self, shorthand: Cow<'static, str>, prefix: Cow<'static, str>) -> Result<Option<Idea>, SageError> {
         let mut fnd: bool = false;
         let mut idx: usize = 0;
 
@@ -280,7 +278,7 @@ impl<S, D> Savant<S, D>
                 Some ( (model, explicit) ) => {
                     match self.decode (model, explicit, chunk) {
                         Ok ( v ) => v,
-                        Err ( () ) => return Err ( SageError::Error (Twine::from ("Could not decode value")) )
+                        Err ( () ) => return Err ( SageError::Error (Cow::from ("Could not decode value")) )
                     }
                 }
                 None => {
@@ -299,7 +297,7 @@ impl<S, D> Savant<S, D>
 
                     match meta {
                         Err ( _ ) => {
-                            return Err ( SageError::Error (Twine::from (format! (
+                            return Err ( SageError::Error (Cow::from (format! (
                                 "Could not find appropriate model (tag {})",
                                 match tag {
                                     Some (t) => t,
@@ -318,18 +316,18 @@ impl<S, D> Savant<S, D>
     }
 
 
-    fn read_map (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Twine, Option<String>), (Option<String>, Option<String>)>, SageError> {
+    fn read_map (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Cow<'static, str>, Option<String>), (Option<String>, Option<String>)>, SageError> {
         let anchor: Option<String> = self.read_anchor (anchor) ?;
         let tag: Option<String> = self.read_tag (tag) ?;
 
-        let (ftag, found): (Twine, bool) = if let Some (ref tag) = tag {
+        let (ftag, found): (Cow<'static, str>, bool) = if let Some (ref tag) = tag {
             // let empty = String::with_capacity (0);
             // let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
             if let Some ( (m, f) ) = self.lookup_model (tag, |m, _| { m.is_dictionary () }) {
                 (m.get_tag ().clone (), f)
             } else {
-                (Twine::empty (), false)
+                (Cow::from (String::with_capacity (0)), false)
             }
         } else {
             (self.schema.get_tag_model_map ().clone (), true)
@@ -343,18 +341,18 @@ impl<S, D> Savant<S, D>
     }
 
 
-    fn read_seq (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Twine, Option<String>), (Option<String>, Option<String>)>, SageError> {
+    fn read_seq (&self, anchor: Option<Marker>, tag: Option<Marker>) -> Result<Result<(Cow<'static, str>, Option<String>), (Option<String>, Option<String>)>, SageError> {
         let anchor: Option<String> = self.read_anchor (anchor) ?;
         let tag: Option<String> = self.read_tag (tag) ?;
 
-        let (ftag, found): (Twine, bool) = if let Some (ref tag) = tag {
+        let (ftag, found): (Cow<'static, str>, bool) = if let Some (ref tag) = tag {
             // let empty = String::with_capacity (0);
             // let tag: &String = if let Some (ref tag) = tag { tag } else { &empty };
 
             if let Some ( (m, f) ) = self.lookup_model (tag, |m, _| { m.is_sequence () }) {
                 (m.get_tag ().clone (), f)
             } else {
-                (Twine::empty (), false)
+                (Cow::from (String::with_capacity (0)), false)
             }
         } else {
             (self.schema.get_tag_model_seq ().clone (), true)
@@ -392,7 +390,7 @@ impl<S, D> Savant<S, D>
 
             match result {
                 Ok (string) => Ok (Some (string)),
-                Err ( () ) => Err ( SageError::Error (Twine::from ("Cannot decode anchor")) )
+                Err ( () ) => Err ( SageError::Error (Cow::from ("Cannot decode anchor")) )
             }
         } else { Ok (None) }
     }
@@ -405,7 +403,7 @@ impl<S, D> Savant<S, D>
 
             match result {
                 Ok (tag) => Ok (Some (tag)),
-                Err ( () ) => Err ( SageError::Error (Twine::from ("Cannot decode tag")) )
+                Err ( () ) => Err ( SageError::Error (Cow::from ("Cannot decode tag")) )
             }
         } else { Ok (None) }
     }
@@ -417,7 +415,7 @@ impl<S, D> Savant<S, D>
 
         match alias {
             Ok (alias) => Ok (alias),
-            Err ( () ) => Err ( SageError::Error (Twine::from ("Cannot decode alias")) )
+            Err ( () ) => Err ( SageError::Error (Cow::from ("Cannot decode alias")) )
         }
     }
 
@@ -428,7 +426,7 @@ impl<S, D> Savant<S, D>
 
         match literal {
             Ok (literal) => Ok (literal),
-            Err ( () ) => Err ( SageError::Error (Twine::from ("Cannot decode literal")) )
+            Err ( () ) => Err ( SageError::Error (Cow::from ("Cannot decode literal")) )
         }
     }
 
@@ -438,7 +436,7 @@ impl<S, D> Savant<S, D>
 
         match literal {
             Ok (literal) => Ok (literal),
-            Err ( () ) => Err ( SageError::Error (Twine::from ("Cannot decode literal")) )
+            Err ( () ) => Err ( SageError::Error (Cow::from ("Cannot decode literal")) )
         }
     }
 
@@ -449,7 +447,7 @@ impl<S, D> Savant<S, D>
         match model {
             Some ( (model, _) ) => Ok (model),
 
-            None => Err (SageError::Error (Twine::from (format! ("Could not find appropriate model (tag {})", tag))))
+            None => Err (SageError::Error (Cow::from (format! ("Could not find appropriate model (tag {})", tag))))
         }
     }
 
@@ -468,7 +466,7 @@ impl<S, D> Savant<S, D>
             let mut parts: Option<(&str, &str)> = None;
 
             for arc in self.tag_handles.iter ().rev () {
-                let prefix_value: &(Twine, Twine) = arc;
+                let prefix_value: &(Cow<'static, str>, Cow<'static, str>) = arc;
                 let prefix: &str = prefix_value.0.as_ref ();
 
                 if tag.starts_with (prefix) {
@@ -484,7 +482,8 @@ impl<S, D> Savant<S, D>
             if let Some ( (start, end) ) = parts {
                 if start.len () > 0 && end.len () > 0 && !start.contains(' ') {
                     if let Some (m) = self.schema.look_up_model_callback (&mut |m| {
-                        let t: &str = m.get_tag ().as_ref ();
+                        let t = m.get_tag ();
+                        let t: &str = t.as_ref ();
                         if t.len () == start.len () + end.len () && t.starts_with (start) && t.ends_with (end) && predicate (m, true) {
                             result = true;
                             true
@@ -494,7 +493,8 @@ impl<S, D> Savant<S, D>
                 } else if tag.len () > 0 && start.len () > 0 && end.len () == 0 {
                     for word in start.split_whitespace () {
                         if let Some (m) = self.schema.look_up_model_callback (&mut |m| {
-                            let t: &str = m.get_tag ().as_ref ();
+                            let t = m.get_tag ();
+                            let t: &str = t.as_ref ();
                             if t == word {
                                 if predicate (m, true) {
                                     result = true;
@@ -508,7 +508,8 @@ impl<S, D> Savant<S, D>
                     }
                 } else if tag.len () == 0 || (start.len () > 0 && (start.ends_with (":") || start.ends_with (","))) {
                     if let Some (m) = self.schema.look_up_model_callback (&mut |m| {
-                        let t: &str = m.get_tag ().as_ref ();
+                        let t = m.get_tag ();
+                        let t: &str = t.as_ref ();
                         if t.len () > start.len () && t.starts_with (start) && predicate (m, false) {
                             result = false;
                             true

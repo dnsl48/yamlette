@@ -9,13 +9,12 @@ use self::num::{ BigUint, ToPrimitive };
 use self::num::traits::Signed;
 
 
-use txt::Twine;
-
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem;
@@ -24,8 +23,7 @@ use std::iter::Iterator;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:float";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:float";
 
 
 
@@ -187,126 +185,12 @@ impl fmt::Display for Mint {
 
 
 #[derive (Clone, Copy)]
-pub struct Float; /* <Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    colon: Char,
-    dot: Char,
-    letter_e: Char,
-    letter_t_e: Char,
-    minus: Char,
-    plus: Char,
-    underscore: Char,
-    line_feed: Char,
-    carriage_return: Char,
-    space: Char,
-    tab_h: Char,
-
-    s_quote: Char,
-    d_quote: Char,
-
-    letter_n: Char,
-    letter_a: Char,
-    letter_t_n: Char,
-    letter_t_a: Char,
-
-    letter_i: Char,
-    letter_f: Char,
-    letter_t_i: Char,
-    letter_t_f: Char,
-
-    encoding: Encoding,
-
-    _dchr: PhantomData<DoubleChar>
-}
-*/
+pub struct Float;
 
 
 
 impl Float {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Float<Char, DoubleChar> {
-        Float {
-            encoding: cset.encoding,
-
-            letter_n: cset.letter_n,
-            letter_a: cset.letter_a,
-            letter_t_n: cset.letter_t_n,
-            letter_t_a: cset.letter_t_a,
-
-            letter_i: cset.letter_i,
-            letter_f: cset.letter_f,
-            letter_t_i: cset.letter_t_i,
-            letter_t_f: cset.letter_t_f,
-
-            colon: cset.colon,
-            dot: cset.full_stop,
-            letter_e: cset.letter_e,
-            letter_t_e: cset.letter_t_e,
-            minus: cset.hyphen_minus,
-            plus: cset.plus,
-            underscore: cset.low_line,
-            line_feed: cset.line_feed,
-            carriage_return: cset.carriage_return,
-            space: cset.space,
-            tab_h: cset.tab_h,
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            _dchr: PhantomData
-        }
-    }
-*/
-
-/*
-    fn inf (&self, value: &[u8], ptr: usize) -> usize {
-        if self.letter_i.contained_at (value, ptr) &&
-           self.letter_n.contained_at (value, ptr + self.letter_i.len ()) &&
-           self.letter_f.contained_at (value, ptr + self.letter_i.len () + self.letter_n.len ())
-        {
-            self.letter_i.len () + self.letter_n.len () + self.letter_f.len ()
-        } else
-        if self.letter_t_i.contained_at (value, ptr) {
-            if self.letter_n.contained_at (value, ptr + self.letter_t_i.len ()) &&
-               self.letter_f.contained_at (value, ptr + self.letter_t_i.len () + self.letter_n.len ())
-            {
-                self.letter_t_i.len () + self.letter_n.len () + self.letter_f.len ()
-            } else
-            if self.letter_t_n.contained_at (value, ptr + self.letter_t_i.len ()) &&
-               self.letter_t_f.contained_at (value, ptr + self.letter_t_i.len () + self.letter_t_n.len ())
-            {
-                self.letter_t_i.len () + self.letter_t_n.len () + self.letter_t_f.len ()
-            } else { 0 }
-        } else { 0 }
-    }
-*/
-
-/*
-    fn nan (&self, value: &[u8], ptr: usize) -> usize {
-        if self.letter_n.contained_at (value, ptr) &&
-           self.letter_a.contained_at (value, ptr + self.letter_n.len ()) &&
-           self.letter_n.contained_at (value, ptr + self.letter_n.len () + self.letter_a.len ())
-        {
-            self.letter_n.len () + self.letter_a.len () + self.letter_n.len ()
-        } else
-        if self.letter_t_n.contained_at (value, ptr) {
-            if self.letter_a.contained_at (value, ptr + self.letter_t_n.len ()) &&
-               self.letter_t_n.contained_at (value, ptr + self.letter_t_n.len () + self.letter_a.len ())
-            {
-                self.letter_t_n.len () + self.letter_a.len () + self.letter_t_n.len ()
-            } else
-            if self.letter_t_a.contained_at (value, ptr + self.letter_t_n.len ()) &&
-               self.letter_t_n.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_a.len ())
-            {
-                self.letter_t_n.len () + self.letter_t_a.len () + self.letter_t_n.len ()
-            } else { 0 }
-        } else { 0 }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], base60: bool, optional_dot: bool) -> Result<MaybeBigFraction, ()> {
@@ -621,7 +505,7 @@ impl Float {
 
 
 impl Model for Float {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -633,7 +517,7 @@ impl Model for Float {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let mut value: FloatValue = match <TaggedValue as Into<Result<FloatValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -792,7 +676,7 @@ impl From<Fraction> for MaybeBigFraction {
 #[derive (Clone, Debug)]
 pub struct FloatValue {
     style: u8,
-    alias: Option<Twine>,
+    alias: Option<Cow<'static, str>>,
     value: MaybeBigFraction
 }
 
@@ -801,9 +685,9 @@ pub struct FloatValue {
 impl FloatValue {
     fn new (value: MaybeBigFraction) -> FloatValue { FloatValue { style: 0, alias: None, value: value } }
 
-    pub fn set_alias (&mut self, alias: Option<Twine>) { self.alias = alias; }
+    pub fn set_alias (&mut self, alias: Option<Cow<'static, str>>) { self.alias = alias; }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 
     pub fn init_common_styles (&mut self, common_styles: CommonStyles) {
         self.set_issue_tag (common_styles.issue_tag ());
@@ -919,7 +803,7 @@ impl<'a> Into<Result<&'a Fraction, &'a FloatValue>> for &'a FloatValue {
 
 
 impl Tagged for FloatValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -988,7 +872,7 @@ mod tests {
     macro_rules! decoded_is_f64 {
         ($coder:expr, $str:expr, $val:expr) => {{
             if let Ok (tagged) = $coder.decode (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::from ($val));
@@ -997,7 +881,7 @@ mod tests {
 
         (11, $coder:expr, $str:expr, $val:expr) => {{
             if let Ok (tagged) = $coder.decode11 (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::from ($val));
@@ -1009,7 +893,7 @@ mod tests {
     macro_rules! decoded_is_frac {
         ($coder:expr, $str:expr, ($num:expr, $den:expr)) => {{
             if let Ok (tagged) = $coder.decode (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::new (BigUint::from ($num as u64), BigUint::from ($den as u64)));
@@ -1018,7 +902,7 @@ mod tests {
 
         (11, $coder:expr, $str:expr, ($num:expr, $den:expr)) => {{
             if let Ok (tagged) = $coder.decode11 (true, &$str.to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: BigFraction = tagged.as_any ().downcast_ref::<FloatValue> ().unwrap ().value.clone ().into ();
                 assert_eq! (val, BigFraction::new (BigUint::from ($num as u64), BigUint::from ($den as u64)));

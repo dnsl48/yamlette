@@ -9,7 +9,7 @@ macro_rules! sage {
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
@@ -31,7 +31,7 @@ macro_rules! sage11 {
 
         reader.read (
             SliceReader::new ($src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
 
         sage
@@ -65,8 +65,8 @@ mod stable {
     use self::yamlette::model::schema::core::Core;
     use self::yamlette::reader::Reader;
     use self::yamlette::sage::{ Sage, YamlVersion };
-    // use self::yamlette::tokenizer::Tokenizer;
-    use self::yamlette::txt::Twine;
+
+    use std::borrow::Cow;
     use std::sync::mpsc::channel;
 
 

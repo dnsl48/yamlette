@@ -3,20 +3,18 @@ extern crate skimmer;
 
 use self::num::{ BigInt, BigUint, ToPrimitive };
 
-use txt::Twine; 
-
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::fmt;
 use std::ops::{ AddAssign, MulAssign, Neg };
 use std::iter::Iterator;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:int";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:int";
 
 
 
@@ -165,33 +163,7 @@ pub struct Int; /*<Char, DoubleChar>
 
 
 impl Int {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Int<Char, DoubleChar> {
-        Int {
-            encoding: cset.encoding,
-
-            colon: cset.colon,
-            minus: cset.hyphen_minus,
-            plus: cset.plus,
-            underscore: cset.low_line,
-            line_feed: cset.line_feed,
-            carriage_return: cset.carriage_return,
-            space: cset.space,
-            tab_h: cset.tab_h,
-            letter_b: cset.letter_b,
-            letter_o: cset.letter_o,
-            letter_x: cset.letter_x,
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            digit_0: cset.digit_0,
-
-            _dchr: PhantomData
-        }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], sexagesimals: bool, shortocts: bool) -> Result<Mint, ()> {
@@ -451,7 +423,7 @@ impl Int {
 
 
 impl Model for Int {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -463,7 +435,7 @@ impl Model for Int {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<IntValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -495,7 +467,7 @@ impl Model for Int {
 #[derive (Clone, Debug)]
 pub struct IntValue {
     style: u8,
-    alias: Option<Twine>,
+    alias: Option<Cow<'static, str>>,
     value: Mint
 }
 
@@ -504,9 +476,9 @@ pub struct IntValue {
 impl IntValue {
     fn new (value: Mint) -> IntValue { IntValue { style: 0, alias: None, value: value } }
 
-    pub fn set_alias (&mut self, alias: Option<Twine>) { self.alias = alias; }
+    pub fn set_alias (&mut self, alias: Option<Cow<'static, str>>) { self.alias = alias; }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 
     pub fn init_common_styles (&mut self, common_styles: CommonStyles) {
         self.set_issue_tag (common_styles.issue_tag ());
@@ -540,7 +512,7 @@ impl ToPrimitive for IntValue {
 
 
 impl Tagged for IntValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -672,7 +644,7 @@ mod tests {
 
         for i in 0 .. options.len () {
             if let Ok (tagged) = int.decode (false, &options[i].to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let intval: Result<IntValue, _> = tagged.into ();
                 let intval = intval.unwrap ();
@@ -703,7 +675,7 @@ mod tests {
 
         for i in 0 .. options.len () {
             if let Ok (tagged) = int.decode11 (true, &options[i].to_string ().into_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let intval: Result<IntValue, _> = tagged.into ();
                 let intval = intval.unwrap ();
@@ -727,7 +699,7 @@ mod tests {
         let result = BigInt::from_str (option).unwrap ();
 
         if let Ok (tagged) = int.decode (true, &option.to_string ().into_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
             let intval: Result<IntValue, _> = tagged.into ();
             let intval = intval.unwrap ();

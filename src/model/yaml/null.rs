@@ -1,74 +1,27 @@
 extern crate skimmer;
 
 
-use txt::Twine;
-
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::default::Default;
 use std::iter::Iterator;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:null";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:null";
 
 
 
 #[derive (Copy, Clone, Debug)]
-pub struct Null; /*<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    s_quote: Char,
-    d_quote: Char,
-
-    tilde: Char,
-
-    letter_n: Char,
-    letter_u: Char,
-    letter_l: Char,
-
-    letter_t_n: Char,
-    letter_t_u: Char,
-    letter_t_l: Char,
-
-    encoding: Encoding,
-
-    _dchr: PhantomData<DoubleChar>
-}
-*/
+pub struct Null;
 
 
 
 impl Null {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Null<Char, DoubleChar> {
-        Null {
-            encoding: cset.encoding,
-
-            tilde: cset.tilde,
-
-            letter_n: cset.letter_n,
-            letter_u: cset.letter_u,
-            letter_l: cset.letter_l,
-
-            letter_t_n: cset.letter_t_n,
-            letter_t_u: cset.letter_t_u,
-            letter_t_l: cset.letter_t_l,
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            _dchr: PhantomData
-        }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
     fn read_null (&self, value: &[u8], ptr: usize) -> usize {
         match value.get (ptr).map (|b| *b) {
@@ -77,36 +30,13 @@ impl Null {
             Some (b'N') => if value[ptr .. ].starts_with ("Null".as_bytes ()) || value[ptr .. ].starts_with ("NULL".as_bytes ()) { 4 } else { 0 },
             _ => 0
         }
-
-        //      if self.tilde.contained_at (value, ptr) { self.tilde.len () }
-        // else if self.letter_n.contained_at (value, ptr) &&
-        //         self.letter_u.contained_at (value, ptr + self.letter_n.len ()) &&
-        //         self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len ()) &&
-        //         self.letter_l.contained_at (value, ptr + self.letter_n.len () + self.letter_u.len () + self.letter_l.len ())
-        //     {
-        //         self.letter_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
-        //     }
-        // else if self.letter_t_n.contained_at (value, ptr) {
-        //     if self.letter_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
-        //        self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len ()) &&
-        //        self.letter_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len ())
-        //     {
-        //         self.letter_t_n.len () + self.letter_u.len () + self.letter_l.len () + self.letter_l.len ()
-        //     } else
-        //     if self.letter_t_u.contained_at (value, ptr + self.letter_t_n.len ()) &&
-        //        self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len ()) &&
-        //        self.letter_t_l.contained_at (value, ptr + self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len ())
-        //     {
-        //         self.letter_t_n.len () + self.letter_t_u.len () + self.letter_t_l.len () + self.letter_t_l.len ()
-        //     } else { 0 }
-        // } else { 0 }
     }
 }
 
 
 
 impl Model for Null {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -123,7 +53,7 @@ impl Model for Null {
     fn get_default (&self) -> TaggedValue { TaggedValue::from (NullValue::default ()) }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let mut val: NullValue = match <TaggedValue as Into<Result<NullValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -222,18 +152,18 @@ impl Model for Null {
 #[derive (Clone, Debug)]
 pub struct NullValue {
     style: u8,
-    alias: Option<Twine>
+    alias: Option<Cow<'static, str>>
 }
 
 
 
 impl NullValue {
-    pub fn new (styles: CommonStyles, alias: Option<Twine>) -> NullValue { NullValue {
+    pub fn new (styles: CommonStyles, alias: Option<Cow<'static, str>>) -> NullValue { NullValue {
         style: if styles.issue_tag () { 1 } else { 0 },
         alias: alias
     } }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 
     pub fn issue_tag (&self) -> bool { self.style & 1 == 1 }
 
@@ -247,7 +177,7 @@ impl Default for NullValue {
 
 
 impl Tagged for NullValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -305,7 +235,7 @@ mod tests {
 
         for i in 0 .. options.len () {
             if let Ok (tagged) = null.decode (true, options[i].as_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 if let None = tagged.as_any ().downcast_ref::<NullValue> () { assert! (false) }
             } else { assert! (false) }

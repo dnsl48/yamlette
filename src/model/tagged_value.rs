@@ -19,10 +19,9 @@ use model::yaml::yaml::YamlValue;
 use model::yamlette::literal::LiteralValue;
 use model::yamlette::incognitum::IncognitumValue;
 
-use txt::Twine;
 
 use std::any::Any;
-
+use std::borrow::Cow;
 
 
 
@@ -47,13 +46,13 @@ pub enum TaggedValue {
     Literal (LiteralValue),
     Incognitum (IncognitumValue),
 
-    Other (Twine, Box<Any + Send>)
+    Other (Cow<'static, str>, Box<Any + Send>)
 }
 
 
 
 impl TaggedValue {
-    pub fn new (tag: Twine, value: Box<Any + Send>) -> Self {
+    pub fn new (tag: Cow<'static, str>, value: Box<Any + Send>) -> Self {
         TaggedValue::Other (tag, value)
     }
 
@@ -87,7 +86,7 @@ impl TaggedValue {
 
 
 impl Tagged for TaggedValue {
-    fn get_tag (&self) -> &Twine {
+    fn get_tag (&self) -> Cow<'static, str> {
         match *self {
             TaggedValue::Binary (ref v) => v.get_tag (),
             TaggedValue::Bool (ref v) => v.get_tag (),
@@ -108,7 +107,7 @@ impl Tagged for TaggedValue {
             TaggedValue::Literal (ref v) => v.get_tag (),
             TaggedValue::Incognitum (ref v) => Tagged::get_tag (v),
 
-            TaggedValue::Other (ref tag, _) => tag
+            TaggedValue::Other (ref tag, _) => tag.clone ()
         }
     }
 

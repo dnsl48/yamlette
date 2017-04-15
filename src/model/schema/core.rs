@@ -25,8 +25,7 @@ use model::yaml::binary::Binary;
 use model::yamlette::literal::Literal;
 use model::yamlette::incognitum::Incognitum;
 
-use txt::Twine;
-
+use std::borrow::Cow;
 use std::clone::Clone;
 use std::default::Default;
 
@@ -34,7 +33,7 @@ use std::default::Default;
 // #[derive (Clone)]
 pub struct Core {
     styles: CommonStyles,
-    tag_handles: [(Twine, Twine); 3],
+    tag_handles: [(Cow<'static, str>, Cow<'static, str>); 3],
 
     mod_map: Map,
     mod_set: Set,
@@ -70,13 +69,13 @@ impl Schema for Core {
     #[inline (always)]
     fn get_yaml_version (&self) -> (u8, u8) { (1, 2) }
 
-    fn get_tag_handles (&self) -> &[(Twine, Twine)] { &self.tag_handles }
+    fn get_tag_handles (&self) -> &[(Cow<'static, str>, Cow<'static, str>)] { &self.tag_handles }
 
     #[inline (always)]
-    fn get_tag_model_map (&self) -> &Twine { Map::get_tag () }
+    fn get_tag_model_map (&self) -> Cow<'static, str> { Map::get_tag () }
 
     #[inline (always)]
-    fn get_tag_model_seq (&self) -> &Twine { Seq::get_tag () }
+    fn get_tag_model_seq (&self) -> Cow<'static, str> { Seq::get_tag () }
 
 
     fn look_up_model<'a, 'b> (&'a self, tag: &'b str) -> Option<&'a Model> {
@@ -157,9 +156,9 @@ impl Core {
         styles: CommonStyles::default (),
 
         tag_handles: [
-            (Twine::from ("!!"), Twine::from ("tag:yaml.org,2002:")),
-            (Twine::from ("!"), Twine::from ("tag:yaml.org,2002:str tag:yaml.org,2002:seq tag:yaml.org,2002:map")),
-            (Twine::from (""), Twine::from (""))
+            (Cow::from ("!!"), Cow::from ("tag:yaml.org,2002:")),
+            (Cow::from ("!"), Cow::from ("tag:yaml.org,2002:str tag:yaml.org,2002:seq tag:yaml.org,2002:map")),
+            (Cow::from (""), Cow::from (""))
         ],
 
         // models: None

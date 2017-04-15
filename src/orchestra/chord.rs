@@ -22,9 +22,7 @@ use model::yaml::str::StrValue;
 
 use orchestra::{ Orchestra, OrchError };
 
-use txt::Twine;
-
-use std::borrow::Borrow;
+use std::borrow::{ Borrow, Cow };
 use std::collections::{ BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque, LinkedList };
 use std::hash::Hash;
 
@@ -50,7 +48,7 @@ pub fn apply_styles (tagged: &mut Tagged, styles: &mut [&mut Style]) {
 pub trait Chord {
     fn chord_size (&self) -> usize;
 
-    fn play (self, &Orchestra, level: usize, alias: Option<Twine>, CommonStyles, &mut [&mut Style]) -> Result<(), OrchError>;
+    fn play (self, &Orchestra, level: usize, alias: Option<Cow<'static, str>>, CommonStyles, &mut [&mut Style]) -> Result<(), OrchError>;
 }
 
 
@@ -58,7 +56,7 @@ pub trait Chord {
 impl Chord for EmptyList {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -71,7 +69,7 @@ impl Chord for EmptyList {
 impl Chord for EmptyDict {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = MapValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -84,7 +82,7 @@ impl Chord for EmptyDict {
 impl Chord for bool {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = BoolValue::new (self, cs, alias);
         apply_styles (&mut val, vs);
 
@@ -97,8 +95,8 @@ impl Chord for bool {
 impl Chord for char {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
-        let mut val = StrValue::new (Twine::from (self.to_string ()), cs, alias);
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        let mut val = StrValue::new (Cow::from (self.to_string ()), cs, alias);
         apply_styles (&mut val, vs);
 
         orchestra.play (level, TaggedValue::from (val))
@@ -110,8 +108,8 @@ impl Chord for char {
 impl Chord for &'static str {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
-        let mut val = StrValue::new (Twine::from (self), cs, alias);
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        let mut val = StrValue::new (Cow::from (self), cs, alias);
         apply_styles (&mut val, vs);
 
         orchestra.play (level, TaggedValue::from (val))
@@ -123,8 +121,8 @@ impl Chord for &'static str {
 impl Chord for String {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
-        let mut val = StrValue::new (Twine::from (self), cs, alias);
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        let mut val = StrValue::new (Cow::from (self), cs, alias);
         apply_styles (&mut val, vs);
 
         orchestra.play (level, TaggedValue::from (val))
@@ -139,7 +137,7 @@ macro_rules! int_impl_for {
         impl Chord for $t {
             fn chord_size (&self) -> usize { 1 }
 
-            fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+            fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
                 let mut val = IntValue::from (self);
 
                 val.init_common_styles (cs);
@@ -163,7 +161,7 @@ macro_rules! float_impl_for {
         impl Chord for $t {
             fn chord_size (&self) -> usize { 1 }
 
-            fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+            fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
                 let mut val = FloatValue::from (self);
 
                 val.init_common_styles (cs);
@@ -184,7 +182,7 @@ float_impl_for! (f32, f64, Fraction, BigFraction);
 impl Chord for () {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = NullValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -197,7 +195,7 @@ impl Chord for () {
 impl Chord for BinaryValue {
     fn chord_size (&self) -> usize { 1 }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = binary::BinaryValue::new (self.0, cs, alias);
         apply_styles (&mut val, vs);
 
@@ -214,7 +212,7 @@ impl<T> Chord for Vec<T> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -237,7 +235,7 @@ impl<T> Chord for VecDeque<T> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -260,7 +258,7 @@ impl<T> Chord for LinkedList<T> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -283,7 +281,7 @@ impl<T> Chord for BinaryHeap<T> where T: Chord + Ord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -313,7 +311,7 @@ impl<K, V> Chord for HashMap<K, V>
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = MapValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -344,7 +342,7 @@ impl<K, V> Chord for BTreeMap<K, V>
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = MapValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -372,7 +370,7 @@ impl<K, V> Chord for Omap<BTreeMap<K, V>> where K: Chord, V: Chord {
     }
 
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = OmapValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -399,7 +397,7 @@ impl<K, V> Chord for Pairs<BTreeMap<K, V>>  where K: Chord, V: Chord {
     }
 
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = PairsValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -427,7 +425,7 @@ impl<K, V> Chord for Omap<Vec<(K, V)>> where K: Chord, V: Chord {
     }
 
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = OmapValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -455,7 +453,7 @@ impl<K, V> Chord for Pairs<Vec<(K, V)>> where K: Chord, V: Chord {
     }
 
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = PairsValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -479,7 +477,7 @@ impl<T> Chord for HashSet<T> where T: Chord + Eq + Hash {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -502,7 +500,7 @@ impl<T> Chord for BTreeSet<T> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SeqValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -525,7 +523,7 @@ impl<T> Chord for Set<HashSet<T>> where T: Chord + Eq + Hash {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SetValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -548,7 +546,7 @@ impl<T> Chord for Set<BTreeSet<T>> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SetValue::new (cs, alias);
         apply_styles (&mut val, vs);
 
@@ -571,7 +569,7 @@ impl<T> Chord for Set<Vec<T>> where T: Chord {
         len
     }
 
-    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Twine>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = SetValue::new (cs, alias);
         apply_styles (&mut val, vs);
 

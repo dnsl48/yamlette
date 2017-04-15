@@ -1,69 +1,32 @@
 extern crate skimmer;
 
 
-use txt::Twine;
-
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:merge";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:merge";
 
 
 
 
 #[derive (Clone, Copy)]
-pub struct Merge; /* <Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    encoding: Encoding,
-
-    marker: DoubleChar,
-
-    s_quote: Char,
-    d_quote: Char,
-
-    line_feed: Char,
-    carriage_return: Char,
-    space: Char,
-    tab_h: Char
-}
-*/
+pub struct Merge;
 
 
 
 impl Merge {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Merge<Char, DoubleChar> {
-        Merge {
-            encoding: cset.encoding,
-
-            marker: DoubleChar::combine (&[ cset.less_than, cset.less_than ]),
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            line_feed: cset.line_feed,
-            carriage_return: cset.carriage_return,
-            space: cset.space,
-            tab_h: cset.tab_h
-        }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 }
 
 
 
 impl Model for Merge {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -75,7 +38,7 @@ impl Model for Merge {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<MergeValue, TaggedValue>>>::into (value) {
             Ok (_) => Ok ( Rope::from (Node::String (EncodedString::from ("<<".as_bytes ()))) ),
             Err (value) => Err (value)
@@ -193,7 +156,7 @@ pub struct MergeValue;
 
 
 impl Tagged for MergeValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -243,7 +206,7 @@ mod tests {
         let merge = Merge; // ::new (&get_charset_utf8 ());
 
         if let Ok (tagged) = merge.decode (true, "<<".as_bytes ()) {
-            assert_eq! (tagged.get_tag (), &TWINE_TAG);
+            assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
             if let None = tagged.as_any ().downcast_ref::<MergeValue> () { assert! (false) }
         } else { assert! (false) }

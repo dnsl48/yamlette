@@ -55,9 +55,9 @@ macro_rules! yamlette_compose {
         let _tags_count = yamlette_compose! ( directives ; tags count ; $directives );
 
         if _tags_count > 0 {
-            use $crate::txt::Twine;
+            use std::borrow::Cow;
 
-            let mut _tags: Vec<(Twine, Twine)> = Vec::with_capacity (_tags_count);
+            let mut _tags: Vec<(Cow<'static, str>, Cow<'static, str>)> = Vec::with_capacity (_tags_count);
             yamlette_compose! ( directives ; collect tags ; _tags ; $directives ); 
             $orchestra.directive_tags (_tags).ok ().unwrap ();
         }
@@ -75,7 +75,7 @@ macro_rules! yamlette_compose {
     ( directives ; tag count ; $directive:tt ) => { 0 };
 
     ( directives ; collect tags ; $vec:expr ; [ $( $directive:tt ),* ] ) => { $( yamlette_compose! ( directive ; collect tags ; $vec ; $directive ); )* };
-    ( directive ; collect tags ; $vec:expr ; (TAG ; $shortcut:expr , $handle:expr ) ) => { $vec.push ( (Twine::from ($shortcut) , Twine::from ($handle)) ); };
+    ( directive ; collect tags ; $vec:expr ; (TAG ; $shortcut:expr , $handle:expr ) ) => { $vec.push ( (Cow::from ($shortcut) , Cow::from ($handle)) ); };
     ( directive ; collect tags ; $vec:expr ; $directive:tt ) => {{ }};
 
     ( directives ; others ; $orchestra:expr ; [ $( $directive:tt ),* ] ) => {{ $( yamlette_compose! ( directive ; others ; $orchestra ; $directive ); )* }};
@@ -271,13 +271,13 @@ macro_rules! yamlette_compose {
     }};
 
     ( play ; $orchestra:expr ; $level:expr ; ( & $new_alias:ident $element:tt ) ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{
-        use $crate::txt::Twine;
-        yamlette_compose! ( play ; $orchestra ; $level ; $element ; $common_styles ; $styles ; Some (Twine::from (stringify! ($new_alias))) );
+        use std::borrow::Cow;
+        yamlette_compose! ( play ; $orchestra ; $level ; $element ; $common_styles ; $styles ; Some (Cow::from (stringify! ($new_alias))) );
     }};
 
     ( play ; $orchestra:expr ; $level:expr ; ( & $new_alias:ident $element:expr ) ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{
-        use $crate::txt::Twine;
-        yamlette_compose! ( play ; $orchestra ; $level ; $element ; $common_styles ; $styles ; Some (Twine::from (stringify! ($new_alias))) );
+        use std::borrow::Cow;
+        yamlette_compose! ( play ; $orchestra ; $level ; $element ; $common_styles ; $styles ; Some (Cow::from (stringify! ($new_alias))) );
     }};
 
     ( play ; $orchestra:expr ; $level:expr ; ( * $link:ident ) ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{

@@ -9,9 +9,7 @@ use self::skimmer::{ Data, Datum, Marker, Read /*, Rune*/ };
 
 use reader::tokenizer::{ self, Token };
 
-use txt::Twine;
-
-
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 
@@ -42,7 +40,7 @@ fn off<T: BitAnd<Output=T> + Not<Output=T> + Eq + Copy> (state: &mut T, val: T) 
 #[derive (Debug)]
 pub struct ReadError {
     pub position: usize,
-    pub description: Twine
+    pub description: Cow<'static, str>
 }
 
 
@@ -64,7 +62,7 @@ impl Error for ReadError {
 
 
 impl ReadError {
-    pub fn new<T> (description: T) -> ReadError where T: Into<Twine> { ReadError { description: description.into (), position: 0 } }
+    pub fn new<T> (description: T) -> ReadError where T: Into<Cow<'static, str>> { ReadError { description: description.into (), position: 0 } }
 
     pub fn pos (mut self, pos: usize) -> ReadError {
         self.position = pos;
@@ -126,8 +124,8 @@ pub enum BlockType<D> {
 
     Node (Node),
 
-    Error (Twine, usize),
-    Warning (Twine, usize),
+    Error (Cow<'static, str>, usize),
+    Warning (Cow<'static, str>, usize),
 
     StreamEnd,
     Datum (D)
@@ -262,7 +260,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_block<D: Datum + 'static> (&mut self, block: Block<D>, callback: &mut FnMut (Block<D>) -> Result<(), Twine>) -> Result<(), ReadError> {
+    fn yield_block<D: Datum + 'static> (&mut self, block: Block<D>, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         // self.timer.stamp ("reader->yblock");
         if let Err (error) = callback (block) {
             // self.timer.stamp ("reader->yblock");
@@ -274,7 +272,7 @@ impl Reader {
     }
 
 
-    pub fn read<D: Datum + 'static, R: Read<Datum=D>> (&mut self, mut reader: R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>) -> Result<(), ReadError> {
+    pub fn read<D: Datum + 'static, R: Read<Datum=D>> (&mut self, mut reader: R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         // self.timer.stamp ("reader");
 
         let mut ctx: Context<D> = Context::zero ();
@@ -311,7 +309,7 @@ impl Reader {
     }
 
 
-    fn consume<D, R> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, len: usize, chars: usize) -> Result<Marker, ReadError>
+    fn consume<D, R> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, len: usize, chars: usize) -> Result<Marker, ReadError>
       where
         D: Datum + 'static,
         R: Read<Datum=D>
@@ -340,7 +338,7 @@ impl Reader {
     }
 
 
-    fn yield_stream_end<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Twine>) -> Result<(), ReadError> {
+    fn yield_stream_end<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         self.index = 0;
         self.line = 0;
         self.cursor = 0;
@@ -350,7 +348,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_null<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn yield_null<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
             anchor: None,
@@ -361,7 +359,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_error<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
+    fn yield_error<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Error (message.clone (), pos)), callback) ?;
 
@@ -370,14 +368,14 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_warning<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, id: Id, message: Twine) -> Result<(), ReadError> {
+    fn yield_warning<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Warning (message.clone (), pos)), callback)
     }
 
 
     #[inline (always)]
-    fn read_layer_propagated<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
+    fn read_layer_propagated<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
         let mut cur_idx = self.index;
         self.read_layer (reader, callback, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
     }
@@ -387,7 +385,7 @@ impl Reader {
     fn read_layer_expected<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -402,7 +400,7 @@ impl Reader {
     fn read_layer<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -459,7 +457,7 @@ impl Reader {
                             return self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from ("The YAML directive must only be given at most once per document")
+                                Cow::from ("The YAML directive must only be given at most once per document")
                             );
                         }
 
@@ -484,7 +482,7 @@ impl Reader {
                             try! (self.yield_warning (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from (format! ("Unknown directive at the line {}", line))
+                                Cow::from (format! ("Unknown directive at the line {}", line))
                             ));
 
                             self.skip (reader, len, chars);
@@ -695,7 +693,7 @@ impl Reader {
 
                         _ => {
                             let idx = self.get_idx ();
-                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0001"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Unexpected token / 0001"))
                         }
                     }
                     break;
@@ -722,7 +720,7 @@ impl Reader {
     fn read_scalar_block_literal<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -1015,7 +1013,7 @@ impl Reader {
     fn read_scalar_block<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -1171,7 +1169,7 @@ impl Reader {
 
                         _ if not (state, HEAD_PASSED) => {
                             let idx = self.get_idx ();
-                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0002"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Unexpected token / 0002"))
                         }
 
                         _ if not (state, FOLDED) => return self.read_scalar_block_literal (
@@ -1249,7 +1247,7 @@ impl Reader {
     }
 
 
-    fn read_seq_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_seq_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         let mut ctx = Context::new (ctx, ContextKind::SequenceBlock, self.cursor, level);
 
         const INDENT_PASSED: u8 = 1; // Indentation has been passed for the line
@@ -1368,7 +1366,7 @@ impl Reader {
     fn read_seq_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         idx: usize,
         level: usize,
@@ -1545,17 +1543,17 @@ impl Reader {
     }
 
     #[inline (always)]
-    fn read_map_block_explicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_map_block_explicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 1, accel, None)
     }
 
     #[inline (always)]
-    fn read_map_block_implicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_map_block_implicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 15, accel, Some (indent))
     }
 
 
-    fn read_map_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
+    fn read_map_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
         let mut ctx = Context::new (ctx, ContextKind::MappingBlock, if indent.is_some () { *indent.as_ref ().unwrap () } else { self.cursor }, level);
         const INDENT_PASSED: u8 = 1;
         const QST_PASSED: u8 = 2;
@@ -1799,7 +1797,7 @@ impl Reader {
 
                         _ => {
                             let idx = self.get_idx ();
-                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected token / 0003"))
+                            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Unexpected token / 0003"))
                         }
                     }
 
@@ -1815,7 +1813,7 @@ impl Reader {
     fn read_map_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         idx: usize,
         level: usize,
@@ -1941,11 +1939,11 @@ impl Reader {
 
 
 
-    fn read_directive_yaml<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_yaml<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         tokenizer::get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
-                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %YAML directive")).unwrap_err ()
+                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Unexpected end of the document while parse %YAML directive")).unwrap_err ()
             })
             .and_then (|(token, len, chars)| {
                 match token {
@@ -1954,12 +1952,12 @@ impl Reader {
                         tokenizer::get_token (reader)
                             .ok_or_else (|| {
                                 let idx = self.get_idx ();
-                                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Cannot read the version part of the %YAML directive")).unwrap_err ()
+                                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Cannot read the version part of the %YAML directive")).unwrap_err ()
                             })
                     }
                     _ => {
                         let idx = self.get_idx ();
-                        Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Any %YAML directive should be followed by some space characters")).unwrap_err ())
+                        Err (self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Any %YAML directive should be followed by some space characters")).unwrap_err ())
                     }
                 }
             }).and_then (|(_, len, chars)| {
@@ -1978,7 +1976,7 @@ impl Reader {
 
 
 /*
-    fn check_bom<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize, len: usize) -> Result<(), ReadError> {
+    fn check_bom<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, len: usize) -> Result<(), ReadError> {
         let is_my_bom = {
             let bom = reader.slice (len).unwrap ();
             tokenizer::cset.encoding.check_bom (bom)
@@ -1989,7 +1987,7 @@ impl Reader {
             return self.yield_error (
                 callback,
                 Id { level: level, parent: parent_idx, index: idx },
-                Twine::from ("Found a BOM of another encoding")
+                Cow::from ("Found a BOM of another encoding")
             )
         }
 
@@ -1998,10 +1996,10 @@ impl Reader {
 */
 
 
-    fn check_yaml_version<D: Datum + 'static> (&mut self, ctx: &mut Context<D>, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
+    fn check_yaml_version<D: Datum + 'static> (&mut self, ctx: &mut Context<D>, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
         enum R {
-            Err (Twine),
-            Warn (Twine, (u8, u8))
+            Err (Cow<'static, str>),
+            Warn (Cow<'static, str>, (u8, u8))
         };
 
         let result = {
@@ -2023,55 +2021,55 @@ impl Reader {
             /*
             if let Some ( (digit_first, digit_first_len) ) = tokenizer::cset.extract_dec (chunk_slice) {
                 if digit_first != 1 || !tokenizer::cset.full_stop.contained_at (chunk_slice, digit_first_len) {
-                    R::Err (Twine::from ("%YAML major version is not supported"))
+                    R::Err (Cow::from ("%YAML major version is not supported"))
                 } else {
                     if let Some ( (digit_second, digit_second_len) ) = tokenizer::cset.extract_dec_at (chunk_slice, digit_first_len + tokenizer::cset.full_stop.len ()) {
                         if chunk_slice.len () > digit_first_len + digit_second_len + tokenizer::cset.full_stop.len () {
-                            R::Warn (Twine::from ("%YAML minor version is not fully supported"), (digit_first, 3))
+                            R::Warn (Cow::from ("%YAML minor version is not fully supported"), (digit_first, 3))
                         } else {
                             if digit_second == 1 {
-                                R::Warn ( Twine::from (format! (
+                                R::Warn ( Cow::from (format! (
                                     "{}. {}.",
                                     "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
                                     "This means that non-ASCII line-breaks are considered to be non-break characters"
                                 )), (digit_first, digit_second) )
                             } else {
-                                R::Err (Twine::from ("%YAML minor version is not supported"))
+                                R::Err (Cow::from ("%YAML minor version is not supported"))
                             }
                         }
                     } else {
-                        R::Err ( Twine::from ("%YAML version is malformed") )
+                        R::Err ( Cow::from ("%YAML version is malformed") )
                     }
                 }
             } else {
-                R::Err ( Twine::from ("%YAML version is malformed") )
+                R::Err ( Cow::from ("%YAML version is malformed") )
             }
             */
             if let Some (val @ b'0' ... b'9') = chunk_slice.get (0).map (|b| *b) {
                 let digit_first = val - b'0';
                 if digit_first != 1 || chunk_slice.get (1).map (|b| *b) != Some (b'.') {
-                    R::Err (Twine::from ("%YAML major version is not supported"))
+                    R::Err (Cow::from ("%YAML major version is not supported"))
                 } else {
                     if let Some (val @ b'0' ... b'9') = chunk_slice.get (2).map (|b| *b) {
                         if chunk_slice.len () > 3 {
-                            R::Warn (Twine::from ("%YAML minor version is not fully supported"), (digit_first, 3))
+                            R::Warn (Cow::from ("%YAML minor version is not fully supported"), (digit_first, 3))
                         } else {
                             let digit_second = val - b'0';
                             if digit_second == 1 {
-                                R::Warn ( Twine::from (format! (
+                                R::Warn ( Cow::from (format! (
                                     "{}. {}.",
                                     "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
                                     "This means that non-ASCII line-breaks are considered to be non-break characters"
                                 )), (digit_first, digit_second) )
                             } else {
-                                R::Err (Twine::from ("%YAML minor version is not supported"))
+                                R::Err (Cow::from ("%YAML minor version is not supported"))
                             }
                         }
                     } else {
-                        R::Err ( Twine::from ("%YAML version is malformed") )
+                        R::Err ( Cow::from ("%YAML version is malformed") )
                     }
                 }
-            } else { R::Err ( Twine::from ("%YAML version is malformed") ) }
+            } else { R::Err ( Cow::from ("%YAML version is malformed") ) }
         };
 
         match result {
@@ -2088,11 +2086,11 @@ impl Reader {
     }
 
 
-    fn read_directive_tag<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_tag<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         tokenizer::get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
-                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from ("Unexpected end of the document while parse %TAG directive")).unwrap_err ()
+                self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from ("Unexpected end of the document while parse %TAG directive")).unwrap_err ()
             })
             .and_then (|(token, len, chars)| {
                 match token {
@@ -2104,7 +2102,7 @@ impl Reader {
                                 self.yield_error (
                                     callback,
                                     Id { level: level, parent: parent_idx, index: idx },
-                                    Twine::from ("Cannot read the handle part of a %TAG directive")
+                                    Cow::from ("Cannot read the handle part of a %TAG directive")
                                 ).unwrap_err ()
                             })
                     }
@@ -2113,7 +2111,7 @@ impl Reader {
                         Err (self.yield_error (
                             callback,
                             Id { level: level, parent: parent_idx, index: idx },
-                            Twine::from ("%TAG directive should be followed by some space characters")
+                            Cow::from ("%TAG directive should be followed by some space characters")
                         ).unwrap_err ())
                     }
                 }
@@ -2126,7 +2124,7 @@ impl Reader {
                         return Err (self.yield_error (
                             callback,
                             Id { level: level, parent: parent_idx, index: idx },
-                            Twine::from ("Handle part of a tag must have the format of a tag handle")
+                            Cow::from ("Handle part of a tag must have the format of a tag handle")
                         ).unwrap_err ())
                     }
                 };
@@ -2142,7 +2140,7 @@ impl Reader {
                         self.yield_error (
                             callback,
                             Id { level: level, parent: parent_idx, index: idx },
-                            Twine::from ("Cannot read the prefix part of a %TAG directive")
+                            Cow::from ("Cannot read the prefix part of a %TAG directive")
                         ).unwrap_err ()
                     }).and_then (|(token, len, chars)| {
                         match token {
@@ -2152,7 +2150,7 @@ impl Reader {
                                 return Err (self.yield_error (
                                     callback,
                                     Id { level: level, parent: parent_idx, index: idx },
-                                    Twine::from ("%TAG handle should be followed by some space characters")
+                                    Cow::from ("%TAG handle should be followed by some space characters")
                                 ).unwrap_err ());
                             }
                         };
@@ -2163,7 +2161,7 @@ impl Reader {
                                 self.yield_error (
                                     callback,
                                     Id { level: level, parent: parent_idx, index: idx },
-                                    Twine::from ("Cannot read the prefix part of a %TAG directive")
+                                    Cow::from ("Cannot read the prefix part of a %TAG directive")
                                 ).unwrap_err ()
                             })
                             .and_then (|(token, len, chars)| {
@@ -2181,7 +2179,7 @@ impl Reader {
                                         return Err (self.yield_error (
                                             callback,
                                             Id { level: level, parent: parent_idx, index: idx },
-                                            Twine::from ("Prefix part of a tag must have the format of a tag handle or uri")
+                                            Cow::from ("Prefix part of a tag must have the format of a tag handle or uri")
                                         ).unwrap_err ())
                                     }
                                 };
@@ -2201,7 +2199,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn emit_doc_border<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
+    fn emit_doc_border<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (
             Id { level: level, parent: parent_idx, index: idx },
@@ -2210,7 +2208,7 @@ impl Reader {
     }
 
 
-    fn read_seq_block_item<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Twine>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_seq_block_item<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         // let prev_indent: usize = *indent;
 
         if let Some ( (token, len, chars) ) = if accel.is_none () { tokenizer::get_token (reader) } else { accel.take () } {
@@ -2224,13 +2222,13 @@ impl Reader {
                     return self.yield_error (
                         callback,
                         Id { level: level, parent: parent_idx, index: idx },
-                        Twine::from ("Unexpected token (expected was '-')")
+                        Cow::from ("Unexpected token (expected was '-')")
                     )
                 }
             }
         } else {
             let idx = self.get_idx ();
-            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Twine::from (format! ("Unexpected end of the document ({}:{})", file! (), line! ())))
+            return self.yield_error (callback, Id { level: level, parent: parent_idx, index: idx }, Cow::from (format! ("Unexpected end of the document ({}:{})", file! (), line! ())))
         }
 
         'top: loop {
@@ -2274,7 +2272,7 @@ impl Reader {
     fn read_node_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2292,7 +2290,7 @@ impl Reader {
     fn read_node_mblockval<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2310,7 +2308,7 @@ impl Reader {
     fn read_node_sblockval<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2328,7 +2326,7 @@ impl Reader {
     fn read_node<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2345,7 +2343,7 @@ impl Reader {
     fn read_node_<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Twine>,
+        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2781,7 +2779,7 @@ impl Reader {
                             try! (self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from ("@ character is reserved and may not be used to start a plain scalar")
+                                Cow::from ("@ character is reserved and may not be used to start a plain scalar")
                             ));
                         }
 
@@ -2791,7 +2789,7 @@ impl Reader {
                             try! (self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from ("` character is reserved and may not be used to start a plain scalar")
+                                Cow::from ("` character is reserved and may not be used to start a plain scalar")
                             ));
                         }
 
@@ -3273,7 +3271,7 @@ impl Reader {
                             return Err (self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
-                                Twine::from (format! (r"Unexpected token ({}:{})", file! (), line! ()))
+                                Cow::from (format! (r"Unexpected token ({}:{})", file! (), line! ()))
                             ).unwrap_err ())
                         }
                     }
@@ -3495,7 +3493,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
@@ -3569,7 +3567,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3601,7 +3599,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3633,7 +3631,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3665,7 +3663,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3705,7 +3703,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3745,7 +3743,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3786,7 +3784,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3827,7 +3825,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -3868,7 +3866,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
@@ -3920,7 +3918,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
 
 
@@ -3968,7 +3966,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4001,7 +3999,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4034,7 +4032,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4067,7 +4065,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4100,7 +4098,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4142,7 +4140,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4184,7 +4182,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         )
             .err ()
             .ok_or_else (|| { assert! (false, "There must be an error") })
@@ -4225,7 +4223,7 @@ mod tests {
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
-            &mut |block| { if let Err (_) = sender.send (block) { Err (Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+            &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
         ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {:?}", err)); });
 
 

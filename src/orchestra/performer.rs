@@ -8,9 +8,10 @@ use model::renderer::{ EncodedString, Renderer, Node };
 
 use orchestra::conductor::{ Coord, Gesture, NodeList, Signal, StringPointer, VolumeStyle };
 
-use txt::{ Twine, Unicode };
+use txt::Unicode;
 use txt::encoding::UTF8;
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 use std::sync::mpsc::{ sync_channel, Receiver, SyncSender };
@@ -125,7 +126,7 @@ impl<S> Performer<S>
         // let schema: &Schema = &self.schema;
         // let renderer: Renderer = self.renderer;
 
-        let mut volume_tags: Vec<Option<Arc<Vec<(Twine, Twine)>>>> = Vec::new ();
+        let mut volume_tags: Vec<Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>> = Vec::new ();
 
         'main_loop: loop {
             if let Ok (signal) = self.signals_in.try_recv () {
@@ -153,7 +154,7 @@ impl<S> Performer<S>
         &self,
         coord: Coord,
         value: TaggedValue,
-        tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
+        tags: &Vec<Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>>
     ) {
         if let Some (model) = self.schema.look_up_model (value.get_tag ().as_ref ()) {
             if model.is_collection () {
@@ -182,7 +183,7 @@ impl<S> Performer<S>
         &self,
         coord: Coord,
         value: TaggedValue,
-        tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>,
+        tags: &Vec<Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>>,
         mut children: Vec<Rope>
     ) {
         if let Some (model) = self.schema.look_up_model (value.get_tag ().as_ref ()) {
@@ -205,7 +206,7 @@ impl<S> Performer<S>
         &self,
         coord: Coord,
         style: VolumeStyle,
-        tags: &Vec<Option<Arc<Vec<(Twine, Twine)>>>>
+        tags: &Vec<Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>>
     ) {
         let rope = match style {
             VolumeStyle::Yaml => {
@@ -235,7 +236,7 @@ impl<S> Performer<S>
 
                 match *unsafe { tags.get_unchecked (coord.vol) } {
                     Some ( ref arc ) => {
-                        let tags: &Vec<(Twine, Twine)> = arc.as_ref ();
+                        let tags: &Vec<(Cow<'static, str>, Cow<'static, str>)> = arc.as_ref ();
                         let mut nodes: Vec<Node> = Vec::with_capacity (tags.len ());
 
                         for &(ref shortcut, ref handle) in tags {

@@ -11,8 +11,8 @@ use self::skimmer::data::Datum;
 use model::TaggedValue;
 use model::schema::Schema;
 use reader::{ Block, Id };
-use txt::Twine;
 
+use std::borrow::Cow;
 use std::io;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -46,14 +46,14 @@ impl<S, D> Sage<S, D>
 
     pub fn set_yaml_version (&self, version: YamlVersion) -> Result<(), SageError> {
         self.conv.1.send (Clue::Version (version)).or_else (|_| {
-            Err ( SageError::Error (Twine::from ("Sage has passed away")) )
+            Err ( SageError::Error (Cow::from ("Sage has passed away")) )
         })
     }
 
 
     pub fn terminate (&self) -> Result<(), SageError> {
         self.conv.1.send (Clue::Terminate).or_else (|_| {
-            Err ( SageError::Error (Twine::from ("Sage has passed away")) )
+            Err ( SageError::Error (Cow::from ("Sage has passed away")) )
         })
     }
 
@@ -79,7 +79,7 @@ impl<S, D> Deref for Sage<S, D>
 
 
 pub enum SageError {
-    Error (Twine),
+    Error (Cow<'static, str>),
     IoError (io::Error)
 }
 
@@ -94,18 +94,18 @@ pub enum Idea {
     Dusk,
 
     Alias (Id, String),
-    Error (Id, Twine),
+    Error (Id, Cow<'static, str>),
 
     NodeMetaMap (Id, Option<String>, Option<String>, Option<Id>),
     NodeMetaSeq (Id, Option<String>, Option<String>),
 
-    NodeDictionary (Id, Option<String>, Twine, Option<Id>),
-    NodeSequence (Id, Option<String>, Twine),
+    NodeDictionary (Id, Option<String>, Cow<'static, str>, Option<Id>),
+    NodeSequence (Id, Option<String>, Cow<'static, str>),
     NodeScalar (Id, Option<String>, TaggedValue),
     NodeLiteral (Id, Option<String>, String),
 
-    ReadError (Id, usize, Twine),
-    ReadWarning (Id, usize, Twine)
+    ReadError (Id, usize, Cow<'static, str>),
+    ReadWarning (Id, usize, Cow<'static, str>)
 }
 
 

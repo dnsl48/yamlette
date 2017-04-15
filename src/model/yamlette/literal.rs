@@ -1,21 +1,15 @@
 extern crate skimmer;
 
-// use self::skimmer::symbol::{ CopySymbol, Combo };
-
-use txt::{ Twine };
-// use txt::encoding::{ Encoding, Unicode };
-
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 
 
 
-pub const TAG: &'static str = "tag:yamlette.org,1:literal";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yamlette.org,1:literal";
 
 
 #[derive (Copy, Clone, Debug)]
@@ -23,25 +17,14 @@ pub struct Literal;
 
 
 impl Literal {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-    /*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Literal<Char, DoubleChar> { Literal {
-        encoding: cset.encoding,
-        _char: PhantomData,
-        _dchr: PhantomData
-    } }
-    */
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
     #[inline (always)]
     pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
-        // Ok (String::from_utf8_lossy (bytes).into ())
         Ok (unsafe { String::from_utf8_unchecked (Vec::from (bytes)) })
     }
 
     pub fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
-        // self.encoding.bytes_to_string_times (bytes, times)
-
         let mut vec: Vec<u8> = Vec::with_capacity (bytes.len () * times);
 
         for _ in 0 .. times {
@@ -52,7 +35,6 @@ impl Literal {
 
     #[inline (always)]
     pub fn string_to_bytes (&self, string: String) -> Vec<u8> {
-        // self.encoding.string_to_bytes (string)
         string.into_bytes ()
     }
 }
@@ -60,10 +42,7 @@ impl Literal {
 
 
 impl Model for Literal {
-    // type Char = Char;
-    // type DoubleChar = DoubleChar;
-
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -77,14 +56,14 @@ impl Model for Literal {
 
     fn has_default (&self) -> bool { true }
 
-    fn get_default (&self) -> TaggedValue { TaggedValue::from (LiteralValue { value: Twine::from ("") }) }
+    fn get_default (&self) -> TaggedValue { TaggedValue::from (LiteralValue { value: Cow::from (String::with_capacity (0)) }) }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         match <TaggedValue as Into<Result<LiteralValue, TaggedValue>>>::into (value) {
             Ok (value) => match value.value {
-                Twine::String (s) => Ok (Rope::from (Node::String (EncodedString::from (s.into_bytes ())))),
-                Twine::Static (s) => Ok (Rope::from (Node::String (EncodedString::from (s.as_bytes ()))))
+                Cow::Owned (s) => Ok (Rope::from (Node::String (EncodedString::from (s.into_bytes ())))),
+                Cow::Borrowed (s) => Ok (Rope::from (Node::String (EncodedString::from (s.as_bytes ()))))
             },
             Err (value) => Err (value)
         }
@@ -101,12 +80,12 @@ impl Model for Literal {
 
 
 #[derive (Debug)]
-pub struct LiteralValue { value: Twine }
+pub struct LiteralValue { value: Cow<'static, str> }
 
 
 
 impl Tagged for LiteralValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -116,13 +95,13 @@ impl Tagged for LiteralValue {
 
 
 impl From<String> for LiteralValue {
-    fn from (value: String) -> LiteralValue { LiteralValue { value: Twine::from (value) } }
+    fn from (value: String) -> LiteralValue { LiteralValue { value: Cow::from (value) } }
 }
 
 
 
 impl From<&'static str> for LiteralValue {
-    fn from (value: &'static str) -> LiteralValue { LiteralValue { value: Twine::from (value) } }
+    fn from (value: &'static str) -> LiteralValue { LiteralValue { value: Cow::from (value) } }
 }
 
 
@@ -195,7 +174,7 @@ mod tests {
 
         for i in 0 .. ops.len () {
             if let Ok (value) = literal.decode (false, ops[i].0.as_bytes ()) {
-                assert_eq! (value.get_tag (), &TWINE_TAG);
+                assert_eq! (value.get_tag (), Cow::from (TAG));
 
                 let val: &str = value.as_any ().downcast_ref::<LiteralValue> ().unwrap ().as_ref ();
 

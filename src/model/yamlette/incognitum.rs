@@ -1,22 +1,14 @@
 extern crate skimmer;
 
-// use self::skimmer::symbol::{ CopySymbol, Combo };
-
-
-use txt::Twine;
-// use txt::encoding::{ Encoding, Unicode };
-
 use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
-// use std::marker::PhantomData;
 
 
 
-
-pub const TAG: &'static str = "tag:yamlette.org,1:incognitum";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yamlette.org,1:incognitum";
 
 
 
@@ -26,27 +18,17 @@ pub struct Incognitum;
 
 
 impl Incognitum {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-    /*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Incognitum<Char, DoubleChar> { Incognitum {
-        encoding: cset.encoding,
-        _char: PhantomData,
-        _dchr: PhantomData
-    } }
-    */
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 }
 
 
 
 impl Model for Incognitum {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
     fn as_mut_any (&mut self) -> &mut Any { self }
-
-    // fn get_encoding (&self) -> Encoding { self.encoding }
 
     fn is_decodable (&self) -> bool { true }
 
@@ -55,7 +37,7 @@ impl Model for Incognitum {
     fn is_metamodel (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, _tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let value: IncognitumValue = match <TaggedValue as Into<Result<IncognitumValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -139,7 +121,7 @@ impl IncognitumValue {
 
 
 impl Tagged for IncognitumValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self }
 
@@ -240,7 +222,7 @@ mod tests {
 
         for i in 0 .. ops.len () {
             if let Ok (tagged) = incognitum.decode (false, ops[i].0.as_bytes ()) {
-                assert_eq! (tagged.get_tag (), &TWINE_TAG);
+                assert_eq! (tagged.get_tag (), Cow::from (TAG));
 
                 let val: &String = tagged.as_any ().downcast_ref::<IncognitumValue> ().unwrap ().get_value ();
 

@@ -50,14 +50,14 @@ macro_rules! yamlette {
                     $crate::face::skimmer::reader::IntoReader::into_reader ($source),
                     &mut |block| { match savant.think (block) {
                         Ok (maybe_idea) => { if let Some (idea) = maybe_idea { _book.stamp (idea); }; Ok ( () ) },
-                        Err (_) => Err ($crate::txt::Twine::from ("Cannot think of a block"))
+                        Err (_) => Err (::std::borrow::Cow::from ("Cannot think of a block"))
                     } }
                 ) {
                     Ok (_) => Ok ( () ),
                     Err (err) => Err (Err (err))
                 }
             }
-            Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error ($crate::txt::Twine::empty ()))))
+            Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
         yamlette_reckon! ( book ; _book ; $rules );
@@ -80,7 +80,7 @@ macro_rules! yamlette {
             Ok ( (ref mut reader, ref mut sender, ref sage) ) => {
                 match reader.read (
                     $crate::face::skimmer::reader::IntoReader::into_reader ($source),
-                    &mut |block| { if let Err (_) = sender.send (block) { Err ($crate::txt::Twine::from ("Cannot yield a block")) } else { Ok ( () ) } }
+                    &mut |block| { if let Err (_) = sender.send (block) { Err (::std::borrow::Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
                 ) {
                     Ok (_) => {
                         _book.get_written (sage);
@@ -89,7 +89,7 @@ macro_rules! yamlette {
                     Err (err) => Err (Err (err))
                 }
             }
-            Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error ($crate::txt::Twine::empty ()))))
+            Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
         yamlette_reckon! ( book ; _book ; $rules );

@@ -1,120 +1,25 @@
 extern crate skimmer;
 
-use txt::Twine;
-
 use model::{ model_issue_rope, EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 use model::style::CommonStyles;
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::iter::Iterator;
 
 
 
-pub const TAG: &'static str = "tag:yaml.org,2002:bool";
-static TWINE_TAG: Twine = Twine::Static (TAG);
+pub static TAG: &'static str = "tag:yaml.org,2002:bool";
 
 
 
 #[derive (Clone, Copy)]
-pub struct Bool; /*<Char, DoubleChar>
-  where
-    Char: CopySymbol + 'static,
-    DoubleChar: CopySymbol + Combo + 'static
-{
-    line_feed: Char,
-    carriage_return: Char,
-    space: Char,
-    tab_h: Char,
-
-    letter_t: Char,
-    letter_r: Char,
-    letter_u: Char,
-    letter_e: Char,
-
-    letter_t_t: Char,
-    letter_t_r: Char,
-    letter_t_u: Char,
-    letter_t_e: Char,
-
-    letter_f: Char,
-    letter_a: Char,
-    letter_l: Char,
-    letter_s: Char,
-
-    letter_t_f: Char,
-    letter_t_a: Char,
-    letter_t_l: Char,
-    letter_t_s: Char,
-
-    letter_n: Char,
-    letter_t_n: Char,
-
-    letter_o: Char,
-    letter_t_o: Char,
-
-    letter_y: Char,
-    letter_t_y: Char,
-
-    s_quote: Char,
-    d_quote: Char,
-
-    encoding: Encoding,
-
-    _dchr: PhantomData<DoubleChar>
-}
-*/
+pub struct Bool;
 
 
 
 impl Bool {
-    pub fn get_tag () -> &'static Twine { &TWINE_TAG }
-
-/*
-    pub fn new (cset: &CharSet<Char, DoubleChar>) -> Bool<Char, DoubleChar> {
-        Bool {
-            encoding: cset.encoding,
-
-            line_feed: cset.line_feed,
-            carriage_return: cset.carriage_return,
-            space: cset.space,
-            tab_h: cset.tab_h,
-
-            letter_t: cset.letter_t,
-            letter_r: cset.letter_r,
-            letter_u: cset.letter_u,
-            letter_e: cset.letter_e,
-
-            letter_t_t: cset.letter_t_t,
-            letter_t_r: cset.letter_t_r,
-            letter_t_u: cset.letter_t_u,
-            letter_t_e: cset.letter_t_e,
-
-            letter_f: cset.letter_f,
-            letter_a: cset.letter_a,
-            letter_l: cset.letter_l,
-            letter_s: cset.letter_s,
-
-            letter_t_f: cset.letter_t_f,
-            letter_t_a: cset.letter_t_a,
-            letter_t_l: cset.letter_t_l,
-            letter_t_s: cset.letter_t_s,
-
-            letter_n: cset.letter_n,
-            letter_t_n: cset.letter_t_n,
-
-            letter_o: cset.letter_o,
-            letter_t_o: cset.letter_t_o,
-
-            letter_y: cset.letter_y,
-            letter_t_y: cset.letter_t_y,
-
-            s_quote: cset.apostrophe,
-            d_quote: cset.quotation,
-
-            _dchr: PhantomData
-        }
-    }
-*/
+    pub fn get_tag () -> Cow<'static, str> { Cow::from (TAG) }
 
 
     fn base_decode (&self, explicit: bool, value: &[u8], yaml_11: bool) -> Result<bool, ()> {
@@ -141,6 +46,59 @@ impl Bool {
             */
         }
 
+
+        match value.get (ptr).map (|b| *b) {
+            Some (b't') => match value.get (ptr + 1 .. ptr + 4) {
+                Some (s) => { if s == "rue".as_bytes () { ptr += 4; found_val = 3; } }
+                _ => ()
+            },
+            Some (b'T') => match value.get (ptr + 1 .. ptr + 4) {
+                Some (s) => { if s == "rue".as_bytes () || s == "RUE".as_bytes () { ptr += 4; found_val = 3; } }
+                _ => ()
+            },
+            Some (b'f') => match value.get (ptr + 1 .. ptr + 5) {
+                Some (s) => { if s == "alse".as_bytes () { ptr += 5; found_val = 1; } }
+                _ => ()
+            },
+            Some (b'F') => match value.get (ptr + 1 .. ptr + 5) {
+                Some (s) => { if s == "alse".as_bytes () || s == "ALSE".as_bytes () { ptr += 5; found_val = 1; } }
+                _ => ()
+            },
+            Some (b'o') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'n') => { if yaml_11 { ptr += 2; found_val = 3; } }
+                Some (b'f') => { if yaml_11 { if let Some (b'f') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 1; } } }
+                _ => ()
+            },
+            Some (b'O') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'n') => { if yaml_11 { ptr += 2; found_val = 3; } }
+                Some (b'N') => { if yaml_11 { ptr += 2; found_val = 3; } }
+                Some (b'f') => { if yaml_11 { if let Some (b'f') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 1; } } }
+                Some (b'F') => { if yaml_11 { if let Some (b'F') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 1; } } }
+                _ => ()
+            },
+            Some (b'y') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'e') => { if yaml_11 { if let Some (b's') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 3; } } }
+                _ => { if yaml_11 { ptr += 1; found_val = 3; } }
+            },
+            Some (b'Y') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'e') => { if yaml_11 { if let Some (b's') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 3; } } }
+                Some (b'E') => { if yaml_11 { if let Some (b'S') = value.get (ptr + 2).map (|b| *b) { ptr += 3; found_val = 3; } } }
+                _ => { if yaml_11 { ptr += 1; found_val = 3; } }
+            },
+            Some (b'n') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'o') => { if yaml_11 { ptr += 2; found_val = 1; } }
+                _ => { if yaml_11 { ptr += 1; found_val = 1; } }
+            },
+            Some (b'N') => match value.get (ptr + 1).map (|b| *b) {
+                Some (b'O') |
+                Some (b'o') => { if yaml_11 { ptr += 2; found_val = 1; } }
+                _ => { if yaml_11 { ptr += 1; found_val = 1; } }
+            },
+            _ => ()
+        };
+
+
+        /*
         let subslice = &value[ptr ..];
 
         if
@@ -176,6 +134,7 @@ impl Bool {
                 _ => ()
             } }
         }
+        */
 
         if found_val == 0 { return Err ( () ) }
 
@@ -217,7 +176,7 @@ impl Bool {
 
 
 impl Model for Bool {
-    fn get_tag (&self) -> &Twine { Self::get_tag () }
+    fn get_tag (&self) -> Cow<'static, str> { Self::get_tag () }
 
     fn as_any (&self) -> &Any { self }
 
@@ -228,7 +187,7 @@ impl Model for Bool {
     fn is_encodable (&self) -> bool { true }
 
 
-    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Twine, Twine)>) -> Result<Rope, TaggedValue> {
+    fn encode (&self, _renderer: &Renderer, value: TaggedValue, tags: &mut Iterator<Item=&(Cow<'static, str>, Cow<'static, str>)>) -> Result<Rope, TaggedValue> {
         let mut value = match <TaggedValue as Into<Result<BoolValue, TaggedValue>>>::into (value) {
             Ok (value) => value,
             Err (value) => return Err (value)
@@ -263,13 +222,13 @@ impl Model for Bool {
 pub struct BoolValue {
     style: u8,
     value: bool,
-    alias: Option<Twine>
+    alias: Option<Cow<'static, str>>
 }
 
 
 
 impl BoolValue {
-    pub fn new (value: bool, styles: CommonStyles, alias: Option<Twine>) -> BoolValue { BoolValue {
+    pub fn new (value: bool, styles: CommonStyles, alias: Option<Cow<'static, str>>) -> BoolValue { BoolValue {
         style: if styles.issue_tag () { 1 } else { 0 },
         value: value,
         alias: alias
@@ -277,7 +236,7 @@ impl BoolValue {
 
     pub fn to_bool (self) -> bool { self.value }
 
-    pub fn take_alias (&mut self) -> Option<Twine> { self.alias.take () }
+    pub fn take_alias (&mut self) -> Option<Cow<'static, str>> { self.alias.take () }
 
     pub fn issue_tag (&self) -> bool { self.style & 1 == 1 }
 
@@ -287,7 +246,7 @@ impl BoolValue {
 
 
 impl Tagged for BoolValue {
-    fn get_tag (&self) -> &Twine { &TWINE_TAG }
+    fn get_tag (&self) -> Cow<'static, str> { Cow::from (TAG) }
 
     fn as_any (&self) -> &Any { self as &Any }
 
@@ -363,11 +322,11 @@ mod tests {
 
             let prod: TaggedValue = tagged.unwrap ();
 
-            assert_eq! (prod.get_tag (), &TWINE_TAG);
+            assert_eq! (prod.get_tag (), Cow::from (TAG));
 
             let val: &bool = prod.as_any ().downcast_ref::<BoolValue> ().unwrap ().as_ref ();
 
-            assert_eq! (*val, results[i]);
+            assert_eq! (*val, results[i], "Option: {}", options[i]);
         }
 
 
@@ -398,7 +357,7 @@ mod tests {
 
             let prod: TaggedValue = tagged.unwrap ();
 
-            assert_eq! (prod.get_tag (), &TWINE_TAG);
+            assert_eq! (prod.get_tag (), Cow::from (TAG));
 
             let val: &bool = prod.as_any ().downcast_ref::<BoolValue> ().unwrap ().as_ref ();
 

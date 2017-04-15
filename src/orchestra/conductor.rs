@@ -5,11 +5,11 @@
 
 use model::{ Rope, TaggedValue, Schema };
 use model::renderer::{ Renderer, Node };
-use txt::Twine;
 
 use orchestra::OrchError;
 use orchestra::performer::{ Performer, PerformerId, Play };
 
+use std::borrow::Cow;
 use std::io;
 use std::mem;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub enum Message {
 pub enum Signal {
     Terminate,
     Volumes (usize),
-    VolumeTags (Option<Arc<Vec<(Twine, Twine)>>>)
+    VolumeTags (Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>)
 }
 
 
@@ -53,7 +53,7 @@ pub enum Hint {
     VolumeSize (usize),
 
     DirectiveYaml (bool),
-    DirectiveTags (Vec<(Twine, Twine)>),
+    DirectiveTags (Vec<(Cow<'static, str>, Cow<'static, str>)>),
 
     BorderTop (bool),
     BorderBot (bool)
@@ -206,7 +206,7 @@ struct Volume {
     zero_level_nodes: usize,
     legatos: Vec<(usize, bool)>,
     records: Vec<Record>,
-    tags: Option<Arc<Vec<(Twine, Twine)>>>
+    tags: Option<Arc<Vec<(Cow<'static, str>, Cow<'static, str>)>>>
 }
 
 
@@ -549,7 +549,8 @@ impl Conductor {
 
 
     fn execute (mut self) -> Result<(), OrchError> {
-        let mut performer_buffers: [&[Node]; PERFORMERS_NUMBER] = [&[]; PERFORMERS_NUMBER];
+        // let mut performer_buffers: [&[Node]; PERFORMERS_NUMBER] = [&[]; PERFORMERS_NUMBER];
+        let mut performer_buffers: [*const [Node]; PERFORMERS_NUMBER] = [&[] as *const [Node]; PERFORMERS_NUMBER];
         let mut music: Vec<u8> = Vec::with_capacity (0);
         let mut volumes: Vec<Volume> = Vec::with_capacity (0);
 
@@ -569,7 +570,8 @@ impl Conductor {
 
     fn _execute (
         &mut self,
-        performer_buffers: &mut [&[Node]; PERFORMERS_NUMBER],
+        // performer_buffers: &mut [&[Node]; PERFORMERS_NUMBER],
+        performer_buffers: &mut [*const [Node]; PERFORMERS_NUMBER],
         music: &mut Vec<u8>,
         volumes: &mut Vec<Volume>
     ) -> Result<(), OrchError> {
@@ -719,7 +721,13 @@ impl Conductor {
     }
 
 
-    fn do_the_music<'a, 'b, 'c> (&'a mut self, music: &'b mut Vec<u8>, performer_buffers: &'b mut [&'c [Node]], vols: &'c Vec<Volume>) -> Result<(), OrchError> {
+    fn do_the_music<'a, 'b, 'c> (
+        &'a mut self,
+        music: &'b mut Vec<u8>,
+        // performer_buffers: &'b mut [&'c [Node]],
+        performer_buffers: &'b mut [*const [Node]],
+        vols: &'c Vec<Volume>
+    ) -> Result<(), OrchError> {
         let tho: usize = music.len () / PERFORMERS_NUMBER + 1;
 
         let mut perfs_busy = false;

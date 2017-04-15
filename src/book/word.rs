@@ -12,8 +12,7 @@ use model::yaml::str::StrValue;
 use model::yaml::float::FloatValue;
 use model::yaml::null::NullValue;
 
-use txt::Twine;
-
+use std::borrow::Cow;
 use std::cmp::PartialEq;
 
 
@@ -30,13 +29,13 @@ pub enum Word {
 
     Alias (usize),
 
-    Seq (Twine),
-    Map (Twine),
+    Seq (Cow<'static, str>),
+    Map (Cow<'static, str>),
 
     Scalar (TaggedValue),
 
-    Err (Twine),
-    Wrn (Twine),
+    Err (Cow<'static, str>),
+    Wrn (Cow<'static, str>),
     UnboundAlias (String)
 }
 
