@@ -69,11 +69,19 @@ fn main () {
 Its first argument is not a variable, but rather a literal that says we need to call reader functionality here.
 
 The second argument is the data source for reading. It can be of the next types:
- - `&'static string`
+ - `&'static str`
  - `String`
  - `Vec<u8>`
+ - `&[u8]`
  - `std::fs::File`
- - any object implementing `skimmer::reader::IntoReader` trait
+ - `std::os::unix::net::UnixStream`
+ - `& std::os::unix::net::UnixStream`
+ - `std::net::TcpStream`
+ - `& std::net::TcpStream`
+ - `Box<std::io::Read>`
+ - `&mut std::io::Read`
+ - `std::io::BufReader`
+ - any other objects implementing `skimmer::reader::IntoReader` trait
 
 The third argument is the data structure description. Its format is described below (after the examples).
 
