@@ -1,5 +1,3 @@
-#[cfg(test)]
-pub mod examples;
+#[cfg (test)] pub mod examples;
 
-#[macro_use]
-extern crate yamlette;
+#[macro_use] extern crate yamlette;

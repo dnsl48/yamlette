@@ -10,3 +10,14 @@ rust:
 matrix:
   allow_failures:
     - rust: nightly
+
+script:
+  - rustc -vV
+  - cargo -vV
+  - cargo build --verbose
+  - cargo test --verbose --features test_reader
+  - cargo test --verbose --features test_savant
+  - cargo test --verbose --features test_sage
+  - cargo test --verbose --features test_book
+  - cargo test --verbose --features test_orchestra
+  - cargo test --verbose --features test_face

@@ -26,3 +26,12 @@ features = ["bigint"]
 [features]
 
 dev = []
+
+onetest = []
+
+test_reader = ["onetest"]
+test_savant = ["onetest"]
+test_sage = ["onetest"]
+test_book = ["onetest"]
+test_orchestra = ["onetest"]
+test_face = ["onetest"]

@@ -1,0 +1,42 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: ubuntu:16.04
+
+    working_directory: ~/yamlette
+
+    steps:
+      - run: apt-get -qq update; apt-get -y install git curl gcc
+      - checkout
+      - run: git submodule sync && git submodule update --init
+
+      - run: curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
+
+      - run:
+          shell: /bin/bash -lcie
+          command: |-
+            rustc -vV
+            cargo -vV
+            cargo build --verbose
+            cargo test --verbose --features test_reader
+            cargo test --verbose --features test_savant
+            cargo test --verbose --features test_sage
+            cargo test --verbose --features test_book
+            cargo test --verbose --features test_orchestra
+            cargo test --verbose --features test_face
+
+      - run: curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain beta -y
+
+      - run:
+          shell: /bin/bash -lcie
+          command: |-
+            rustc -vV
+            cargo -vV
+            cargo build --verbose
+            cargo test --verbose --features test_reader
+            cargo test --verbose --features test_savant
+            cargo test --verbose --features test_sage
+            cargo test --verbose --features test_book
+            cargo test --verbose --features test_orchestra
+            cargo test --verbose --features test_face
