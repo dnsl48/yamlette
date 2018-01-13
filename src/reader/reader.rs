@@ -319,7 +319,7 @@ impl Reader {
         let marker = reader.consume_long (len);
 
         {
-            let mut data = ctx.get_data ();
+            let data = ctx.get_data ();
 
             if marker.pos2.0 > data.amount () {
                 for i in data.amount () .. marker.pos2.0 + 1 {
