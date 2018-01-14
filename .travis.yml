@@ -2,6 +2,13 @@
 
 language: rust
 
+addons:
+  apt:
+    packages:
+      - libssl-dev
+
+cache: cargo
+
 rust:
   - stable
   - beta
@@ -14,6 +21,7 @@ matrix:
 script:
   - rustc -vV
   - cargo -vV
+  - cargo clean
   - cargo build --verbose
   - cargo test --verbose --features test_reader
   - cargo test --verbose --features test_savant
@@ -21,3 +29,16 @@ script:
   - cargo test --verbose --features test_book
   - cargo test --verbose --features test_orchestra
   - cargo test --verbose --features test_face
+
+after_success: |
+  if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
+    bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
+
+    set -e
+
+    cargo test --no-run
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+
+    cargo tarpaulin --out Xml
+    bash <(curl -s https://codecov.io/bash)
+  fi
