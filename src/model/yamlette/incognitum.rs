@@ -68,13 +68,18 @@ impl Model for Incognitum {
 
 
     fn decode (&self, _: bool, value: &[u8]) -> Result<TaggedValue, ()> {
-        let string = unsafe { String::from_utf8_unchecked (Vec::from (value)) };
-        Ok ( TaggedValue::from (IncognitumValue::new (string)) )
+        match String::from_utf8 (Vec::from (value)) {
+            Ok (s) => Ok ( TaggedValue::from (IncognitumValue::new (s)) ),
+            _ => Err ( () )
+        }
     }
 
 
     fn meta_init (&self, anchor: Option<String>, tag: Option<String>, value: &[u8]) -> Result<TaggedValue, ()> {
-        let string = unsafe { String::from_utf8_unchecked (Vec::from (value)) };
+        let string = match String::from_utf8 (Vec::from (value)) {
+            Ok (s) => s,
+            _ => return Err ( () )
+        };
 
         let mut value = IncognitumValue::new (string);
 

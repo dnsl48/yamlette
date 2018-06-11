@@ -21,7 +21,10 @@ impl Literal {
 
     #[inline (always)]
     pub fn bytes_to_string (&self, bytes: &[u8]) -> Result<String, ()> {
-        Ok (unsafe { String::from_utf8_unchecked (Vec::from (bytes)) })
+        match String::from_utf8 (Vec::from (bytes)) {
+            Ok (s) => Ok (s),
+            _ => Err (())
+        }
     }
 
     pub fn bytes_to_string_times (&self, bytes: &[u8], times: usize) -> Result<String, ()> {
@@ -30,7 +33,11 @@ impl Literal {
         for _ in 0 .. times {
             vec.extend (bytes);
         }
-        Ok (unsafe { String::from_utf8_unchecked (vec) })
+
+        match String::from_utf8 (vec) {
+            Ok (s) => Ok (s),
+            _ => Err ( () )
+        }
     }
 
     #[inline (always)]

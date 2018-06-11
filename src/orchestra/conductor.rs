@@ -916,7 +916,7 @@ impl Conductor {
 
     fn listen_to_render (cin: &Receiver<(PerformerId, Play)>, msgs: &mut usize) -> Result<usize, OrchError> {
         match cin.recv () {
-            Err (_) => Err ( (OrchError::Error ("abandoned conductor".to_string ())) ),
+            Err (_) => Err ( OrchError::Error ("abandoned conductor".to_string ()) ),
             Ok ((id, _)) => { *msgs -= 1; Ok (id as usize) }
         }
     }
@@ -929,13 +929,13 @@ impl Conductor {
 
         } else if wait && self.msgs > 0 {
             match self.cin.recv () {
-                Err (_) => Err ( (OrchError::Error ("abandoned conductor".to_string ())) ),
+                Err (_) => Err ( OrchError::Error ("abandoned conductor".to_string ()) ),
                 Ok ((_, play)) => { self.msgs -= 1; Ok (Some (play)) }
             }
 
         } else {
             match self.cin.try_recv () {
-                Err (TryRecvError::Disconnected) => Err ( (OrchError::Error ("abandoned conductor".to_string ())) ),
+                Err (TryRecvError::Disconnected) => Err ( OrchError::Error ("abandoned conductor".to_string ()) ),
                 Ok ((_, play)) => { self.msgs -= 1; Ok (Some (play)) },
                 Err (TryRecvError::Empty) => Ok (None)
             }

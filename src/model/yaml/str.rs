@@ -148,7 +148,6 @@ impl Str {
 
                     // rptr = self.backslash.copy_to_ptr (rptr);
                     // rptr = self.letter_a.copy_to_ptr (rptr);
-                    
                 }
 
 
@@ -636,7 +635,10 @@ impl Model for Str {
                     }
                 }
 
-                Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (result) })) )
+                match String::from_utf8 (result) {
+                    Ok (s) => Ok (TaggedValue::from (StrValue::from ( s ))),
+                    _ => Err ( () )
+                }
             }
 
             Some (b'\'') => {
@@ -712,10 +714,16 @@ impl Model for Str {
                     }
                 }
 
-                Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (result) })) )
+                match String::from_utf8 (result) {
+                    Ok (s) => Ok (TaggedValue::from (StrValue::from (s))),
+                    _ => Err ( () )
+                }
             }
 
-            _ => Ok ( TaggedValue::from (StrValue::from (unsafe { String::from_utf8_unchecked (Vec::from (value)) })) )
+            _ => match String::from_utf8 (Vec::from (value)) {
+                Ok (s) => Ok ( TaggedValue::from (StrValue::from (s)) ),
+                _ => Err ( () )
+            }
         }
     }
 
