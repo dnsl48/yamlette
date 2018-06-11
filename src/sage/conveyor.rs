@@ -152,12 +152,12 @@ impl<D> Conveyor<D>
             } else {
                 match self.ex_cin.try_recv () {
                     Err (TryRecvError::Empty) => match self.cin.try_recv () {
-                        Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Cow::from ("abandoned sage"))) ),
+                        Err (TryRecvError::Disconnected) => return Err ( SageError::Error (Cow::from ("abandoned sage")) ),
                         Ok ((_, msg)) => Some (msg),
                         Err (TryRecvError::Empty) => None
                     },
                     Ok (msg) => Some (msg),
-                    Err (TryRecvError::Disconnected) => return Err ( (SageError::Error (Cow::from ("abandoned sage"))) )
+                    Err (TryRecvError::Disconnected) => return Err ( SageError::Error (Cow::from ("abandoned sage")) )
                 }
             } {
                 match msg {
