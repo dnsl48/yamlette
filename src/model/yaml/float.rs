@@ -617,13 +617,13 @@ impl MaybeBigFraction {
 
     pub fn format_as_float (&self) -> Option<String> {
         match *self {
-            MaybeBigFraction::Fra (ref f) => f.format_as_float (),
-            MaybeBigFraction::Big (ref f) => f.format_as_float ()
+            MaybeBigFraction::Fra (ref f) => Some(format!("{:.64}", f)),
+            MaybeBigFraction::Big (ref f) => Some(format!("{:.64}", f))
         }
     }
 
 
-    pub fn sign (&self) -> Option<&Sign> {
+    pub fn sign (&self) -> Option<Sign> {
         match *self {
             MaybeBigFraction::Fra (ref f) => f.sign (),
             MaybeBigFraction::Big (ref f) => f.sign ()
@@ -632,9 +632,9 @@ impl MaybeBigFraction {
 
 
     pub fn promote (&mut self) {
-        let mbf = mem::replace (self, MaybeBigFraction::Fra (Fraction::new_nan ()));
+        let mbf = mem::replace (self, MaybeBigFraction::Fra (Fraction::nan ()));
         *self = match mbf {
-            MaybeBigFraction::Fra (f) => MaybeBigFraction::Big (f.into_big ()),
+            MaybeBigFraction::Fra (f) => MaybeBigFraction::Big (BigFraction::from_fraction(f)),
             MaybeBigFraction::Big (f) => MaybeBigFraction::Big (f)
         };
     }
@@ -658,7 +658,7 @@ impl Neg for MaybeBigFraction {
 impl Into<BigFraction> for MaybeBigFraction {
     fn into (self) -> BigFraction {
         match self {
-            MaybeBigFraction::Fra (f) => f.into_big (),
+            MaybeBigFraction::Fra (f) => BigFraction::from_fraction(f),
             MaybeBigFraction::Big (f) => f
         }
     }
@@ -697,7 +697,7 @@ impl FloatValue {
 
     pub fn set_issue_tag (&mut self, val: bool) { if val { self.style |= 1; } else { self.style &= !1; } }
 
-    pub fn sign (&self) -> Option<&Sign> { self.value.sign () }
+    pub fn sign (&self) -> Option<Sign> { self.value.sign () }
 
     pub fn promote (&mut self) -> &FloatValue {
         self.value.promote ();
@@ -712,8 +712,8 @@ impl FloatValue {
 
     pub fn format_as_float (&self) -> Option<String> {
         match self.value {
-            MaybeBigFraction::Fra (ref f) => f.format_as_float (),
-            MaybeBigFraction::Big (ref f) => f.format_as_float ()
+            MaybeBigFraction::Fra (ref f) => Some(format!("{:.64}", f)),
+            MaybeBigFraction::Big (ref f) => Some(format!("{:.64}", f))
         }
     }
 }
@@ -929,8 +929,8 @@ mod tests {
         encoded_fraction_is! (float, BigFraction::infinity (), ".inf");
         encoded_fraction_is! (float, BigFraction::neg_infinity (), "-.inf");
 
-        encoded_float_is! (float, 0f64, "0.0");
-        encoded_float_is! (float, 1f64, "1.0");
+        encoded_float_is! (float, 0f64, "0");
+        encoded_float_is! (float, 1f64, "1");
         encoded_float_is! (float, 1.1f64, "1.1");
         encoded_float_is! (float, 1234_5678.111_222e-4, "1234.5678111222");
     }

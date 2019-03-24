@@ -947,7 +947,7 @@ mod tests {
 
                 assert! (decoded.fraction.is_some ());
                 let frac = decoded.fraction.as_ref ().unwrap (); // 0.0045 == 9/2000
-                assert_eq! (Fraction::new (9u8, 2000u16).format_as_float (), frac.format_as_float ());
+                assert_eq! (format!("{:.4}", Fraction::new (9u8, 2000u16)), frac.format_as_float().unwrap());
 
                 assert! (decoded.tz_hour.is_some ());
                 assert_eq! (decoded.tz_hour.unwrap (), -12);
