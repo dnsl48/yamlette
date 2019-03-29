@@ -1,7 +1,8 @@
 [package]
 name = "yamlette"
-version = "0.0.6"
+version = "0.0.7"
 authors = ["dnsl48 <dnsl48@gmail.com>"]
+# edition = "2018"
 
 description = "Comprehensive and user friendly YAML 1.2 processor"
 keywords = ["parser", "yaml", "json", "serialization"]
@@ -16,7 +17,10 @@ readme = "README.md"
 
 [dependencies]
 skimmer = "0.0.2"
-fraction = "0.6"
+fraction = "0.6.1"
+
+# [dependencies.fraction]
+# path = "fraction"
 
 [dependencies.num]
 version = "0.2"
@@ -26,12 +30,11 @@ features = ["num-bigint", "std"]
 [features]
 
 dev = []
+onetest = ["test_reader", "test_savant", "test_sage", "test_book", "test_orchestra", "test_face"]
 
-onetest = []
-
-test_reader = ["onetest"]
-test_savant = ["onetest"]
-test_sage = ["onetest"]
-test_book = ["onetest"]
-test_orchestra = ["onetest"]
-test_face = ["onetest"]
+test_reader = []
+test_savant = []
+test_sage = []
+test_book = []
+test_orchestra = []
+test_face = []

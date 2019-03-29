@@ -7,16 +7,13 @@ use self::num::BigInt;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-// use book::word::Word;
 use book::extractor::pointer::Pointer;
-
-
+use model::Fraction;
 
 
 pub trait FromPointer<'a>: Sized {
     fn from_pointer (Pointer<'a>) -> Option<Self>;
 }
-
 
 
 macro_rules! from_pointer_impl {
@@ -45,8 +42,10 @@ from_pointer_impl! (String);
 from_pointer_impl! (f32);
 from_pointer_impl! (f64);
 
+from_pointer_impl! (Fraction);
+from_pointer_impl! (link Fraction);
+
 from_pointer_impl! (BigFraction);
-from_pointer_impl! (link BigFraction);
 
 from_pointer_impl! (u8);
 from_pointer_impl! (i8);

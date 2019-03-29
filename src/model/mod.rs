@@ -8,12 +8,10 @@ pub mod rope;
 pub mod style;
 pub mod tagged_value;
 
-
-
+extern crate fraction;
 extern crate skimmer;
 
 // use self::skimmer::symbol::{ CopySymbol, Combo };
-
 // use txt::encoding::{ Encoding, Unicode };
 
 use std::any::Any;
@@ -30,7 +28,7 @@ pub use self::tagged_value::TaggedValue;
 
 // TODO: decode/encode Errors&Warnings
 
-
+pub type Fraction = fraction::DynaFraction<u64>;
 
 
 pub trait Tagged : Any {

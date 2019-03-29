@@ -1,10 +1,10 @@
 extern crate fraction;
 extern crate num;
 
-use self::fraction::{ BigFraction, Fraction };
+use self::fraction::BigFraction;
 use self::num::{ BigInt, ToPrimitive };
 
-use model::{ Tagged, TaggedValue };
+use model::{ Tagged, TaggedValue, Fraction };
 use model::yaml::binary::BinaryValue;
 use model::yaml::bool::BoolValue;
 use model::yaml::int::IntValue;
@@ -222,13 +222,7 @@ impl<'a> Into<Result<bool, &'a Word>> for &'a Word {
 impl Into<Result<Fraction, Word>> for Word {
     fn into (self) -> Result<Fraction, Word> {
         match self {
-            Word::Float (val) => {
-                let res: Result<Fraction, FloatValue> = val.into ();
-                return match res {
-                    Ok (f) => Ok (f),
-                    Err (v) => Err (Word::Float (v))
-                };
-            }
+            Word::Float (val) => return Ok(val.into()),
             Word::Scalar (tagged_value) => {
                 if let Some (val) = tagged_value.as_any ().downcast_ref::<Fraction> () {
                     return Ok (val.clone ())
@@ -249,11 +243,8 @@ impl<'a> Into<Result<Fraction, &'a Word>> for &'a Word {
     fn into (self) -> Result<Fraction, &'a Word> {
         match *self {
             Word::Float (ref val) => {
-                let res: Result<&'a Fraction, &'a FloatValue> = val.into ();
-                return match res {
-                    Ok (f) => Ok (f.clone ()),
-                    Err (_) => Err (self)
-                };
+                let res: &'a Fraction = val.into();
+                return Ok(res.clone())
             }
             Word::Scalar (ref tagged_value) => {
                 if let Some (val) = tagged_value.as_any ().downcast_ref::<Fraction> () {
@@ -270,10 +261,7 @@ impl<'a> Into<Result<Fraction, &'a Word>> for &'a Word {
 impl<'a> Into<Result<&'a Fraction, &'a Word>> for &'a Word {
     fn into (self) -> Result<&'a Fraction, &'a Word> {
         match *self {
-            Word::Float (ref val) => {
-                let res: Result<&'a Fraction, &'a FloatValue> = val.into ();
-                if let Ok (fra) = res { Ok (fra) } else { Err (self) }
-            },
+            Word::Float (ref val) => return Ok(val.into ()),
             Word::Scalar (ref tagged_value) => {
                 if let Some (val) = tagged_value.as_any ().downcast_ref::<Fraction> () {
                     Ok (val)
@@ -313,25 +301,6 @@ impl<'a> Into<Result<BigFraction, &'a Word>> for &'a Word {
             Word::Scalar (ref tagged_value) => {
                 if let Some (val) = tagged_value.as_any ().downcast_ref::<BigFraction> () {
                     Ok (val.clone ())
-                } else { Err (self) }
-            }
-            _ => Err (self)
-        }
-    }
-}
-
-
-
-impl<'a> Into<Result<&'a BigFraction, &'a Word>> for &'a Word {
-    fn into (self) -> Result<&'a BigFraction, &'a Word> {
-        match *self {
-            Word::Float (ref val) => {
-                let res: Result<&'a BigFraction, &'a FloatValue> = val.into ();
-                if let Ok (fra) = res { Ok (fra) } else { Err (self) }
-            },
-            Word::Scalar (ref tagged_value) => {
-                if let Some (val) = tagged_value.as_any ().downcast_ref::<BigFraction> () {
-                    Ok (val)
                 } else { Err (self) }
             }
             _ => Err (self)
