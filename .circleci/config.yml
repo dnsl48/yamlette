@@ -13,7 +13,7 @@ jobs:
       - run: curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
       - run: echo 'export PATH="$PATH:$HOME/.cargo/bin"' >> ~/.bashrc && . ~/.bashrc
 
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo build --verbose
-      - run: cargo test --features onetest
+      - run: . ~/.bashrc && rustc -vV
+      - run: . ~/.bashrc && cargo -vV
+      - run: . ~/.bashrc && cargo build --verbose
+      - run: . ~/.bashrc && cargo test --features onetest
