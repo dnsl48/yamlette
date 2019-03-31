@@ -2,19 +2,25 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/rust:latest
+      machine: true
 
     working_directory: ~/yamlette
 
     steps:
+      - run: apt-get -qq update; apt-get -y install git curl gcc
       - checkout
+      - run: git submodule sync && git submodule update --init
+
+      - run: curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
 
       - run: rustc -vV
       - run: cargo -vV
       - run: cargo build --verbose
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_reader
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_savant
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_sage
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_book
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_orchestra
-      - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_face
+      - run: time cargo test --features onetest
+
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_reader
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_savant
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_sage
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_book
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_orchestra
+      # - run: cargo test -- --jobs=1 --test-threads=1 --verbose --features test_face
