@@ -16,4 +16,4 @@ jobs:
       - run: rustc -vV
       - run: cargo -vV
       - run: cargo build --verbose
-      - run: time cargo test --features onetest
+      - run: cargo test --features onetest
