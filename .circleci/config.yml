@@ -1,8 +1,7 @@
 version: 2
 jobs:
   build:
-    docker:
-      machine: true
+    machine: true
 
     working_directory: ~/yamlette
 
