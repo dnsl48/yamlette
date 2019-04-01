@@ -16,4 +16,6 @@ jobs:
       - run: . ~/.bashrc && rustc -vV
       - run: . ~/.bashrc && cargo -vV
       - run: . ~/.bashrc && cargo build --verbose
-      - run: . ~/.bashrc && cargo test --features onetest
+      - run:
+        command: . ~/.bashrc && cargo test --verbose --features onetest
+        no_output_timeout: 3600
