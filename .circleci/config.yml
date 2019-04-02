@@ -1,20 +1,102 @@
-
+version: 2.1
 jobs:
   build:
     docker:
       - image: circleci/rust:latest
-
     working_directory: ~/yamlette
-
     steps:
       - checkout
-
       - run: rustc -vV
       - run: cargo -vV
       - run: cargo build --verbose
-      - run: cargo test --verbose --features test_reader
-      - run: cargo test --verbose --features test_savant
-      - run: cargo test --verbose --features test_sage
-      - run: cargo test --verbose --features test_book
-      - run: cargo test --verbose --features test_orchestra
-      - run: cargo test --verbose --features test_face
+
+  reader:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_reader
+
+  savant:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_savant
+
+  sage:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_sage
+
+  book:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_book
+
+  orchestra:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_orchestra
+
+  face:
+    docker:
+      - image: circleci/rust:latest
+    working_directory: ~/yamlette
+    steps:
+      - checkout
+      - run: rustc -vV
+      - run: cargo -vV
+      - run: cargo test --jobs=1 --test-threads=1 --verbose --features test_face
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build
+
+      - reader:
+          requires:
+            - build
+
+      - savant:
+          requires:
+            - build
+
+      - sage:
+          requires:
+            - build
+
+      - book:
+          requires:
+            - build
+
+      - orchestra:
+          requires:
+            - build
+
+
+      - face:
+          requires:
+            - build
