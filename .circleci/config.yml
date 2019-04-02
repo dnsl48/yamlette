@@ -6,7 +6,7 @@ jobs:
     working_directory: ~/yamlette
 
     steps:
-      - run: sudo apt-get -qq update && sudo apt-get -y install git curl gcc
+      - run: sudo killall -9 apt-get || true && sudo apt-get -y update && sudo apt-get -y install git curl gcc
       - checkout
       - run: git submodule sync && git submodule update --init
 
