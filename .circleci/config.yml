@@ -1,102 +1,24 @@
-version: 2.1
+version: 2
 jobs:
   build:
-    docker:
-      - image: circleci/rust:latest
+    machine: true
+
     working_directory: ~/yamlette
+
     steps:
+      - run: sudo killall -9 apt-get || true && sudo apt-get -y update && sudo apt-get -y install git curl gcc
       - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo build --verbose
+      - run: git submodule sync && git submodule update --init
 
-  reader:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_reader
+      - run: curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
+      - run: echo 'export PATH="$PATH:$HOME/.cargo/bin"' >> ~/.bashrc && . ~/.bashrc
 
-  savant:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_savant
-
-  sage:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_sage
-
-  book:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_book
-
-  orchestra:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_orchestra
-
-  face:
-    docker:
-      - image: circleci/rust:latest
-    working_directory: ~/yamlette
-    steps:
-      - checkout
-      - run: rustc -vV
-      - run: cargo -vV
-      - run: cargo test --jobs=1 --verbose --features test_face
-
-workflows:
-  version: 2
-  build:
-    jobs:
-      - build
-
-      - reader:
-          requires:
-            - build
-
-      - savant:
-          requires:
-            - build
-
-      - sage:
-          requires:
-            - build
-
-      - book:
-          requires:
-            - build
-
-      - orchestra:
-          requires:
-            - build
-
-
-      - face:
-          requires:
-            - build
+      - run: . ~/.bashrc && rustc -vV
+      - run: . ~/.bashrc && cargo -vV
+      - run: . ~/.bashrc && cargo build --verbose
+      - run: . ~/.bashrc && cargo test --verbose --features test_reader
+      - run: . ~/.bashrc && cargo test --verbose --features test_savant
+      - run: . ~/.bashrc && cargo test --verbose --features test_sage
+      - run: . ~/.bashrc && cargo test --verbose --features test_book
+      - run: . ~/.bashrc && cargo test --verbose --features test_orchestra
+      - run: . ~/.bashrc && cargo test --verbose --features test_face
