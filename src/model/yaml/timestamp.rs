@@ -2,12 +2,12 @@ extern crate fraction;
 extern crate skimmer;
 extern crate num;
 
-
-use self::fraction::{ Fraction, BigFraction };
+// use self::fraction::{ Fraction, BigFraction };
 use self::num::BigUint;
 
+use self::fraction::{DynaInt, One, Zero};
 
-use model::{ EncodedString, Model, Node, Rope, Renderer, Tagged, TaggedValue };
+use model::{ EncodedString, Fraction, Model, Node, Rope, Renderer, Tagged, TaggedValue };
 
 use model::yaml::float::FloatValue;
 
@@ -111,49 +111,10 @@ impl Timestamp {
 
 
     fn parse_fraction (&self, ptr: &mut usize, value: &[u8]) -> Option<FloatValue> {
-        let mut fraction: Option<(Result<u64, BigUint>, Result<u64, BigUint>)> = None;
+        // let mut fraction: Option<(Result<u64, BigUint>, Result<u64, BigUint>)> = None;
+        let mut fraction: Option<(DynaInt<u64, BigUint>, DynaInt<u64, BigUint>)> = None;
 
         /*
-        'fraction: loop {
-            for i in 0 .. 10 {
-                if self.dgt[i].contained_at (value, *ptr) {
-                    *ptr += self.dgt[i].len ();
-
-                    let mut f = if fraction.is_some () { fraction.unwrap () } else { (Ok (0), Ok (1)) };
-
-                    f.0 = match f.0 {
-                        Ok (u) => {
-                            if let Some (nval) = u.checked_mul (10) {
-                                if let Some (nval) = nval.checked_add (i as u64) {
-                                    Ok (nval)
-                                } else {
-                                    Err (BigUint::from (nval) + BigUint::from (i as u64))
-                                }
-                            } else {
-                                Err (BigUint::from (u) * BigUint::from (10u8) + BigUint::from (i as u64))
-                            }
-                        }
-                        Err (b) => { Err (b * BigUint::from (10u8) + BigUint::from (i as u64)) }
-                    };
-
-                    f.1 = match f.1 {
-                        Ok (u) => if let Some (nval) = u.checked_mul (10) {
-                            Ok (nval)
-                        } else {
-                            Err (BigUint::from (u) * BigUint::from (10u8))
-                        },
-                        Err (b) => { Err (b * BigUint::from (10u8)) }
-                    };
-
-                    fraction = Some ((f.0, f.1));
-
-                    continue 'fraction;
-                }
-            }
-            break;
-        }
-        */
-
         'fraction: loop {
             match value.get (*ptr).map (|b| *b) {
                 Some (val @ b'0' ... b'9') => {
@@ -191,9 +152,30 @@ impl Timestamp {
                 _ => break
             }
         }
+        */
+
+        'fraction: loop {
+            match value.get (*ptr).map (|b| *b) {
+                Some (val @ b'0' ... b'9') => {
+                    *ptr += 1;
+                    let val = val - b'0';
+
+                    let mut f = if fraction.is_some () { fraction.unwrap () } else { (DynaInt::zero(), DynaInt::one()) };
+
+                    f.0 = f.0 * DynaInt::S(10u64) + DynaInt::S(val as u64);
+                    f.1 = f.1 * DynaInt::S(10u64);
+                    fraction = Some ((f.0, f.1));
+                }
+                _ => break
+            }
+        }
+
+
 
         if let Some ( (num, den) ) = fraction {
-            if num.is_ok () && den.is_ok () {
+            Some (FloatValue::from (Fraction::new (num, den)))
+
+            /*if num.is_ok () && den.is_ok () {
                 Some (FloatValue::from (Fraction::new (num.ok ().unwrap (), den.ok ().unwrap ())))
             } else if num.is_ok () {
                 Some (FloatValue::from (BigFraction::new (BigUint::from (num.ok ().unwrap ()), den.err ().unwrap ())))
@@ -201,7 +183,7 @@ impl Timestamp {
                 Some (FloatValue::from (BigFraction::new (num.err ().unwrap (), BigUint::from (den.ok ().unwrap ()))))
             } else {
                 Some (FloatValue::from (BigFraction::new (num.err ().unwrap (), den.err ().unwrap ())))
-            }
+            }*/
         } else { None }
     }
 }

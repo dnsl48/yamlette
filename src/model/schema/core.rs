@@ -30,7 +30,6 @@ use std::clone::Clone;
 use std::default::Default;
 
 
-// #[derive (Clone)]
 pub struct Core {
     styles: CommonStyles,
     tag_handles: [(Cow<'static, str>, Cow<'static, str>); 3],
@@ -147,7 +146,6 @@ impl Schema for Core {
 }
 
 
-
 impl Core {
     pub fn new () -> Core { Core {
         // encoding: Encoding::default (),
@@ -181,9 +179,6 @@ impl Core {
         mod_incognitum: Incognitum
     } }
 }
-
-
-
 
 impl Clone for Core {
     fn clone (&self) -> Core { Core::new () }

@@ -3,7 +3,7 @@ macro_rules! check {
         // let result = yamlette! ( write ; $rules );
 
         let orc = get_orc ();
-        yamlette_compose! ( orchestra ; orc ; $rules );
+        yamlette! ( compose orchestra ; orc ; $rules );
         let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
 
         assert_eq! ($expect, result);
@@ -23,7 +23,7 @@ macro_rules! ex {
             let schema = Core::new (); // ::new (&cset);
             let orc = Orchestra::new (schema).ok ().unwrap ();
 
-            yamlette_compose! ( orchestra ; orc ; $rules );
+            yamlette! ( compose orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
 
             assert_eq! (expect, result);
@@ -38,7 +38,7 @@ macro_rules! ex {
             let schema = Core::new (); // ::new (&cset);
             let orc = Orchestra::new (schema).ok ().unwrap ();
 
-            yamlette_compose! ( orchestra ; orc ; $rules );
+            yamlette! ( compose orchestra ; orc ; $rules );
             let result = unsafe { String::from_utf8_unchecked (orc.listen ().ok ().unwrap ()) };
 
             assert_eq! (expect, result);
@@ -73,7 +73,7 @@ fn get_orc () -> Orchestra {
 
 #[test]
 fn example_02_01_block () {
-    let should_be = 
+    let should_be =
 r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -85,7 +85,7 @@ r#"- Mark McGwire
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[ [ mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [[ [ mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -98,7 +98,7 @@ r#"- Mark McGwire
 
 #[test]
 fn example_02_01_vec () {
-    let should_be = 
+    let should_be =
 r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -108,7 +108,7 @@ r#"- Mark McGwire
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[ seq ]] );
+    yamlette!(compose orchestra ; orc ; [[ seq ]] );
 
     let maybe_music = orc.listen ();
 
@@ -121,7 +121,7 @@ r#"- Mark McGwire
 
 #[test]
 fn example_02_01_block_quoted () {
-    let should_be = 
+    let should_be =
 r#"- 'Mark McGwire'
 - 'Sammy Sosa'
 - 'Ken Griffey'
@@ -135,7 +135,7 @@ r#"- 'Mark McGwire'
 
     use yamlette::model::yaml::str::ForceQuotes;
 
-    yamlette_compose! ( orchestra ; orc ; [[ [# ForceQuotes (true) => mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [[ [# ForceQuotes (true) => mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -148,7 +148,7 @@ r#"- 'Mark McGwire'
 
 #[test]
 fn example_02_01_block_doublequoted () {
-    let should_be = 
+    let should_be =
 r#"- "Mark McGwire"
 - "Sammy Sosa"
 - "Ken Griffey"
@@ -162,7 +162,7 @@ r#"- "Mark McGwire"
 
     use yamlette::model::yaml::str::{ ForceQuotes, PreferDoubleQuotes };
 
-    yamlette_compose! ( orchestra ; orc ; [[ [# ForceQuotes (true), PreferDoubleQuotes (true) => mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [[ [# ForceQuotes (true), PreferDoubleQuotes (true) => mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -175,7 +175,7 @@ r#"- "Mark McGwire"
 
 #[test]
 fn example_02_01_flow () {
-    let should_be = 
+    let should_be =
 r#"[ Mark McGwire, Sammy Sosa, Ken Griffey ]"#;
 
     let mark = "Mark McGwire";
@@ -186,7 +186,7 @@ r#"[ Mark McGwire, Sammy Sosa, Ken Griffey ]"#;
 
     use yamlette::model::style::Flow;
 
-    yamlette_compose! ( orchestra ; orc ; [[ # Flow (true) =>
+    yamlette!(compose orchestra ; orc ; [[ # Flow (true) =>
         [
             mark,
             sammy,
@@ -206,7 +206,7 @@ r#"[ Mark McGwire, Sammy Sosa, Ken Griffey ]"#;
 
 #[test]
 fn example_02_01_flow_compact () {
-    let should_be = 
+    let should_be =
 r#"[Mark McGwire,Sammy Sosa,Ken Griffey]"#;
 
     let mark = "Mark McGwire";
@@ -217,7 +217,7 @@ r#"[Mark McGwire,Sammy Sosa,Ken Griffey]"#;
 
     use yamlette::model::style::{ Flow, Compact };
 
-    yamlette_compose! ( orchestra ; orc ; [ # Flow (true), Compact (true) => [ [ mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [ # Flow (true), Compact (true) => [ [ mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -230,7 +230,7 @@ r#"[Mark McGwire,Sammy Sosa,Ken Griffey]"#;
 
 #[test]
 fn example_02_01_flow_multiline () {
-    let should_be = 
+    let should_be =
 r#"[
   Mark McGwire,
   Sammy Sosa,
@@ -245,7 +245,7 @@ r#"[
 
     use yamlette::model::style::{ Flow, Multiline };
 
-    yamlette_compose! ( orchestra ; orc ; [ # Flow (true) => [ # Multiline (true) => [ mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [ # Flow (true) => [ # Multiline (true) => [ mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -258,7 +258,7 @@ r#"[
 
 #[test]
 fn example_02_01_flow_multiline_indent4 () {
-    let should_be = 
+    let should_be =
 r#"[
     Mark McGwire,
     Sammy Sosa,
@@ -273,7 +273,7 @@ r#"[
 
     use yamlette::model::style::{ Flow, Multiline, Indent };
 
-    yamlette_compose! ( orchestra ; orc ; [ # Flow (true) => [ # Multiline (true) => ( # Indent (4) => [ mark, sammy, ken ] ) ]] );
+    yamlette!(compose orchestra ; orc ; [ # Flow (true) => [ # Multiline (true) => ( # Indent (4) => [ mark, sammy, ken ] ) ]] );
 
     let maybe_music = orc.listen ();
 
@@ -286,12 +286,12 @@ r#"[
 
 #[test]
 fn extra_01_empty () {
-    let should_be = 
+    let should_be =
 r#"[]"#;
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[
+    yamlette!(compose orchestra ; orc ; [[
         []
     ]] );
 
@@ -306,7 +306,7 @@ r#"[]"#;
 
 #[test]
 fn extra_01_flow_threshold () {
-    let should_be = 
+    let should_be =
 r#"[ abcd, abcd, abcd,
 abcd, abcd, abcd, abcd,
 abcd, abcd ]"#;
@@ -317,7 +317,7 @@ abcd, abcd ]"#;
 
     use yamlette::model::style::{ Flow, RespectThreshold, Threshold };
 
-    yamlette_compose! ( orchestra ; orc ; [[ # Flow (true), RespectThreshold (true), Threshold (24) =>
+    yamlette!(compose orchestra ; orc ; [[ # Flow (true), RespectThreshold (true), Threshold (24) =>
         [
             data, data, data, data, data, data,
             data, data, data
@@ -335,7 +335,7 @@ abcd, abcd ]"#;
 
 #[test]
 fn extra_01_flow_threshold_compact () {
-    let should_be = 
+    let should_be =
 r#"[abcd,abcd,abcd,abcd,
 abcd,abcd,abcd,abcd,abcd]"#;
 
@@ -345,7 +345,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
     use yamlette::model::style::{ Flow, Compact, RespectThreshold, Threshold };
 
-    yamlette_compose! ( orchestra ; orc ; [[ # Flow (true), Compact (true), RespectThreshold (true), Threshold (24) =>
+    yamlette!(compose orchestra ; orc ; [[ # Flow (true), Compact (true), RespectThreshold (true), Threshold (24) =>
         [
             data, data, data, data, data, data,
             data, data, data
@@ -363,7 +363,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
 #[test]
 fn extra_01_volume_flow_threshold_compact () {
-    let should_be = 
+    let should_be =
 r#"[abcd,abcd,abcd,abcd,
 abcd,abcd,abcd,abcd,abcd]"#;
 
@@ -373,7 +373,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
     use yamlette::model::style::{ Flow, Compact, RespectThreshold, Threshold };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Flow (true), Compact (true), RespectThreshold (true), Threshold (24) =>
+    yamlette!(compose orchestra ; orc ; [[# Flow (true), Compact (true), RespectThreshold (true), Threshold (24) =>
         [
             data, data, data, data, data, data,
             data, data, data
@@ -391,7 +391,7 @@ abcd,abcd,abcd,abcd,abcd]"#;
 
 #[test]
 fn example_02_02_block () {
-    let should_be = 
+    let should_be =
 r"hr: 65
 avg: 0.278
 rbi: 147
@@ -403,7 +403,7 @@ rbi: 147
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[
+    yamlette!(compose orchestra ; orc ; [[
         {
             "hr" : hr,
             "avg": avg,
@@ -466,7 +466,7 @@ avg: 0.278
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[ map ]] );
+    yamlette!(compose orchestra ; orc ; [[ map ]] );
 
     let maybe_music = orc.listen ();
 
@@ -483,7 +483,7 @@ avg: 0.278
 fn extra_02_empty () {
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[ {} ]] );
+    yamlette!(compose orchestra ; orc ; [[ {} ]] );
     let maybe_music = orc.listen ();
     let result = unsafe { String::from_utf8_unchecked (maybe_music.ok ().unwrap ()) };
     assert_eq! ("{}", result);
@@ -491,7 +491,7 @@ fn extra_02_empty () {
 
     use yamlette::model::style::{ IssueTag };
 
-    yamlette_compose! ( orchestra ; orc ; [[ # IssueTag (true) => {} ]] );
+    yamlette!(compose orchestra ; orc ; [[ # IssueTag (true) => {} ]] );
     let maybe_music = orc.listen ();
     let result = unsafe { String::from_utf8_unchecked (maybe_music.ok ().unwrap ()) };
     assert_eq! ("!!map {}", result);
@@ -501,7 +501,7 @@ fn extra_02_empty () {
 
 #[test]
 fn extra_03_more_emptiness_flow_multiline () {
-    let should_be = 
+    let should_be =
 r#"[
   {},
   [],
@@ -517,7 +517,7 @@ r#"[
 
     use yamlette::model::style::{ Flow, Multiline };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Flow (true), Multiline (true) =>
+    yamlette!(compose orchestra ; orc ; [[# Flow (true), Multiline (true) =>
         [
             {},
             [],
@@ -542,14 +542,14 @@ r#"[
 
 #[test]
 fn extra_03_more_emptiness_flow () {
-    let should_be = 
+    let should_be =
 r#"[ {}, [], { {}: {}, {}: [], []: {}, []: [] } ]"#;
 
     let orc = get_orc ();
 
     use yamlette::model::style::{ Flow };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Flow (true) =>
+    yamlette!(compose orchestra ; orc ; [[# Flow (true) =>
         [
             {},
             [],
@@ -574,14 +574,14 @@ r#"[ {}, [], { {}: {}, {}: [], []: {}, []: [] } ]"#;
 
 #[test]
 fn extra_03_more_emptiness_flow_compact () {
-    let should_be = 
+    let should_be =
 r#"[{},[],{{}: {},{}: [],[]: {},[]: []}]"#;
 
     let orc = get_orc ();
 
     use yamlette::model::style::{ Flow, Compact };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Flow (true), Compact (true) =>
+    yamlette!(compose orchestra ; orc ; [[# Flow (true), Compact (true) =>
         [
             {},
             [],
@@ -607,7 +607,7 @@ r#"[{},[],{{}: {},{}: [],[]: {},[]: []}]"#;
 
 #[test]
 fn extra_04_flow_respect_threshold () {
-    let should_be = 
+    let should_be =
 r#"{ a: b, c: d, e: f,
 g: h, i: j, k: l, m:
 n, o: p, q: r, s: t,
@@ -617,7 +617,7 @@ u: v, w: x, y: z }"#;
 
     use yamlette::model::style::{ Flow, RespectThreshold, Threshold };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Flow (true), RespectThreshold (true), Threshold (20) =>
+    yamlette!(compose orchestra ; orc ; [[# Flow (true), RespectThreshold (true), Threshold (20) =>
         { "a": "b", "c": "d", "e": "f", "g": "h", "i": "j", "k": "l", "m": "n", "o": "p", "q": "r", "s": "t", "u": "v", "w": "x", "y": "z" }
     ]] );
 
@@ -633,7 +633,7 @@ u: v, w: x, y: z }"#;
 
 #[test]
 fn extra_04_compact_flow_respect_threshold () {
-    let should_be = 
+    let should_be =
 r#"{a: b,c: d,e: f,g:
 h,i: j,k: l,m: n,o:
 p,q: r,s: t,u: v,w:
@@ -643,7 +643,7 @@ x,y: z}"#;
 
     use yamlette::model::style::{ Compact, Flow, RespectThreshold, Threshold };
 
-    yamlette_compose! ( orchestra ; orc ; [[# Compact (true), Flow (true), RespectThreshold (true), Threshold (20) =>
+    yamlette!(compose orchestra ; orc ; [[# Compact (true), Flow (true), RespectThreshold (true), Threshold (20) =>
         { "a": "b", "c": "d", "e": "f", "g": "h", "i": "j", "k": "l", "m": "n", "o": "p", "q": "r", "s": "t", "u": "v", "w": "x", "y": "z" }
     ]] );
 
@@ -658,7 +658,7 @@ x,y: z}"#;
 
 #[test]
 fn example_02_01_block_diryaml () {
-    let should_be = 
+    let should_be =
 r#"%YAML 1.2
 ---
 - Mark McGwire
@@ -674,7 +674,7 @@ r#"%YAML 1.2
     let orc = get_orc ();
 
 
-    yamlette_compose! ( orchestra ; orc ; [ % YAML => [
+    yamlette!(compose orchestra ; orc ; [ % YAML => [
                                     [ mark, sammy, ken ]
                                  ]] );
 
@@ -688,7 +688,7 @@ r#"%YAML 1.2
 
 #[test]
 fn example_02_01_block_volumes_03 () {
-    let should_be = 
+    let should_be =
 r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -713,7 +713,7 @@ r#"- Mark McGwire
     let orc = get_orc ();
 
 
-    yamlette_compose! ( orchestra ; orc ; [
+    yamlette!(compose orchestra ; orc ; [
         [
             [ mark, sammy, ken ]
         ],
@@ -745,7 +745,7 @@ r#"- Mark McGwire
 
 #[test]
 fn example_02_01_block_volumes_02 () {
-    let should_be = 
+    let should_be =
 r#"- Mark McGwire
 ...
 - Sammy Sosa
@@ -756,7 +756,7 @@ r#"- Mark McGwire
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [
+    yamlette!(compose orchestra ; orc ; [
         [
             [mark]
         ],
@@ -775,7 +775,7 @@ r#"- Mark McGwire
 
 #[test]
 fn example_02_01_block_volumes_01 () {
-    let should_be = 
+    let should_be =
 r#"- Mark McGwire
 "#;
 
@@ -783,7 +783,7 @@ r#"- Mark McGwire
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [
+    yamlette!(compose orchestra ; orc ; [
         [
             [mark]
         ]
@@ -800,7 +800,7 @@ r#"- Mark McGwire
 
 #[test]
 fn example_02_01_block_dir_tags_01 () {
-    let should_be = 
+    let should_be =
 r#"%TAG !aloha! http://yamlette.org,2015:aloha/
 ---
 - Mark McGwire
@@ -815,7 +815,7 @@ r#"%TAG !aloha! http://yamlette.org,2015:aloha/
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [[ % (TAG ; "!aloha!", "http://yamlette.org,2015:aloha/") => [ mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [[ % (TAG ; "!aloha!", "http://yamlette.org,2015:aloha/") => [ mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -829,7 +829,7 @@ r#"%TAG !aloha! http://yamlette.org,2015:aloha/
 
 #[test]
 fn example_02_01_block_dirs_01 () {
-    let should_be = 
+    let should_be =
 r#"%YAML 1.2
 %TAG !test! http://yamlette.org,2015:test/
 %TAG !aloha! http://yamlette.org,2015:aloha/
@@ -856,7 +856,7 @@ r#"%YAML 1.2
 
     let orc = get_orc ();
 
-    yamlette_compose! ( orchestra ; orc ; [ % YAML , (TAG ; "!test!", "http://yamlette.org,2015:test/") =>
+    yamlette!(compose orchestra ; orc ; [ % YAML , (TAG ; "!test!", "http://yamlette.org,2015:test/") =>
         [ % (TAG ; "!aloha!", "http://yamlette.org,2015:aloha/") => [ mark, sammy, ken ] ],
         [ [ sammy, ken ] ],
         [ % NO_YAML, NO_BORDER_BOT, (TAG ; "!hola!", "http://yamlette.org,2015:hola/") => [ mark ] ]
@@ -873,7 +873,7 @@ r#"%YAML 1.2
 
 #[test]
 fn example_02_01_block_tagged () {
-    let should_be = 
+    let should_be =
 r#"!!seq
 - !!str Mark McGwire
 - !!str Sammy Sosa
@@ -888,7 +888,7 @@ r#"!!seq
 
     use yamlette::model::style::{ IssueTag };
 
-    yamlette_compose! ( orchestra ; orc ; [[ # IssueTag (true) => [ mark, sammy, ken ] ]] );
+    yamlette!(compose orchestra ; orc ; [[ # IssueTag (true) => [ mark, sammy, ken ] ]] );
 
     let maybe_music = orc.listen ();
 
@@ -900,7 +900,7 @@ r#"!!seq
 
 #[test]
 fn example_02_01_block_tagged_no_tagged () {
-    let should_be = 
+    let should_be =
 r#"!!seq
 - Mark McGwire
 - !!str "Sammy Sosa"
@@ -917,7 +917,7 @@ r#"!!seq
     use yamlette::model::yaml::str::{ ForceQuotes, PreferDoubleQuotes };
 
 
-    yamlette_compose! ( orchestra ; orc ; [[ ( # IssueTag (true) => [ # IssueTag (false) =>
+    yamlette!(compose orchestra ; orc ; [[ ( # IssueTag (true) => [ # IssueTag (false) =>
         mark,
         ( # IssueTag (true), ForceQuotes (true), PreferDoubleQuotes (true) => sammy ),
         ken
