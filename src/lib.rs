@@ -1,5 +1,4 @@
 pub mod book;
-pub mod composer;
 pub mod face;
 pub mod model;
 pub mod orchestra;

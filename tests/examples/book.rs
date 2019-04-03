@@ -77,7 +77,7 @@ mod stable {
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book ; book ; [[
+        yamlette! (reckon book ; book ; [[
             (name:&str)
         ]]);
 
@@ -97,7 +97,7 @@ r"- [a, b, c]
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book ; book ; [[
+        yamlette! (reckon book ; book ; [[
         [
             [ (a:&str), (b:&str), (c:&str) ],
             [ (d:&str), (e:&str), (f:&str) ],
@@ -139,7 +139,7 @@ r"- [a, b, c]
         let book = book! (sage);
 
         use std::collections::HashMap;
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             (dict si:HashMap<String, i32>, sf:HashMap<String, f32>, ss:HashMap<&str, &str>)
         ]]);
 
@@ -178,7 +178,7 @@ r"- [a, b, c]
         let book = book! (sage);
 
         use std::collections::HashMap;
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             (dict si:HashMap<String, i32>, sf:HashMap<String, f32>, ss:HashMap<&str, &str>)
         ]]);
 
@@ -223,7 +223,7 @@ iso: morph";
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book ; &book; [[
+        yamlette! (reckon book ; &book; [[
             [
                 (mark:&str),
                 [
@@ -264,7 +264,7 @@ iso: morph";
 
 
 
-        yamlette_reckon! (book ; &book ; [[
+        yamlette! (reckon book ; &book ; [[
             (),
             {
                 "iso" => (morph:&str),
@@ -279,7 +279,7 @@ iso: morph";
         let mut morph: &str = "";
         let mut val: Option<&str> = None;
 
-        yamlette_reckon! (book ; &book ; [[
+        yamlette! (reckon book ; &book ; [[
             (),
             (call &mut |ptr| {
 
@@ -321,7 +321,7 @@ r"- unu
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             (list strs:Vec<&str>, nums:Vec<i32>)
         ]]);
 
@@ -347,7 +347,7 @@ r"- unu
         let book = book! (sage);
 
         use std::collections::HashMap;
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             (dict si:HashMap<String, i32>, sf:HashMap<String, f32>, ss:HashMap<&str, &str>)
         ]]);
 
@@ -389,7 +389,7 @@ r"- unu
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             [(a:&str), (b:&str), (c:&str), [(a2:&str), (b2:&str)]]
         ]]);
 
@@ -411,7 +411,7 @@ r"scene:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_front_right: 
+       light.living_room_front_right:
            state: on
            transition: 10
            brightness: 1";
@@ -419,7 +419,7 @@ r"scene:
         let sage = sage11! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book; book; [[
+        yamlette! (reckon book; book; [[
             {
                 "scene" => [ {
                     "name" => (name:&str),
@@ -427,7 +427,7 @@ r"scene:
                         ptr.unalias ().into_map ().and_then (|ptr| {
                             assert! (ptr == "light.living_room_front_left");
 
-                            yamlette_reckon! ( ptr ; ptr.next_sibling () ; {
+                            yamlette! ( reckon ptr ; ptr.next_sibling () ; {
                                 (state:bool),
                                 (transition:u8),
                                 (brightness:u8)
@@ -444,7 +444,7 @@ r"scene:
                             ptr.unwrap ().next_sibling ().and_then (|ptr| {
                                 assert! (ptr == "light.living_room_front_right");
 
-                                yamlette_reckon! ( ptr ; ptr.next_sibling () ; {
+                                yamlette! ( reckon ptr ; ptr.next_sibling () ; {
                                     (state:bool),
                                     (transition:u8),
                                     (brightness:u8)
@@ -498,7 +498,7 @@ r"scene:
 
             fn dict_update (&mut self, key: Pointer<'a>, val: Pointer<'a>) {
                 if let Some (key) = key.into::<String> () {
-                    yamlette_reckon! ( ptr ; Some (val) ; {
+                    yamlette! ( reckon ptr ; Some (val) ; {
                         (state:bool),
                         (transition:u8),
                         (brightness:u8)
@@ -524,19 +524,19 @@ r"scene:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_front_right: 
+       light.living_room_front_right:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_back_right: 
+       light.living_room_back_right:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_back_left: 
+       light.living_room_back_left:
            state: on
            transition: 4
            brightness: 1
-       light.living_room_slider: 
+       light.living_room_slider:
            state: on
            transition: 4
            brightness: 1
@@ -557,7 +557,7 @@ r"scene:
         let sage = sage11! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book; book; [[{ "scene" => [ {
+        yamlette! (reckon book; book; [[{ "scene" => [ {
             "name" => (name:&str),
             "entities" => (dict states:StateMap)
         } ] }]]);
@@ -614,7 +614,7 @@ r"scene:
 
         impl<'a> FromPointer<'a> for State {
             fn from_pointer (pointer: Pointer<'a>) -> Option<Self> {
-                yamlette_reckon! ( ptr ; Some (pointer) ; {
+                yamlette! ( reckon ptr ; Some (pointer) ; {
                     (state:bool),
                     (transition:u8),
                     (brightness:u8)
@@ -628,34 +628,6 @@ r"scene:
             }
         }
 
-/*
-        struct StateMap(HashMap<String, State>);
-
-        impl<'a> Dict<'a> for StateMap {
-            fn dict_new () -> Self { StateMap(HashMap::new ()) }
-
-            fn dict_reserve (&mut self, size: usize) { self.0.reserve (size) }
-
-            fn dict_update (&mut self, key: Pointer<'a>, val: Pointer<'a>) {
-                if let Some (key) = key.into::<String> () {
-                    yamlette_reckon! ( ptr ; Some (val) ; {
-                        (state:bool),
-                        (transition:u8),
-                        (brightness:u8)
-                    } );
-
-                    let val = State {
-                        state: if let Some (s) = state { s } else { false },
-                        transition: if let Some (t) = transition { t } else { 0u8 },
-                        brightness: if let Some (b) = brightness { b } else { 0u8 }
-                    };
-
-                    self.0.insert (key, val);
-                }
-            }
-        }
-*/
-
 
         let src =
 r"scene:
@@ -665,19 +637,19 @@ r"scene:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_front_right: 
+       light.living_room_front_right:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_back_right: 
+       light.living_room_back_right:
            state: on
            transition: 10
            brightness: 1
-       light.living_room_back_left: 
+       light.living_room_back_left:
            state: on
            transition: 4
            brightness: 1
-       light.living_room_slider: 
+       light.living_room_slider:
            state: on
            transition: 4
            brightness: 1
@@ -698,7 +670,7 @@ r"scene:
         let sage = sage11! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book; book; [[{ "scene" => [ {
+        yamlette! ( reckon book; book; [[{ "scene" => [ {
             "name" => (name:&str),
             "entities" => (dict states:HashMap<String, State>)
         } ] }]]);
@@ -737,14 +709,14 @@ r"scene:
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! (book ; book ; [[
+        yamlette! ( reckon book ; book ; [[
             {(name:&str)}
         ]]);
 
         assert_eq! (name, Some("Mark McGwire"));
 
 
-        yamlette_reckon! (book ; book ; [[
+        yamlette! (reckon book ; book ; [[
             { "name" => (name:&str) }
         ]]);
 
@@ -782,7 +754,7 @@ r"scene:
         let sage = sage! (src);
         let book = book! (sage);
 
-        yamlette_reckon! ( book ; book ; [[ {
+        yamlette! ( reckon book ; book ; [[ {
             Key::UNU => (unu:u8),
             Key::DUA => (dua:u8),
             Key::TRI => (tri:u8)
