@@ -21,6 +21,7 @@ use model::yaml::timestamp::Timestamp;
 use model::yaml::value::Value;
 use model::yaml::yaml::Yaml;
 
+use model::yamlette::env::Env;
 use model::yamlette::incognitum::Incognitum;
 use model::yamlette::literal::Literal;
 
@@ -28,9 +29,9 @@ use std::borrow::Cow;
 use std::clone::Clone;
 use std::default::Default;
 
-pub struct Core {
+pub struct Yamlette {
     styles: CommonStyles,
-    tag_handles: [(Cow<'static, str>, Cow<'static, str>); 3],
+    tag_handles: [(Cow<'static, str>, Cow<'static, str>); 4],
 
     mod_map: Map,
     mod_set: Set,
@@ -47,11 +48,12 @@ pub struct Core {
     mod_yaml: Yaml,
     mod_timestamp: Timestamp,
     mod_binary: Binary,
+    mod_env: Env,
     mod_literal: Literal,
     mod_incognitum: Incognitum,
 }
 
-impl Schema for Core {
+impl Schema for Yamlette {
     #[inline(always)]
     fn get_model_literal(&self) -> Literal {
         self.mod_literal
@@ -121,6 +123,8 @@ impl Schema for Core {
             Some(&self.mod_literal)
         } else if tag == Incognitum::get_tag() {
             Some(&self.mod_incognitum)
+        } else if tag == Env::get_tag() {
+            Some(&self.mod_env)
         } else {
             None
         }
@@ -197,6 +201,8 @@ impl Schema for Core {
             Some(&self.mod_literal)
         } else if predicate(&self.mod_incognitum) {
             Some(&self.mod_incognitum)
+        } else if predicate(&self.mod_env) {
+            Some(&self.mod_env)
         } else {
             None
         }
@@ -207,12 +213,13 @@ impl Schema for Core {
     }
 }
 
-impl Core {
-    pub fn new() -> Core {
-        Core {
+impl Yamlette {
+    pub fn new() -> Yamlette {
+        Yamlette {
             styles: CommonStyles::default(),
 
             tag_handles: [
+                (Cow::from("!!!"), Cow::from("tag:yamlette.org,1:")),
                 (Cow::from("!!"), Cow::from("tag:yaml.org,2002:")),
                 (
                     Cow::from("!"),
@@ -238,12 +245,13 @@ impl Core {
             mod_binary: Binary,
             mod_literal: Literal,
             mod_incognitum: Incognitum,
+            mod_env: Env
         }
     }
 }
 
-impl Clone for Core {
-    fn clone(&self) -> Core {
-        Core::new()
+impl Clone for Yamlette {
+    fn clone(&self) -> Yamlette {
+        Yamlette::new()
     }
 }

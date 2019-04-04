@@ -60,7 +60,7 @@ bar:
 
     #[test]
     fn example_02_01_block () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -83,7 +83,7 @@ bar:
 
     #[test]
     fn example_02_01_block_sage () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -106,7 +106,7 @@ bar:
 
     #[test]
     fn example_02_01_block_ignore_result () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -126,7 +126,7 @@ bar:
 
     #[test]
     fn example_02_01_block_ignore_result_sage () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -147,7 +147,7 @@ bar:
 /*
     #[test]
     fn example_02_01_block_custom_charset () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -163,7 +163,7 @@ bar:
 /*
     #[test]
     fn example_02_01_block_custom_encoding () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
@@ -178,14 +178,14 @@ bar:
 
     #[test]
     fn example_02_01_block_custom_schema () {
-        let should_be = 
+        let should_be =
             Some (r#"- Mark McGwire
 - Sammy Sosa
 - Ken Griffey
 "#);
 
         // let cset = yamlette::txt::charset::get_charset_utf8 ();
-        let schema = yamlette::model::schema::core::Core::new ();
+        let schema = yamlette::model::schema::yamlette::Yamlette::new ();
         let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ; { schema: schema } ).ok ();
 
         assert_eq! (should_be.map (|b| b.to_string ()), result);

@@ -159,14 +159,14 @@ macro_rules! yamlette {
     }};
 
     ( options ; { $( $key:ident : $val:expr ),* } ; $var:ident ) => {
-        let mut $var: $crate::face::Options<$crate::model::schema::core::Core> = $crate::face::Options::new ();
+        let mut $var: $crate::face::Options<$crate::model::schema::yamlette::Yamlette> = $crate::face::Options::new ();
 
         $(
             $var = yamlette! ( option ; $var ; $key ; $val );
         )*
 
         $var = if $var.schema.is_none () {
-            let schema = $crate::model::schema::core::Core::new ();
+            let schema = $crate::model::schema::yamlette::Yamlette::new ();
             $crate::face::Options::from ((schema, $var))
         } else {
             $var

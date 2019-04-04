@@ -1,15 +1,15 @@
+extern crate fraction;
 extern crate num;
 extern crate skimmer;
-extern crate fraction;
 
-use self::fraction::{BigFraction, BigUint, DynaInt, One, Sign, Zero};
 use self::fraction::convert::TryToConvertFrom;
+use self::fraction::{BigFraction, BigUint, DynaInt, One, Sign, Zero};
 
 use self::num::traits::Signed;
-use self::num::{ToPrimitive};
+use self::num::ToPrimitive;
 
-use model::Fraction;
 use model::style::CommonStyles;
+use model::Fraction;
 use model::{model_issue_rope, EncodedString, Model, Node, Renderer, Rope, Tagged, TaggedValue};
 
 use std::any::Any;
@@ -532,7 +532,7 @@ impl Into<Result<fraction::Fraction, FloatValue>> for FloatValue {
     fn into(self) -> Result<fraction::Fraction, FloatValue> {
         match fraction::Fraction::try_to_convert_from(self.value.clone()) {
             Some(fraction) => Ok(fraction),
-            None => Err(self)
+            None => Err(self),
         }
     }
 }
@@ -655,10 +655,7 @@ mod tests {
                     .unwrap()
                     .value
                     .clone();
-                assert_eq!(
-                    val,
-                    Fraction::new_generic(Sign::Plus, $num, $den).unwrap()
-                );
+                assert_eq!(val, Fraction::new_generic(Sign::Plus, $num, $den).unwrap());
             } else {
                 assert!(false)
             }
@@ -674,10 +671,7 @@ mod tests {
                     .unwrap()
                     .value
                     .clone();
-                assert_eq!(
-                    val,
-                    Fraction::new_generic(Sign::Plus, $num, $den).unwrap()
-                );
+                assert_eq!(val, Fraction::new_generic(Sign::Plus, $num, $den).unwrap());
             } else {
                 assert!(false)
             }
