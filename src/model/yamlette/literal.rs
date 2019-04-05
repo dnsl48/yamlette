@@ -102,6 +102,12 @@ pub struct LiteralValue {
     value: Cow<'static, str>,
 }
 
+impl LiteralValue {
+    pub fn to_cow(self) -> Cow<'static, str> {
+        self.value
+    }
+}
+
 impl Tagged for LiteralValue {
     fn get_tag(&self) -> Cow<'static, str> {
         Cow::from(TAG)
