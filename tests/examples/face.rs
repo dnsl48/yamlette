@@ -184,10 +184,15 @@ bar:
 - Ken Griffey
 "#);
 
-        // let cset = yamlette::txt::charset::get_charset_utf8 ();
+        let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ).ok ();
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
+
         let schema = yamlette::model::schema::yamlette::Yamlette::new ();
         let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ; { schema: schema } ).ok ();
+        assert_eq! (should_be.map (|b| b.to_string ()), result);
 
+        let schema = yamlette::model::schema::core::Core::new ();
+        let result = yamlette! ( write ; [[ [ "Mark McGwire", "Sammy Sosa", "Ken Griffey" ] ]] ; { schema: schema } ).ok ();
         assert_eq! (should_be.map (|b| b.to_string ()), result);
     }
 }

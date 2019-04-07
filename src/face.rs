@@ -2,43 +2,42 @@ pub extern crate skimmer;
 
 use model::schema::Schema;
 
-
 pub struct Options<S>
-  where
-    S: Schema + 'static
+where
+    S: Schema + 'static,
 {
-    pub schema: Option<S>
+    pub schema: Option<S>,
 }
-
 
 impl<S> Options<S>
-  where
-    S: Schema + Clone + 'static
+where
+    S: Schema + Clone + 'static,
 {
-    pub fn new () -> Options<S> { Options { schema: None } }
+    pub fn new() -> Options<S> {
+        Options { schema: None }
+    }
 }
-
 
 impl<S, O> From<(S, Options<O>)> for Options<S>
-  where
+where
     S: Schema + Clone + 'static,
-    O: Schema + Clone + 'static
+    O: Schema + Clone + 'static,
 {
-    fn from (val: (S, Options<O>)) -> Options<S> { Options {
-        schema: Some (val.0)
-    }}
+    fn from(val: (S, Options<O>)) -> Options<S> {
+        Options {
+            schema: Some(val.0),
+        }
+    }
 }
-
-
 
 #[macro_export]
 macro_rules! yamlette {
-    ( read ; $source:expr ; $rules:tt ) => { yamlette! ( read ; $source ; $rules ; {} ) };
+    ( read ; $source:expr ; $rules:tt ) => { yamlette!(read ; $source ; $rules ; {} ) };
 
     ( read ; $source:expr ; $rules:tt ; $options:tt ) => {
-        let mut rs = yamlette! ( init ; reader ; $options );
+        let mut rs = yamlette!(init ; reader ; $options );
 
-        yamlette! ( read ; warm ; &mut rs ; $source ; $rules ; $options );
+        yamlette!(read ; warm ; &mut rs ; $source ; $rules ; $options );
     };
 
     ( read ; warm ; $rs:expr ; $source:expr ; $rules:tt ; $options:tt ) => {
@@ -60,17 +59,17 @@ macro_rules! yamlette {
             Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
-        yamlette! ( reckon book ; _book ; $rules );
+        yamlette!(reckon book ; _book ; $rules );
 
-        yamlette! ( options moveout ; _book ; _result ; $options );
+        yamlette!(options moveout ; _book ; _result ; $options );
     };
 
-    ( sage ; $source:expr ; $rules:tt ) => { yamlette! ( sage ; $source ; $rules ; {} ) };
+    ( sage ; $source:expr ; $rules:tt ) => { yamlette!(sage ; $source ; $rules ; {} ) };
 
     ( sage ; $source:expr ; $rules:tt ; $options:tt ) => {
-        let mut rs = yamlette! ( init ; sage ; $options );
+        let mut rs = yamlette!(init ; sage ; $options );
 
-        yamlette! ( sage ; warm ; &mut rs ; $source ; $rules ; $options );
+        yamlette!(sage ; warm ; &mut rs ; $source ; $rules ; $options );
     };
 
     ( sage ; warm ; $rs:expr ; $source:expr ; $rules:tt ; $options:tt ) => {
@@ -92,22 +91,22 @@ macro_rules! yamlette {
             Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
-        yamlette! ( reckon book ; _book ; $rules );
+        yamlette!(reckon book ; _book ; $rules );
 
-        yamlette! ( options moveout ; _book ; _result ; $options );
+        yamlette!(options moveout ; _book ; _result ; $options );
     };
 
-    ( write ; $rules:tt ) => {{ yamlette! ( write ; $rules ; {} ) }};
+    ( write ; $rules:tt ) => {{ yamlette!(write ; $rules ; {} ) }};
 
     ( write ; $rules:tt ; $options:tt ) => {{
-        match yamlette! ( init ; writer ; $options ) {
-            Ok ( mut orch ) => yamlette! ( write ; warm ; &mut orch ; $rules ),
+        match yamlette!(init ; writer ; $options ) {
+            Ok ( mut orch ) => yamlette!(write ; warm ; &mut orch ; $rules ),
             Err ( err ) => Err ( err )
         }
     }};
 
     ( write ; warm ; $orchestra:expr ; $rules:tt ) => {{
-        yamlette! ( compose orchestra ; $orchestra ; $rules );
+        yamlette!(compose orchestra ; $orchestra ; $rules );
 
         match $orchestra.listen () {
             Ok (music) => Ok (unsafe { String::from_utf8_unchecked (music) }),
@@ -116,10 +115,13 @@ macro_rules! yamlette {
     }};
 
 
-    ( init ; reader ) => {{ yamlette! ( init ; reader ; {} ) }};
+    ( init schema ; $options:expr ) => {{  }};
+
+
+    ( init ; reader ) => {{ yamlette!(init ; reader ; {} ) }};
 
     ( init ; reader ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        yamlette!(options ; $options ; options );
 
         let schema = options.schema.take ().unwrap ();
 
@@ -130,10 +132,10 @@ macro_rules! yamlette {
     }};
 
 
-    ( init ; sage ) => {{ yamlette! ( init ; sage ; {} ) }};
+    ( init ; sage ) => {{ yamlette!(init ; sage ; {} ) }};
 
     ( init ; sage ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        yamlette!(options ; $options ; options );
 
         let schema = options.schema.take ().unwrap ();
 
@@ -147,10 +149,10 @@ macro_rules! yamlette {
         }
     }};
 
-    ( init ; writer ) => {{ yamlette! ( init ; writer ; {} ) }};
+    ( init ; writer ) => {{ yamlette!(init ; writer ; {} ) }};
 
     ( init ; writer ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        yamlette!(options ; $options ; options );
 
         match $crate::orchestra::Orchestra::new (options.schema.take ().unwrap ()) {
             Ok ( orch ) => Ok ( orch ),
@@ -159,31 +161,27 @@ macro_rules! yamlette {
     }};
 
     ( options ; { $( $key:ident : $val:expr ),* } ; $var:ident ) => {
-        let mut $var: $crate::face::Options<$crate::model::schema::yamlette::Yamlette> = $crate::face::Options::new ();
+        let mut $var: $crate::face::Options<$crate::model::schema::core::Core> = $crate::face::Options::new ();
+        let mut $var: $crate::face::Options<$crate::model::schema::core::Core> = $crate::face::Options::from(
+            ($crate::model::schema::core::Core::new(), $var)
+        );
 
         $(
-            $var = yamlette! ( option ; $var ; $key ; $val );
+            yamlette!(option ; $var ; $key ; $val );
         )*
-
-        $var = if $var.schema.is_none () {
-            let schema = $crate::model::schema::yamlette::Yamlette::new ();
-            $crate::face::Options::from ((schema, $var))
-        } else {
-            $var
-        };
     };
 
-    ( option ; $options:expr ; schema ; $schema:expr ) => {{ $crate::face::Options::from (($schema, $options)) }};
+    ( option ; $options:ident ; schema ; $schema:expr ) => { let mut $options = $crate::face::Options::from (($schema, $options)); };
 
-    ( option ; $options:expr ; $unu:tt ; $dua:tt ) => {{ $options }};
+    ( option ; $options:expr ; $unu:tt ; $dua:tt ) => {{  }};
 
-    ( option ; $options:expr ; $unu:expr ; $dua:expr ) => {{ $options }};
+    ( option ; $options:expr ; $unu:expr ; $dua:expr ) => {{ }};
 
-    ( option ; $options:expr ; $unu:ident ; $dua:ident ) => {{ $options }};
+    ( option ; $options:expr ; $unu:ident ; $dua:ident ) => {{  }};
 
     ( options moveout ; $book:expr ; $result:expr ; { $( $key:ident : $val:ident ),* } ) => {
         $(
-            yamlette! ( option moveout ; $book ; $result ; $key ; $val );
+            yamlette!(option moveout ; $book ; $result ; $key ; $val );
         )*
     };
 
@@ -201,7 +199,7 @@ macro_rules! yamlette {
         let mut _counter: usize = 0;
         $(
             let volume = $book.volumes.get (_counter);
-            yamlette! ( reckon volume ; volume ; $rules );
+            yamlette!(reckon volume ; volume ; $rules );
             _counter += 1;
         )*
     };
@@ -209,7 +207,7 @@ macro_rules! yamlette {
     ( reckon volume ; $volume:expr ; [ $( $rules:tt ),* ] ) => {
         let _pointer = if let Some (volume) = $volume { $crate::book::extractor::pointer::Pointer::new (volume) } else { None };
         $(
-            yamlette! ( reckon ptr ; _pointer ; $rules );
+            yamlette!(reckon ptr ; _pointer ; $rules );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -217,7 +215,7 @@ macro_rules! yamlette {
     ( reckon ptr ; $pointer:expr ; [ $( $v:tt ),* ] ) => {
         let _pointer = if let Some (p) = $pointer { p.into_seq () } else { None };
         $(
-            yamlette! ( reckon ptr ; _pointer ; $v );
+            yamlette!(reckon ptr ; _pointer ; $v );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -225,9 +223,9 @@ macro_rules! yamlette {
     ( reckon ptr ; $pointer:expr ; { $( $k:tt > $v:tt ),* } ) => {
         let _pointer = if let Some (p) = $pointer { p.into_map () } else { None };
         $(
-            yamlette! ( reckon ptr ; _pointer ; $k );
+            yamlette!(reckon ptr ; _pointer ; $k );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
-            yamlette! ( reckon ptr ; _pointer ; $v );
+            yamlette!(reckon ptr ; _pointer ; $v );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -254,7 +252,7 @@ macro_rules! yamlette {
 
                 if !found { _pointer = None; }
             }
-            yamlette! ( reckon ptr ; _pointer ; $v );
+            yamlette!(reckon ptr ; _pointer ; $v );
         )*
     };
 
