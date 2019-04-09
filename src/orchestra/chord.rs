@@ -1,11 +1,9 @@
 extern crate fraction;
 extern crate num;
 
-
-use self::fraction::{ Fraction, BigFraction };
 use self::num::{ BigInt, BigUint };
 
-use model::{ Tagged, TaggedValue };
+use model::{ Fraction, Tagged, TaggedValue };
 use model::style::{ CommonStyles, Style };
 
 use model::yaml::bool::BoolValue;
@@ -19,13 +17,13 @@ use model::yaml::null::NullValue;
 use model::yaml::seq::SeqValue;
 use model::yaml::set::SetValue;
 use model::yaml::str::StrValue;
+use model::yamlette::incognitum::IncognitumValue;
 
 use orchestra::{ Orchestra, OrchError };
 
 use std::borrow::{ Borrow, Cow };
 use std::collections::{ BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque, LinkedList };
 use std::hash::Hash;
-
 
 
 pub struct EmptyList;
@@ -130,6 +128,18 @@ impl Chord for String {
 }
 
 
+impl Chord for IncognitumValue {
+    fn chord_size(&self) -> usize { 1 }
+
+    fn play (mut self, orchestra: &Orchestra, level: usize, _alias: Option<Cow<'static, str>>, _cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        // if let Some(alias) = alias {
+        //     self.set_anchor(String::from(alias));
+        // }
+        apply_styles (&mut self, vs);
+        orchestra.play (level, TaggedValue::from (self))
+    }
+}
+
 
 macro_rules! int_impl_for {
     ( $($t:ty),* ) => {
@@ -175,7 +185,7 @@ macro_rules! float_impl_for {
     };
 }
 
-float_impl_for! (f32, f64, Fraction, BigFraction);
+float_impl_for! (f32, f64, Fraction, fraction::Fraction, fraction::BigFraction);
 
 
 
@@ -189,7 +199,6 @@ impl Chord for () {
         orchestra.play (level, TaggedValue::from (val))
     }
 }
-
 
 
 impl Chord for BinaryValue {

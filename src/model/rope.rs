@@ -8,7 +8,7 @@ use model::renderer::{Node, Renderer};
 pub enum Rope {
     Empty,
     Node([Node; 1]),
-    Many(Vec<Node>),
+    Many(Vec<Node>),  // TODO: add tuple of 3 (tag, anchor, value)
 }
 
 impl Rope {

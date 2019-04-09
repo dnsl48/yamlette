@@ -136,6 +136,7 @@ pub fn model_issue_rope(
     }
 }
 
+// TODO: it's not alias is it? rename to anchor
 pub fn model_alias(_model: &Model, alias: Cow<'static, str>) -> Node {
     match alias {
         Cow::Borrowed(alias) => Node::AmpersandString(EncodedString::from(alias.as_bytes())),
@@ -143,11 +144,19 @@ pub fn model_alias(_model: &Model, alias: Cow<'static, str>) -> Node {
     }
 }
 
+#[inline(always)]
 pub fn model_tag(
     model: &Model,
     tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
 ) -> Node {
-    match model.get_tag() {
+    custom_tag(model.get_tag(), tags)
+}
+
+pub fn custom_tag(
+    tag: Cow<'static, str>,
+    tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
+) -> Node {
+    match tag {
         Cow::Borrowed(tag) => _model_tag_static_str(tag, tags),
         Cow::Owned(ref tag) => _model_tag_string(tag, tags),
     }

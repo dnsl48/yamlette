@@ -1,6 +1,6 @@
 extern crate skimmer;
 
-use model::{EncodedString, Model, Node, Renderer, Rope, Tagged, TaggedValue};
+use model::{self, EncodedString, Model, Node, Renderer, Rope, Tagged, TaggedValue};
 
 use std::any::Any;
 use std::borrow::Cow;
@@ -46,7 +46,7 @@ impl Model for Incognitum {
         &self,
         _renderer: &Renderer,
         value: TaggedValue,
-        _tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
+        tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
     ) -> Result<Rope, TaggedValue> {
         let value: IncognitumValue =
             match <TaggedValue as Into<Result<IncognitumValue, TaggedValue>>>::into(value) {
@@ -54,37 +54,21 @@ impl Model for Incognitum {
                 Err(value) => return Err(value),
             };
 
-        let capa = value.get_value().len()
-            + if let Some(ref t) = *value.get_tag() {
-                t.len() + 4
-            } else {
-                0
-            }
-            + if let Some(ref a) = *value.get_anchor() {
-                a.len() + 2
-            } else {
-                0
-            };
+        let mut rope = Vec::with_capacity(5);
 
-        let mut result = String::with_capacity(capa);
+        if let Some(ref t) = value.get_tag() {
+            rope.push(model::custom_tag(Cow::from(t.clone()), tags));
+            rope.push(Node::Space);
+        };
 
-        if let Some(ref t) = *value.get_tag() {
-            result.push_str("!<");
-            result.push_str(t.as_str());
-            result.push_str("> ");
-        }
+        if let Some(ref a) = value.get_anchor() {
+            rope.push(model::model_alias(self, Cow::from(a.clone())));
+            rope.push(Node::Space);
+        };
 
-        if let Some(ref a) = *value.get_anchor() {
-            result.push('&');
-            result.push_str(a.as_str());
-            result.push(' ');
-        }
+        rope.push(Node::String(EncodedString::from(value.get_value().clone().into_bytes())));
 
-        result.push_str(value.get_value().as_str());
-
-        Ok(Rope::from(Node::String(EncodedString::from(
-            result.into_bytes(),
-        ))))
+        Ok(Rope::from(rope))
     }
 
     fn decode(&self, _: bool, value: &[u8]) -> Result<TaggedValue, ()> {
