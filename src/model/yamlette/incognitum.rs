@@ -66,14 +66,14 @@ impl Model for Incognitum {
             rope.push(Node::Space);
         };
 
-        rope.push(Node::String(EncodedString::from(value.get_value().clone().into_bytes())));
+        rope.push(Node::String(EncodedString::from(value.get_value().to_string().into_bytes())));
 
         Ok(Rope::from(rope))
     }
 
     fn decode(&self, _: bool, value: &[u8]) -> Result<TaggedValue, ()> {
         match String::from_utf8(Vec::from(value)) {
-            Ok(s) => Ok(TaggedValue::from(IncognitumValue::new(s))),
+            Ok(s) => Ok(TaggedValue::from(IncognitumValue::new(Cow::from(s)))),
             _ => Err(()),
         }
     }
@@ -89,15 +89,15 @@ impl Model for Incognitum {
             _ => return Err(()),
         };
 
-        let mut value = IncognitumValue::new(string);
+        let mut value = IncognitumValue::new(Cow::from(string));
 
         value = match tag {
-            Some(tag) => value.set_tag(tag),
+            Some(tag) => value.set_tag(Cow::from(tag)),
             None => value,
         };
 
         value = match anchor {
-            Some(anchor) => value.set_anchor(anchor),
+            Some(anchor) => value.set_anchor(Cow::from(anchor)),
             None => value,
         };
 
@@ -107,13 +107,13 @@ impl Model for Incognitum {
 
 #[derive(Debug)]
 pub struct IncognitumValue {
-    tag: Option<String>,
-    anchor: Option<String>,
-    value: String,
+    tag: Option<Cow<'static, str>>,
+    anchor: Option<Cow<'static, str>>,
+    value: Cow<'static, str>,
 }
 
 impl IncognitumValue {
-    pub fn new(value: String) -> IncognitumValue {
+    pub fn new(value: Cow<'static, str>) -> IncognitumValue {
         IncognitumValue {
             tag: None,
             anchor: None,
@@ -121,7 +121,7 @@ impl IncognitumValue {
         }
     }
 
-    pub fn set_tag(self, tag: String) -> IncognitumValue {
+    pub fn set_tag(self, tag: Cow<'static, str>) -> IncognitumValue {
         IncognitumValue {
             tag: Some(tag),
             anchor: self.anchor,
@@ -129,7 +129,7 @@ impl IncognitumValue {
         }
     }
 
-    pub fn set_anchor(self, anchor: String) -> IncognitumValue {
+    pub fn set_anchor(self, anchor: Cow<'static, str>) -> IncognitumValue {
         IncognitumValue {
             tag: self.tag,
             anchor: Some(anchor),
@@ -137,15 +137,15 @@ impl IncognitumValue {
         }
     }
 
-    pub fn get_tag(&self) -> &Option<String> {
+    pub fn get_tag(&self) -> &Option<Cow<'static, str>> {
         &self.tag
     }
 
-    pub fn get_anchor(&self) -> &Option<String> {
+    pub fn get_anchor(&self) -> &Option<Cow<'static, str>> {
         &self.anchor
     }
 
-    pub fn get_value(&self) -> &String {
+    pub fn get_value(&self) -> &Cow<'static, str> {
         &self.value
     }
 }
@@ -220,15 +220,15 @@ mod tests {
         ];
 
         for i in 0..ops.len() {
-            let mut ival = IncognitumValue::new(ops[i].2.to_string());
+            let mut ival = IncognitumValue::new(Cow::from(ops[i].2));
 
             ival = if let Some(tag) = ops[i].0 {
-                ival.set_tag(tag.to_string())
+                ival.set_tag(Cow::from(tag))
             } else {
                 ival
             };
             ival = if let Some(anc) = ops[i].1 {
-                ival.set_anchor(anc.to_string())
+                ival.set_anchor(Cow::from(anc))
             } else {
                 ival
             };
@@ -262,13 +262,13 @@ mod tests {
             if let Ok(tagged) = incognitum.decode(false, ops[i].0.as_bytes()) {
                 assert_eq!(tagged.get_tag(), Cow::from(TAG));
 
-                let val: &String = tagged
+                let val = tagged
                     .as_any()
                     .downcast_ref::<IncognitumValue>()
                     .unwrap()
                     .get_value();
 
-                assert_eq!(*val, ops[i].1.to_string());
+                assert_eq!(*val, Cow::from(ops[i].1));
             } else {
                 assert!(false)
             }
