@@ -63,6 +63,22 @@ impl Rope {
         false
     }
 
+    pub fn is_dict_block(&self) -> bool {
+        match *self {
+            Rope::Empty => (),
+            Rope::Node(_) => (),
+            Rope::Many(ref nodes) => {
+                for node in nodes {
+                    if node.has_colon() {
+                        return true;
+                    }
+                }
+            }
+        };
+
+        false
+    }
+
     pub fn is_flow_opening(&self) -> bool {
         match *self {
             Rope::Empty => false,

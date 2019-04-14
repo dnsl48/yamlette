@@ -119,8 +119,9 @@ fn compose_block(
     let alias = value.take_alias();
 
     let mut rope_length = if issue_tag { 3 } else { 1 };
+
     for child in children.iter() {
-        rope_length += child.len() + 2;
+        rope_length += child.len() + 3;
     }
     if alias.is_some() {
         rope_length += 2;
@@ -208,10 +209,9 @@ fn compose_block(
         {
             let val = unsafe { children.get_unchecked_mut(i + 1) };
 
-            let is_multiline = val.is_multiline();
             let is_flow = val.is_flow_opening();
 
-            if is_multiline && !is_flow {
+            if !is_flow && (val.is_multiline() || val.is_dict_block()) {
                 rope.push(Node::ColonNewlineIndent(indent_len));
                 val.indent(indent_len);
                 rope.knit(val);

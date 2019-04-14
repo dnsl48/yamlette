@@ -9,6 +9,8 @@ use self::conductor::{ Conductor, Hint, Message };
 use model::{ Renderer, CommonStyles, TaggedValue, Schema };
 
 use std::borrow::Cow;
+use std::error::Error;
+use std::fmt;
 use std::io;
 use std::sync::mpsc::{ sync_channel, Receiver, SyncSender };
 use std::thread::JoinHandle;
@@ -131,13 +133,29 @@ impl Orchestra {
 }
 
 
-
+#[derive(Debug)]
 pub enum OrchError {
     Error (String),
     IoError (io::Error)
 }
 
+impl fmt::Display for OrchError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OrchError::Error(string) => write!(f, "{}", string),
+            OrchError::IoError(error) => write!(f, "{}", error)
+        }
+    }
+}
 
+impl Error for OrchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            OrchError::Error(_) => None,
+            OrchError::IoError(error) => Some(error)
+        }
+    }
+}
 
 impl From<io::Error> for OrchError {
     fn from (err: io::Error) -> OrchError { OrchError::IoError (err) }

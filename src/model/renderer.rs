@@ -166,6 +166,16 @@ impl Node {
             _ => false,
         }
     }
+
+    pub fn has_colon(&self) -> bool {
+        match *self {
+            Node::Colon |
+            Node::ColonSpace |
+            Node::ColonNewline |
+            Node::ColonNewlineIndent(_) => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Copy, Clone)]

@@ -115,12 +115,23 @@ impl Chord for &'static str {
 }
 
 
-
 impl Chord for String {
     fn chord_size (&self) -> usize { 1 }
 
     fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
         let mut val = StrValue::new (Cow::from (self), cs, alias);
+        apply_styles (&mut val, vs);
+
+        orchestra.play (level, TaggedValue::from (val))
+    }
+}
+
+
+impl Chord for Cow<'static, str> {
+    fn chord_size(&self) -> usize { 1 }
+
+    fn play (self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        let mut val = StrValue::new (self, cs, alias);
         apply_styles (&mut val, vs);
 
         orchestra.play (level, TaggedValue::from (val))
