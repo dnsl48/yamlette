@@ -7,8 +7,8 @@ use self::num::BigUint;
 
 use self::fraction::{DynaInt, One, Zero};
 
-use model::{EncodedString, Fraction, Model, Node, Renderer, Rope, Tagged, TaggedValue};
-
+use model::{model_issue_rope, EncodedString, Fraction, Model, Node, Renderer, Rope, Tagged, TaggedValue};
+use model::style::CommonStyles;
 use model::yaml::float::FloatValue;
 
 use std::any::Any;
@@ -26,64 +26,9 @@ impl Timestamp {
         Cow::from(TAG)
     }
 
-    /*
-        pub fn new (cset: &CharSet<Char, DoubleChar>) -> Timestamp<Char, DoubleChar> {
-            Timestamp {
-                encoding: cset.encoding,
-
-                dgt: [
-                    cset.digit_0,
-                    cset.digit_1,
-                    cset.digit_2,
-                    cset.digit_3,
-                    cset.digit_4,
-                    cset.digit_5,
-                    cset.digit_6,
-                    cset.digit_7,
-                    cset.digit_8,
-                    cset.digit_9
-                ],
-
-                colon: cset.colon,
-                minus: cset.hyphen_minus,
-                dot: cset.full_stop,
-                letter_t: cset.letter_t,
-                letter_t_t: cset.letter_t_t,
-                letter_z: cset.letter_z,
-                letter_t_z: cset.letter_t_z,
-                plus: cset.plus,
-                space: cset.space,
-                tab: cset.tab_h,
-
-                s_quote: cset.apostrophe,
-                d_quote: cset.quotation,
-
-                chr_len: cset.longest_char,
-
-                _dchr: PhantomData
-            }
-        }
-    */
-
     fn parse_figure(&self, ptr: &mut usize, value: &[u8]) -> Option<i64> {
         let mut figure: Option<i64> = None;
 
-        /*
-        'figure: loop {
-            for i in 0 .. 10 {
-                if self.dgt[i].contained_at (value, *ptr) {
-                    figure = if let Some (nval) = (if figure.is_some () { figure.unwrap () } else { 0 }).checked_mul (10) {
-                        if let Some (nval) = nval.checked_add (i as i64) {
-                            *ptr += self.dgt[i].len ();
-                            Some (nval)
-                        } else { return None }
-                    } else { return None };
-                    continue 'figure;
-                }
-            }
-            break;
-        }
-        */
         'figure: loop {
             match value.get(*ptr).map(|b| *b) {
                 Some(val @ b'0'...b'9') => {
@@ -110,48 +55,7 @@ impl Timestamp {
     }
 
     fn parse_fraction(&self, ptr: &mut usize, value: &[u8]) -> Option<FloatValue> {
-        // let mut fraction: Option<(Result<u64, BigUint>, Result<u64, BigUint>)> = None;
         let mut fraction: Option<(DynaInt<u64, BigUint>, DynaInt<u64, BigUint>)> = None;
-
-        /*
-        'fraction: loop {
-            match value.get (*ptr).map (|b| *b) {
-                Some (val @ b'0' ... b'9') => {
-                    *ptr += 1;
-                    let val = val - b'0';
-
-                    let mut f = if fraction.is_some () { fraction.unwrap () } else { (Ok (0), Ok (1)) };
-
-                    f.0 = match f.0 {
-                        Ok (u) => {
-                            if let Some (nval) = u.checked_mul (10) {
-                                if let Some (nval) = nval.checked_add (val as u64) {
-                                    Ok (nval)
-                                } else {
-                                    Err (BigUint::from (nval) + BigUint::from (val as u64))
-                                }
-                            } else {
-                                Err (BigUint::from (u) * BigUint::from (10u8) + BigUint::from (val as u64))
-                            }
-                        }
-                        Err (b) => { Err (b * BigUint::from (10u8) + BigUint::from (val as u64)) }
-                    };
-
-                    f.1 = match f.1 {
-                        Ok (u) => if let Some (nval) = u.checked_mul (10) {
-                            Ok (nval)
-                        } else {
-                            Err (BigUint::from (u) * BigUint::from (10u8))
-                        },
-                        Err (b) => { Err (b * BigUint::from (10u8)) }
-                    };
-
-                    fraction = Some ((f.0, f.1));
-                }
-                _ => break
-            }
-        }
-        */
 
         'fraction: loop {
             match value.get(*ptr).map(|b| *b) {
@@ -175,16 +79,6 @@ impl Timestamp {
 
         if let Some((num, den)) = fraction {
             Some(FloatValue::from(Fraction::new(num, den)))
-
-        /*if num.is_ok () && den.is_ok () {
-            Some (FloatValue::from (Fraction::new (num.ok ().unwrap (), den.ok ().unwrap ())))
-        } else if num.is_ok () {
-            Some (FloatValue::from (BigFraction::new (BigUint::from (num.ok ().unwrap ()), den.err ().unwrap ())))
-        } else if den.is_ok () {
-            Some (FloatValue::from (BigFraction::new (num.err ().unwrap (), BigUint::from (den.ok ().unwrap ()))))
-        } else {
-            Some (FloatValue::from (BigFraction::new (num.err ().unwrap (), den.err ().unwrap ())))
-        }*/
         } else {
             None
         }
@@ -204,8 +98,6 @@ impl Model for Timestamp {
         self
     }
 
-    // fn get_encoding (&self) -> Encoding { self.encoding }
-
     fn is_decodable(&self) -> bool {
         true
     }
@@ -218,7 +110,7 @@ impl Model for Timestamp {
         &self,
         _renderer: &Renderer,
         value: TaggedValue,
-        _tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
+        tags: &mut Iterator<Item = &(Cow<'static, str>, Cow<'static, str>)>,
     ) -> Result<Rope, TaggedValue> {
         let value: TimestampValue =
             match <TaggedValue as Into<Result<TimestampValue, TaggedValue>>>::into(value) {
@@ -290,38 +182,8 @@ impl Model for Timestamp {
             }
         }
 
-        /*
-        let mut production: Vec<u8> = Vec::with_capacity (src.len () * self.chr_len);
-
-        for chr in src.as_bytes () {
-            let symbol = match *chr {
-                b'0' => &self.dgt[0],
-                b'1' => &self.dgt[1],
-                b'2' => &self.dgt[2],
-                b'3' => &self.dgt[3],
-                b'4' => &self.dgt[4],
-                b'5' => &self.dgt[5],
-                b'6' => &self.dgt[6],
-                b'7' => &self.dgt[7],
-                b'8' => &self.dgt[8],
-                b'9' => &self.dgt[9],
-
-                b'-' => &self.minus,
-                b':' => &self.colon,
-                b'T' => &self.letter_t_t,
-                b'.' => &self.dot,
-                b'+' => &self.plus,
-
-                _ => unreachable! ()
-            };
-
-            production.extend (symbol.as_slice ());
-        }
-        */
-
-        Ok(Rope::from(Node::String(EncodedString::from(
-            src.into_bytes(),
-        ))))
+        let node = Node::String(EncodedString::from(src.into_bytes()));
+        Ok(model_issue_rope(self, node, value.issue_tag(), value.anchor, tags))
     }
 
     fn decode(&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {
@@ -362,27 +224,9 @@ impl Model for Timestamp {
                     }
                     _ => (),
                 }
-                /*
-                if self.s_quote.contained_at (value, ptr) {
-                    ptr += self.s_quote.len ();
-                    quote_state = 1;
-                    continue;
-                }
-                */
             }
-
-            /*
-            if explicit && ptr == 0 && quote_state == 0 {
-                if self.d_quote.contained_at (value, ptr) {
-                    ptr += self.d_quote.len ();
-                    quote_state = 2;
-                    continue;
-                }
-            }
-            */
 
             if state == 0 {
-                // let ltz = if self.minus.contained_at (value, ptr) { true } else { false };
                 let ltz = if let Some(b'-') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
                     true
@@ -397,12 +241,6 @@ impl Model for Timestamp {
                 }
 
                 if !ltz && figure.unwrap() >= 0 && figure.unwrap() < 25 {
-                    /*
-                    if self.colon.contained_at (value, ptr) {
-                        state = STATE_HOUR;
-                        dt = dt.hour (figure.unwrap () as u8);
-                    }
-                    */
                     if let Some(b':') = value.get(ptr).map(|b| *b) {
                         state = STATE_HOUR;
                         dt = dt.hour(figure.unwrap() as u8);
@@ -419,20 +257,6 @@ impl Model for Timestamp {
 
                 continue;
             } else if state == STATE_YEAR {
-                /*
-                if self.minus.contained_at (value, ptr) {
-                    ptr += self.minus.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () > 0 && figure.unwrap () < 13 {
-                        state = state | STATE_MONTH;
-                        dt = dt.month (figure.unwrap () as u8);
-                    } else { return Err ( () ) }
-                } else { return Err ( () ) }
-                */
                 if let Some(b'-') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
 
@@ -454,20 +278,6 @@ impl Model for Timestamp {
 
                 continue;
             } else if state == STATE_YEAR | STATE_MONTH {
-                /*
-                if self.minus.contained_at (value, ptr) {
-                    ptr += self.minus.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () > 0 && figure.unwrap () < 32 {
-                        state = state | STATE_DAY;
-                        dt = dt.day (figure.unwrap () as u8);
-                    } else { return Err ( () ) }
-                } else { return Err ( () ) }
-                */
                 if let Some(b'-') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
 
@@ -489,13 +299,6 @@ impl Model for Timestamp {
 
                 continue;
             } else if state == STATE_YEAR | STATE_MONTH | STATE_DAY {
-                /*
-                if self.letter_t_t.contained_at (value, ptr) { ptr += self.letter_t_t.len (); }
-                else if self.space.contained_at (value, ptr) { ptr += self.space.len (); }
-                else if self.letter_t.contained_at (value, ptr) { ptr += self.letter_t.len (); }
-                else if self.tab.contained_at (value, ptr) { ptr += self.tab.len (); }
-                else { return Err ( () ) };
-                */
                 match value.get(ptr).map(|b| *b) {
                     Some(b'T') | Some(b' ') | Some(b't') | Some(b'\t') => {
                         ptr += 1;
@@ -518,20 +321,6 @@ impl Model for Timestamp {
 
                 continue;
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND) == STATE_HOUR {
-                /*
-                if self.colon.contained_at (value, ptr) {
-                    ptr += self.colon.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () >=0 && figure.unwrap () < 61 {
-                        state = state | STATE_MINUTE;
-                        dt = dt.minute (figure.unwrap () as u8);
-                    } else { return Err ( () ) }
-                } else { return Err ( () ) }
-                */
                 if let Some(b':') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
 
@@ -555,20 +344,6 @@ impl Model for Timestamp {
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND)
                 == (STATE_HOUR | STATE_MINUTE)
             {
-                /*
-                if self.colon.contained_at (value, ptr) {
-                    ptr += self.colon.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () >=0 && figure.unwrap () < 61 {
-                        state = state | STATE_SECOND;
-                        dt = dt.second (figure.unwrap () as u8);
-                    } else { return Err ( () ) }
-                } else { return Err ( () ) }
-                */
                 if let Some(b':') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
 
@@ -592,17 +367,6 @@ impl Model for Timestamp {
             } else if state & (STATE_HOUR | STATE_MINUTE | STATE_SECOND)
                 == (STATE_HOUR | STATE_MINUTE | STATE_SECOND)
             {
-                /*
-                if self.dot.contained_at (value, ptr) {
-                    ptr += self.dot.len ();
-
-                    let fraction = self.parse_fraction (&mut ptr, value);
-
-                    if fraction.is_none () { return Err ( () ) }
-
-                    dt = dt.fraction (fraction.unwrap ());
-                }
-                */
                 if let Some(b'.') = value.get(ptr).map(|b| *b) {
                     ptr += 1;
 
@@ -620,13 +384,6 @@ impl Model for Timestamp {
                 }
 
                 loop {
-                    /*
-                    if self.space.contained_at (value, ptr) {
-                        ptr += self.space.len ();
-                    } else if self.tab.contained_at (value, ptr) {
-                        ptr += self.tab.len ();
-                    } else { break; }
-                    */
                     match value.get(ptr).map(|b| *b) {
                         Some(b' ') | Some(b'\t') => {
                             ptr += 1;
@@ -635,47 +392,6 @@ impl Model for Timestamp {
                     };
                 }
 
-                /*
-                if self.letter_t_z.contained_at (value, ptr) {
-                    ptr += self.letter_t_z.len ();
-
-                    state = state | STATE_TZ_HOUR | STATE_TZ_MINUTE;
-
-                    dt = dt.tz_hour (0).tz_minute (0);
-                } else if self.letter_z.contained_at (value, ptr) {
-                    ptr += self.letter_z.len ();
-
-                    state = state | STATE_TZ_HOUR | STATE_TZ_MINUTE;
-
-                    dt = dt.tz_hour (0).tz_minute (0);
-                } else if self.minus.contained_at (value, ptr) {
-                    ptr += self.minus.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () >= 0 && figure.unwrap () < 25 {
-                        state = state | STATE_TZ_HOUR;
-
-                        dt = dt.tz_hour ((figure.unwrap () as i8) * -1);
-                    } else { return Err ( () ) }
-
-                } else if self.plus.contained_at (value, ptr) {
-                    ptr += self.plus.len ();
-
-                    let figure = self.parse_figure (&mut ptr, value);
-
-                    if figure.is_none () { return Err ( () ) }
-
-                    if figure.unwrap () >= 0 && figure.unwrap () < 25 {
-                        state = state | STATE_TZ_HOUR;
-
-                        dt = dt.tz_hour (figure.unwrap () as i8);
-                    } else { return Err ( () ) }
-
-                }
-                */
                 match value.get(ptr).map(|b| *b) {
                     Some(b'z') | Some(b'Z') => {
                         ptr += 1;
@@ -730,11 +446,6 @@ impl Model for Timestamp {
                 }
 
                 if state & STATE_TZ_MINUTE == 0 && value.len() > ptr {
-                    /*
-                    if self.colon.contained_at (value, ptr) {
-                        ptr += self.colon.len ();
-                    } else { return Err ( () ) }
-                    */
                     match value.get(ptr).map(|b| *b) {
                         Some(b':') => {
                             ptr += 1;
@@ -767,13 +478,6 @@ impl Model for Timestamp {
 
         if state > 0 {
             if quote_state > 0 {
-                /*
-                if quote_state == 1 && self.s_quote.contained_at (value, ptr) {
-                    // pass
-                } else if quote_state == 2 && self.d_quote.contained_at (value, ptr) {
-                    // pass
-                } else { return Err ( () ) }
-                */
                 match value.get(ptr).map(|b| *b) {
                     Some(b'\'') if quote_state == 1 => (),
                     Some(b'"') if quote_state == 2 => (),
@@ -790,6 +494,9 @@ impl Model for Timestamp {
 
 #[derive(Clone, Debug)]
 pub struct TimestampValue {
+    style: u8,
+    tag: Option<Cow<'static, str>>,
+    anchor: Option<Cow<'static, str>>,
     pub year: Option<i32>,
     pub month: Option<u8>,
     pub day: Option<u8>,
@@ -804,6 +511,9 @@ pub struct TimestampValue {
 impl TimestampValue {
     pub fn new() -> TimestampValue {
         TimestampValue {
+            style: 0,
+            tag: None,
+            anchor: None,
             year: None,
             month: None,
             day: None,
@@ -813,6 +523,30 @@ impl TimestampValue {
             fraction: None,
             tz_hour: None,
             tz_minute: None,
+        }
+    }
+
+    pub fn set_tag(&mut self, tag: Cow<'static, str>) {
+        self.tag = Some(tag);
+    }
+
+    pub fn set_anchor(&mut self, anchor: Cow<'static, str>) {
+        self.anchor = Some(anchor);
+    }
+
+    pub fn init_common_styles(&mut self, common_styles: CommonStyles) {
+        self.set_issue_tag(common_styles.issue_tag());
+    }
+
+    pub fn issue_tag(&self) -> bool {
+        self.style & 1 == 1
+    }
+
+    pub fn set_issue_tag(&mut self, val: bool) {
+        if val {
+            self.style |= 1;
+        } else {
+            self.style &= !1;
         }
     }
 

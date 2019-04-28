@@ -14,6 +14,7 @@ use model::yaml::map::MapValue;
 use model::yaml::omap::OmapValue;
 use model::yaml::pairs::PairsValue;
 use model::yaml::null::NullValue;
+use model::yaml::timestamp::TimestampValue;
 use model::yaml::seq::SeqValue;
 use model::yaml::set::SetValue;
 use model::yaml::str::StrValue;
@@ -148,6 +149,21 @@ impl Chord for IncognitumValue {
         // }
         apply_styles (&mut self, vs);
         orchestra.play (level, TaggedValue::from (self))
+    }
+}
+
+
+impl Chord for TimestampValue {
+    fn chord_size(&self) -> usize { 1 }
+
+    fn play (mut self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        if let Some(alias) = alias {
+            self.set_anchor(alias);
+        }
+
+        self.init_common_styles (cs);
+        apply_styles (&mut self, vs);
+        orchestra.play(level, TaggedValue::from (self))
     }
 }
 
