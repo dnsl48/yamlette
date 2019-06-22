@@ -1,10 +1,12 @@
+extern crate chrono;
 extern crate fraction;
 extern crate num;
 
+use self::chrono::prelude::TimeZone;
 use self::fraction::BigFraction;
 use self::num::{BigInt, ToPrimitive};
 
-use model::{Fraction, Tagged, TaggedValue};
+use model::{DateTime, Fraction, Tagged, TaggedValue};
 
 use model::yaml::binary::BinaryValue;
 use model::yaml::bool::BoolValue;
@@ -12,6 +14,7 @@ use model::yaml::float::FloatValue;
 use model::yaml::int::IntValue;
 use model::yaml::null::NullValue;
 use model::yaml::str::StrValue;
+use model::yaml::timestamp::TimestampValue;
 use model::yamlette::literal::LiteralValue;
 
 use std::borrow::Cow;
@@ -24,6 +27,7 @@ pub enum Word {
     Int(IntValue),
     Str(String),
     Float(FloatValue),
+    DateTime(DateTime),
     Null,
 
     Alias(usize),
@@ -46,12 +50,6 @@ impl PartialEq for Word {
 
 impl Word {
     pub fn extract_scalar(value: TaggedValue) -> Word {
-        let bin: Result<BinaryValue, TaggedValue> = value.into();
-        let value = match bin {
-            Ok(v) => return Word::Bin(v.to_vec()),
-            Err(v) => v,
-        };
-
         let bol: Result<BoolValue, TaggedValue> = value.into();
         let value = match bol {
             Ok(v) => return Word::Bool(v.to_bool()),
@@ -86,6 +84,95 @@ impl Word {
         let value = match nil {
             Ok(_) => return Word::Null,
             Err(v) => v,
+        };
+
+        let bin: Result<BinaryValue, TaggedValue> = value.into();
+        let value = match bin {
+            Ok(v) => return Word::Bin(v.to_vec()),
+            Err(v) => v,
+        };
+
+        let time: Result<TimestampValue, TaggedValue> = value.into();
+        let value = match time {
+            Err(v) => v,
+            Ok(v) => {
+                let mut sign: i32 = 1;
+                let d = chrono::offset::FixedOffset::east(
+                    if let Some(h) = v.tz_hour {
+                        if h < 0 {
+                            sign = -1;
+                        };
+                        (h as i32) * 3600
+                    } else {
+                        0
+                    } + if let Some(m) = v.tz_minute {
+                        (m as i32) * sign * 60
+                    } else {
+                        0
+                    },
+                )
+                .ymd(
+                    if let Some(y) = v.year { y } else { 0 },
+                    if let Some(m) = v.month { m as u32 } else { 0 },
+                    if let Some(d) = v.day { d as u32 } else { 0 },
+                );
+
+                let (h, m, s, u): (u32, u32, u32, Option<(u8, u32)>) = {
+                    (
+                        if let Some(h) = v.hour { h as u32 } else { 0 },
+                        if let Some(m) = v.minute { m as u32 } else { 0 },
+                        if let Some(s) = v.second { s as u32 } else { 0 },
+                        if let Some(float) = v.fraction {
+                            let frac: Fraction = float.into();
+                            match (frac.numer(), frac.denom()) {
+                                (Some(n), Some(d)) => {
+                                    let mut size: u8 = 0;
+                                    let mut mmms: u32 = 0;
+
+                                    fraction::division::divide_to_callback(
+                                        n.clone(),
+                                        d.clone(),
+                                        9,
+                                        false,
+                                        |d| {
+                                            size += 1;
+                                            mmms *= 10;
+                                            mmms += d as u32;
+
+                                            if d == 10 {
+                                                size = 0;
+                                                mmms = 0;
+                                            }
+
+                                            Ok(true)
+                                        },
+                                    )
+                                    .ok();
+
+                                    Some((size, mmms))
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        },
+                    )
+                };
+
+                let dt = if let Some((size, num)) = u {
+                    if size > 6 {
+                        d.and_hms_nano(h, m, s, num)
+                    } else if size > 3 {
+                        d.and_hms_micro(h, m, s, num)
+                    } else {
+                        d.and_hms_milli(h, m, s, num)
+                    }
+                } else {
+                    d.and_hms(h, m, s)
+                };
+
+                return Word::DateTime(dt);
+            }
         };
 
         Word::Scalar(value)
@@ -213,6 +300,62 @@ impl<'a> Into<Result<bool, &'a Word>> for &'a Word {
     }
 }
 
+/// DateTime
+
+impl Into<Result<DateTime, Word>> for Word {
+    fn into(self) -> Result<DateTime, Word> {
+        match self {
+            Word::DateTime(val) => return Ok(val),
+            Word::Scalar(tagged_value) => {
+                if let Some(val) = tagged_value.as_any().downcast_ref::<DateTime>() {
+                    return Ok(*val);
+                }
+
+                return Err(Word::Scalar(tagged_value));
+            }
+            _ => (),
+        };
+
+        Err(self)
+    }
+}
+
+impl<'a> Into<Result<DateTime, &'a Word>> for &'a Word {
+    fn into(self) -> Result<DateTime, &'a Word> {
+        match *self {
+            Word::DateTime(ref val) => {
+                return Ok(val.clone());
+            }
+            Word::Scalar(ref tagged_value) => {
+                if let Some(val) = tagged_value.as_any().downcast_ref::<DateTime>() {
+                    Ok(*val)
+                } else {
+                    Err(self)
+                }
+            }
+            _ => Err(self),
+        }
+    }
+}
+
+impl<'a> Into<Result<&'a DateTime, &'a Word>> for &'a Word {
+    fn into(self) -> Result<&'a DateTime, &'a Word> {
+        match *self {
+            Word::DateTime(ref val) => return Ok(val),
+            Word::Scalar(ref tagged_value) => {
+                if let Some(val) = tagged_value.as_any().downcast_ref::<DateTime>() {
+                    Ok(val)
+                } else {
+                    Err(self)
+                }
+            }
+            _ => Err(self),
+        }
+    }
+}
+
+/// Fraction
+
 impl Into<Result<Fraction, Word>> for Word {
     fn into(self) -> Result<Fraction, Word> {
         match self {
@@ -277,6 +420,10 @@ impl Into<Result<BigFraction, Word>> for Word {
 
                 return Err(Word::Scalar(tagged_value));
             }
+            Word::Int(value) => {
+                let value: BigInt = value.into();
+                return Ok(BigFraction::from(value));
+            }
             _ => (),
         };
 
@@ -294,6 +441,10 @@ impl<'a> Into<Result<BigFraction, &'a Word>> for &'a Word {
                 } else {
                     Err(self)
                 }
+            }
+            Word::Int(ref value) => {
+                let value: BigInt = value.clone().into();
+                return Ok(BigFraction::from(value));
             }
             _ => Err(self),
         }

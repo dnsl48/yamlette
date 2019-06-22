@@ -2,14 +2,15 @@ extern crate fraction;
 extern crate num;
 extern crate skimmer;
 
-// use self::fraction::{ Fraction, BigFraction };
 use self::num::BigUint;
 
 use self::fraction::{DynaInt, One, Zero};
 
-use model::{model_issue_rope, EncodedString, Fraction, Model, Node, Renderer, Rope, Tagged, TaggedValue};
 use model::style::CommonStyles;
 use model::yaml::float::FloatValue;
+use model::{
+    model_issue_rope, EncodedString, Fraction, Model, Node, Renderer, Rope, Tagged, TaggedValue,
+};
 
 use std::any::Any;
 use std::borrow::Cow;
@@ -183,7 +184,13 @@ impl Model for Timestamp {
         }
 
         let node = Node::String(EncodedString::from(src.into_bytes()));
-        Ok(model_issue_rope(self, node, value.issue_tag(), value.anchor, tags))
+        Ok(model_issue_rope(
+            self,
+            node,
+            value.issue_tag(),
+            value.anchor,
+            tags,
+        ))
     }
 
     fn decode(&self, explicit: bool, value: &[u8]) -> Result<TaggedValue, ()> {

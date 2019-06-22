@@ -240,6 +240,20 @@ impl Chord for BinaryValue {
 }
 
 
+impl Chord for binary::BinaryValue {
+    fn chord_size (&self) -> usize { 1 }
+
+    fn play (mut self, orchestra: &Orchestra, level: usize, alias: Option<Cow<'static, str>>, cs: CommonStyles, vs: &mut [&mut Style]) -> Result<(), OrchError> {
+        self.init_common_styles (cs);
+        if let Some(alias) = alias {
+            self.set_alias (Some(alias));
+        }
+        apply_styles (&mut self, vs);
+
+        orchestra.play (level, TaggedValue::from (self))
+    }
+}
+
 
 impl<T> Chord for Vec<T> where T: Chord {
     fn chord_size (&self) -> usize {

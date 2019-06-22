@@ -21,6 +21,7 @@ use model::yaml::timestamp::Timestamp;
 use model::yaml::value::Value;
 use model::yaml::yaml::Yaml;
 
+use model::yamlette::base91::Base91;
 use model::yamlette::env::Env;
 use model::yamlette::incognitum::Incognitum;
 use model::yamlette::literal::Literal;
@@ -51,6 +52,7 @@ pub struct Yamlette {
     mod_env: Env,
     mod_literal: Literal,
     mod_incognitum: Incognitum,
+    mod_base91: Base91
 }
 
 impl Schema for Yamlette {
@@ -125,6 +127,8 @@ impl Schema for Yamlette {
             Some(&self.mod_incognitum)
         } else if tag == Env::get_tag() {
             Some(&self.mod_env)
+        } else if tag == Base91::get_tag() {
+            Some(&self.mod_base91)
         } else {
             None
         }
@@ -203,6 +207,8 @@ impl Schema for Yamlette {
             Some(&self.mod_incognitum)
         } else if predicate(&self.mod_env) {
             Some(&self.mod_env)
+        } else if predicate(&self.mod_base91) {
+            Some(&self.mod_base91)
         } else {
             None
         }
@@ -245,7 +251,8 @@ impl Yamlette {
             mod_binary: Binary,
             mod_literal: Literal,
             mod_incognitum: Incognitum,
-            mod_env: Env
+            mod_env: Env,
+            mod_base91: Base91
         }
     }
 }

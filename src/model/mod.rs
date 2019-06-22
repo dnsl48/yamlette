@@ -7,6 +7,7 @@ pub mod rope;
 pub mod style;
 pub mod tagged_value;
 
+extern crate chrono;
 extern crate fraction;
 extern crate skimmer;
 
@@ -22,6 +23,7 @@ pub use self::tagged_value::TaggedValue;
 
 // TODO: decode/encode Errors&Warnings
 
+pub type DateTime = chrono::DateTime<chrono::offset::FixedOffset>;
 pub type Fraction = fraction::DynaFraction<u64>;
 
 pub trait Tagged: Any {

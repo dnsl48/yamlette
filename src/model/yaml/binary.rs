@@ -307,8 +307,16 @@ impl BinaryValue {
         self.value
     }
 
+    pub fn set_alias(&mut self, alias: Option<Cow<'static, str>>) {
+        self.alias = alias;
+    }
+
     pub fn take_alias(&mut self) -> Option<Cow<'static, str>> {
         self.alias.take()
+    }
+
+    pub fn init_common_styles(&mut self, common_styles: CommonStyles) {
+        self.set_issue_tag(common_styles.issue_tag());
     }
 
     pub fn issue_tag(&self) -> bool {
@@ -391,7 +399,7 @@ mod tests {
                 TaggedValue::from(BinaryValue::from(p.0.to_string().into_bytes())),
                 &mut iter::empty(),
             ) {
-                println!("rope: {:?}", rope);
+                // println!("rope: {:?}", rope);
                 // let encoded = rope.render (&renderer);
                 // let expected = p.1.as_bytes ();
 
