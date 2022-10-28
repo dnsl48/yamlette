@@ -3,7 +3,7 @@
 Comprehensive YAML 1.2 processor implemented in Rust
 ------
 
-[![Current Version on crates.io](https://img.shields.io/crates/v/yamlette.svg)](https://crates.io/crates/yamlette/) [![MIT / Apache2 License](https://img.shields.io/badge/license-MIT%20/%20Apache2-blue.svg)]() [![CircleCI](https://circleci.com/gh/dnsl48/yamlette.svg?style=svg)](https://circleci.com/gh/dnsl48/yamlette) [![Travis](https://travis-ci.org/dnsl48/yamlette.svg?branch=master)](https://travis-ci.org/dnsl48/yamlette) [![Documentation](https://docs.rs/yamlette/badge.svg)](https://docs.rs/yamlette/)
+[![Current Version on crates.io](https://img.shields.io/crates/v/yamlette.svg)](https://crates.io/crates/yamlette/) [![MIT / Apache2 License](https://img.shields.io/badge/license-MIT%20/%20Apache2-blue.svg)]() [![GitHub Actions](https://github.com/dnsl48/yamlette/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/dnsl48/yamlette/actions/workflows/main.yml?query=branch%3Amaster) [![Travis](https://travis-ci.org/dnsl48/yamlette.svg?branch=master)](https://travis-ci.org/dnsl48/yamlette) [![Documentation](https://docs.rs/yamlette/badge.svg)](https://docs.rs/yamlette/)
 ------
 
 
