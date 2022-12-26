@@ -28,7 +28,6 @@ use std::borrow::Cow;
 use std::clone::Clone;
 use std::default::Default;
 
-// #[derive (Clone)]
 pub struct Core {
     styles: CommonStyles,
     tag_handles: [(Cow<'static, str>, Cow<'static, str>); 3],

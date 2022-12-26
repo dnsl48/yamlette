@@ -1097,14 +1097,14 @@ pub struct StrValue {
 
 impl StrValue {
     pub fn new(
-        val: Cow<'static, str>,
+        value: Cow<'static, str>,
         styles: CommonStyles,
         alias: Option<Cow<'static, str>>,
     ) -> StrValue {
         StrValue {
             style: if styles.issue_tag() { 1 } else { 0 },
-            alias: alias,
-            value: val,
+            alias,
+            value,
         }
     }
 

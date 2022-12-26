@@ -1,11 +1,8 @@
 pub mod pointer;
 pub mod traits;
 
-
 pub use self::pointer::Pointer;
 pub use self::traits::FromPointer;
-
-
 
 #[macro_export]
 macro_rules! yamlette_reckon {
@@ -13,7 +10,7 @@ macro_rules! yamlette_reckon {
         let mut _counter: usize = 0;
         $(
             let volume = $book.volumes.get (_counter);
-            yamlette_reckon! ( volume ; volume ; $rules );
+            $crate::yamlette_reckon! ( volume ; volume ; $rules );
             _counter += 1;
         )*
     };
@@ -22,7 +19,7 @@ macro_rules! yamlette_reckon {
     ( volume ; $volume:expr ; [ $( $rules:tt ),* ] ) => {
         let _pointer = if let Some (volume) = $volume { $crate::book::extractor::pointer::Pointer::new (volume) } else { None };
         $(
-            yamlette_reckon! ( ptr ; _pointer ; $rules );
+            $crate::yamlette_reckon! ( ptr ; _pointer ; $rules );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -31,7 +28,7 @@ macro_rules! yamlette_reckon {
     ( ptr ; $pointer:expr ; [ $( $v:tt ),* ] ) => {
         let _pointer = if let Some (p) = $pointer { p.into_seq () } else { None };
         $(
-            yamlette_reckon! ( ptr ; _pointer ; $v );
+            $crate::yamlette_reckon! ( ptr ; _pointer ; $v );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -40,9 +37,9 @@ macro_rules! yamlette_reckon {
     ( ptr ; $pointer:expr ; { $( $k:tt > $v:tt ),* } ) => {
         let _pointer = if let Some (p) = $pointer { p.into_map () } else { None };
         $(
-            yamlette_reckon! ( ptr ; _pointer ; $k );
+            $crate::yamlette_reckon! ( ptr ; _pointer ; $k );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
-            yamlette_reckon! ( ptr ; _pointer ; $v );
+            $crate::yamlette_reckon! ( ptr ; _pointer ; $v );
             let _pointer = if let Some (p) = _pointer { p.next_sibling () } else { None };
         )*
     };
@@ -70,7 +67,7 @@ macro_rules! yamlette_reckon {
 
                 if !found { _pointer = None; }
             }
-            yamlette_reckon! ( ptr ; _pointer ; $v );
+            $crate::yamlette_reckon! ( ptr ; _pointer ; $v );
         )*
     };
 

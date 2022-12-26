@@ -19,6 +19,8 @@ use crate::model::yaml::seq::SeqValue;
 use crate::model::yaml::set::SetValue;
 use crate::model::yaml::str::StrValue;
 
+use crate::model::yamlette::incognitum::IncognitumValue;
+
 use crate::orchestra::{OrchError, Orchestra};
 
 use std::borrow::{Borrow, Cow};
@@ -49,6 +51,27 @@ pub trait Chord {
         cs: CommonStyles,
         vs: &mut [&mut dyn Style],
     ) -> Result<(), OrchError>;
+}
+
+impl Chord for IncognitumValue {
+    fn chord_size(&self) -> usize {
+        1
+    }
+
+    fn play(
+            self,
+            orchestra: &Orchestra,
+            level: usize,
+            _alias: Option<Cow<'static, str>>,
+            _cs: CommonStyles,
+            vs: &mut [&mut dyn Style],
+        ) -> Result<(), OrchError> {
+
+        let mut val = self.clone();
+        apply_styles(&mut val, vs);
+
+        orchestra.play(level, TaggedValue::from(val))
+    }
 }
 
 impl Chord for EmptyList {

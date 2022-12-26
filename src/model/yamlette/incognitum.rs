@@ -121,7 +121,7 @@ impl Model for Incognitum {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IncognitumValue {
     tag: Option<String>,
     anchor: Option<String>,
@@ -133,7 +133,7 @@ impl IncognitumValue {
         IncognitumValue {
             tag: None,
             anchor: None,
-            value: value,
+            value,
         }
     }
 

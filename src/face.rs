@@ -32,12 +32,12 @@ where
 
 #[macro_export]
 macro_rules! yamlette {
-    ( read ; $source:expr ; $rules:tt ) => { yamlette! ( read ; $source ; $rules ; {} ) };
+    ( read ; $source:expr ; $rules:tt ) => { $crate::yamlette! ( read ; $source ; $rules ; {} ) };
 
     ( read ; $source:expr ; $rules:tt ; $options:tt ) => {
-        let mut rs = yamlette! ( init ; reader ; $options );
+        let mut rs = $crate::yamlette! ( init ; reader ; $options );
 
-        yamlette! ( read ; warm ; &mut rs ; $source ; $rules ; $options );
+        $crate::yamlette! ( read ; warm ; &mut rs ; $source ; $rules ; $options );
     };
 
     ( read ; warm ; $rs:expr ; $source:expr ; $rules:tt ; $options:tt ) => {
@@ -59,17 +59,17 @@ macro_rules! yamlette {
             Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
-        yamlette_reckon! ( book ; _book ; $rules );
+        $crate::yamlette_reckon! ( book ; _book ; $rules );
 
-        yamlette! ( options moveout ; _book ; _result ; $options );
+        $crate::yamlette! ( options moveout ; _book ; _result ; $options );
     };
 
-    ( sage ; $source:expr ; $rules:tt ) => { yamlette! ( sage ; $source ; $rules ; {} ) };
+    ( sage ; $source:expr ; $rules:tt ) => { $crate::yamlette! ( sage ; $source ; $rules ; {} ) };
 
     ( sage ; $source:expr ; $rules:tt ; $options:tt ) => {
-        let mut rs = yamlette! ( init ; sage ; $options );
+        let mut rs = $crate::yamlette! ( init ; sage ; $options );
 
-        yamlette! ( sage ; warm ; &mut rs ; $source ; $rules ; $options );
+        $crate::yamlette! ( sage ; warm ; &mut rs ; $source ; $rules ; $options );
     };
 
     ( sage ; warm ; $rs:expr ; $source:expr ; $rules:tt ; $options:tt ) => {
@@ -91,22 +91,22 @@ macro_rules! yamlette {
             Err (ref mut err) => Err (Ok (::std::mem::replace (err, $crate::sage::SageError::Error (::std::borrow::Cow::from (String::with_capacity (0))))))
         };
 
-        yamlette_reckon! ( book ; _book ; $rules );
+        $crate::yamlette_reckon! ( book ; _book ; $rules );
 
-        yamlette! ( options moveout ; _book ; _result ; $options );
+        $crate::yamlette! ( options moveout ; _book ; _result ; $options );
     };
 
-    ( write ; $rules:tt ) => {{ yamlette! ( write ; $rules ; {} ) }};
+    ( write ; $rules:tt ) => {{ $crate::yamlette! ( write ; $rules ; {} ) }};
 
     ( write ; $rules:tt ; $options:tt ) => {{
-        match yamlette! ( init ; writer ; $options ) {
+        match $crate::yamlette! ( init ; writer ; $options ) {
             Ok ( mut orch ) => yamlette! ( write ; warm ; &mut orch ; $rules ),
             Err ( err ) => Err ( err )
         }
     }};
 
     ( write ; warm ; $orchestra:expr ; $rules:tt ) => {{
-        yamlette_compose! ( orchestra ; $orchestra ; $rules );
+        $crate::yamlette_compose! ( orchestra ; $orchestra ; $rules );
 
         match $orchestra.listen () {
             Ok (music) => Ok (unsafe { String::from_utf8_unchecked (music) }),
@@ -115,10 +115,10 @@ macro_rules! yamlette {
     }};
 
 
-    ( init ; reader ) => {{ yamlette! ( init ; reader ; {} ) }};
+    ( init ; reader ) => {{ $crate::yamlette! ( init ; reader ; {} ) }};
 
     ( init ; reader ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        $crate::yamlette! ( options ; $options ; options );
 
         let schema = options.schema.take ().unwrap ();
 
@@ -129,10 +129,10 @@ macro_rules! yamlette {
     }};
 
 
-    ( init ; sage ) => {{ yamlette! ( init ; sage ; {} ) }};
+    ( init ; sage ) => {{ $crate::yamlette! ( init ; sage ; {} ) }};
 
     ( init ; sage ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        $crate::yamlette! ( options ; $options ; options );
 
         let schema = options.schema.take ().unwrap ();
 
@@ -146,10 +146,10 @@ macro_rules! yamlette {
         }
     }};
 
-    ( init ; writer ) => {{ yamlette! ( init ; writer ; {} ) }};
+    ( init ; writer ) => {{ $crate::yamlette! ( init ; writer ; {} ) }};
 
     ( init ; writer ; $options:tt ) => {{
-        yamlette! ( options ; $options ; options );
+        $crate::yamlette! ( options ; $options ; options );
 
         match $crate::orchestra::Orchestra::new (options.schema.take ().unwrap ()) {
             Ok ( orch ) => Ok ( orch ),
@@ -161,7 +161,7 @@ macro_rules! yamlette {
         let mut $var: $crate::face::Options<$crate::model::schema::core::Core> = $crate::face::Options::new ();
 
         $(
-            $var = yamlette! ( option ; $var ; $key ; $val );
+            $var = $crate::yamlette! ( option ; $var ; $key ; $val );
         )*
 
         $var = if $var.schema.is_none () {
@@ -182,7 +182,7 @@ macro_rules! yamlette {
 
     ( options moveout ; $book:expr ; $result:expr ; { $( $key:ident : $val:ident ),* } ) => {
         $(
-            yamlette! ( option moveout ; $book ; $result ; $key ; $val );
+            $crate::yamlette! ( option moveout ; $book ; $result ; $key ; $val );
         )*
     };
 
