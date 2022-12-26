@@ -6,7 +6,7 @@ macro_rules! composer {
         let composer = Composer::new (&charset, receiver, build_complete_schema ());
         let mut reader = Reader::new (SliceReader::new ($src.as_bytes ()), Tokenizer::new (charset), sender);
 
-        reader.read ().unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}, :{}", err, err.position)); });
+        reader.read ().unwrap_or_else (|err| { assert! (false, "Unexpected result: {}, :{}", err, err.position); });
 
         let composer = composer.unwrap ();
 
@@ -50,7 +50,7 @@ macro_rules! chapter {
                 assert_eq! (tag_id, "tag:yaml.org,2002:seq");
                 assert_eq! (collection.len (), $collection_len);
             } else { assert! (false, "Not a Collection::Seq") }
-        } else { assert! (false, format ("Undefined chapter {}", $chapter_idx)) }
+        } else { assert! (false, "Undefined chapter {}", $chapter_idx) }
     }}
 }
 
@@ -65,11 +65,11 @@ macro_rules! book {
                 if let Some (children_index) = $children.get ($children_cnt) {
                     if let Some ( &(_, Node::Scalar ("tag:yaml.org,2002:str", Scalar::Str (ref string))) ) = $chapter.get_node_by_index (*children_index) {
                         assert_eq! (string, $value);
-                    } else { assert! (false, format! ("cannot extract a child. Expected !str, got {:?}", $chapter.get_node_by_index (*children_index))) }
+                    } else { assert! (false, "cannot extract a child. Expected !str, got {:?}", $chapter.get_node_by_index (*children_index)) }
                 } else { assert! (false, "not enough children") }
             }
 
-            _ => assert! (false, format! ("Incorrect tag '{}'", $tag))
+            _ => assert! (false, "Incorrect tag '{}'", $tag)
         };
 
         $children_cnt += 1;
@@ -84,7 +84,7 @@ macro_rules! book {
 
             if let Some ( &(_, Node::Scalar ("tag:yaml.org,2002:str", Scalar::Str (ref string))) ) = $chapter.get_node_by_index (*children_index) {
                 assert_eq! (string, $value);
-            } else { assert! (false, format! ("cannot extract a child. Expected !str, got {:?}", $chapter.get_node_by_index (*children_index))) }
+            } else { assert! (false, "cannot extract a child. Expected !str, got {:?}", $chapter.get_node_by_index (*children_index)) }
         } else { assert! (false, "not enough children") }
 
         $children_cnt += 1;
@@ -122,14 +122,14 @@ macro_rules! book {
             }
 */
 
-            _ => assert! (false, format! ("Unimplemented tag type for a chapter '{}'", $tag))
+            _ => assert! (false, "Unimplemented tag type for a chapter '{}'", $tag)
         }
     }};
 
     ($book:expr, chapter_index = $chapter_index:expr, $chapter_tree:tt) => {{
         if let Some (chapter) = $book.get_chapter ($chapter_index) {
             book! ($book, chapter = chapter, chapter_tree = $chapter_tree)
-        } else { assert! (false, format! ("Chapter {} does not exist", $chapter_index)) }
+        } else { assert! (false, "Chapter {} does not exist", $chapter_index) }
 
         $chapter_index += 1;
     }};

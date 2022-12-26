@@ -1,9 +1,10 @@
 [package]
 name = "yamlette"
-version = "0.0.6"
+version = "0.1.0"
 authors = ["dnsl48 <dnsl48@gmail.com>"]
+edition = "2021"
 
-description = "Comprehensive and user friendly YAML 1.2 processor"
+description = "Complete and comprehensive YAML 1.2 processor, written in pure rust"
 keywords = ["parser", "yaml", "json", "serialization"]
 categories = ["config", "encoding", "parser-implementations"]
 
@@ -15,23 +16,12 @@ documentation = "https://docs.rs/yamlette/"
 readme = "README.md"
 
 [dependencies]
-skimmer = "0.0.2"
-fraction = "0.6"
+skimmer = "0.0.3"
+fraction = "0.12"
 
 [dependencies.num]
-version = "0.2"
+version = "0.4"
 default-features = false
 features = ["num-bigint", "std"]
 
 [features]
-
-dev = []
-
-onetest = []
-
-test_reader = ["onetest"]
-test_savant = ["onetest"]
-test_sage = ["onetest"]
-test_book = ["onetest"]
-test_orchestra = ["onetest"]
-test_face = ["onetest"]

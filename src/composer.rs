@@ -88,12 +88,12 @@ macro_rules! yamlette_compose {
     ( directive ; others ; $orchestra:expr ; (TAG ; $shortcut:expr , $handle:expr ) ) => {};
 
 
-    ( styles ; [ $( $style:expr ),* ] ) => { [ $( &mut $style as &mut $crate::model::style::Style ),* ] };
+    ( styles ; [ $( $style:expr ),* ] ) => { [ $( &mut $style as &mut dyn $crate::model::style::Style ),* ] };
 
     ( styles ; apply to common ; $common_styles:expr ; $styles:tt ) => {{
         let mut cstyles = $common_styles;
 
-        let styles: &mut [ &mut $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
+        let styles: &mut [ &mut dyn $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
 
         for style in styles {
             style.common_styles_apply (&mut cstyles);
@@ -208,7 +208,7 @@ macro_rules! yamlette_compose {
     ( play ; $orchestra:expr ; $level:expr ; [ $( $element:tt ),* ] ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{
         use $crate::orchestra::chord::{ Chord, EmptyList };
 
-        let styles: &mut [ &mut $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
+        let styles: &mut [ &mut dyn $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
 
         Chord::play (EmptyList, $orchestra, $level, $alias, $common_styles, styles).ok ().unwrap ();
 
@@ -233,7 +233,7 @@ macro_rules! yamlette_compose {
     ( play ; $orchestra:expr ; $level:expr ; { $( $key:tt : $val:tt ),* } ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{
         use $crate::orchestra::chord::{ Chord, EmptyDict };
 
-        let styles: &mut [ &mut $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
+        let styles: &mut [ &mut dyn $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
 
         Chord::play (EmptyDict, $orchestra, $level, $alias, $common_styles, styles).ok ().unwrap ();
 
@@ -303,7 +303,7 @@ macro_rules! yamlette_compose {
     ( unit ; $orchestra:expr ; $level:expr ; $element:expr ; $common_styles:expr ; $styles:tt ; $alias:expr ) => {{
         use $crate::orchestra::chord::Chord;
 
-        let styles: &mut [ &mut $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
+        let styles: &mut [ &mut dyn $crate::model::style::Style ] = &mut yamlette_compose! ( styles ; $styles );
 
         Chord::play ($element, $orchestra, $level, $alias, $common_styles, styles).ok ().unwrap ()
     }};

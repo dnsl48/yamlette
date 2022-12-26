@@ -1,35 +1,34 @@
 pub extern crate skimmer;
 
-use model::schema::Schema;
-
+use crate::model::schema::Schema;
 
 pub struct Options<S>
-  where
-    S: Schema + 'static
+where
+    S: Schema + 'static,
 {
-    pub schema: Option<S>
+    pub schema: Option<S>,
 }
-
 
 impl<S> Options<S>
-  where
-    S: Schema + Clone + 'static
+where
+    S: Schema + Clone + 'static,
 {
-    pub fn new () -> Options<S> { Options { schema: None } }
+    pub fn new() -> Options<S> {
+        Options { schema: None }
+    }
 }
-
 
 impl<S, O> From<(S, Options<O>)> for Options<S>
-  where
+where
     S: Schema + Clone + 'static,
-    O: Schema + Clone + 'static
+    O: Schema + Clone + 'static,
 {
-    fn from (val: (S, Options<O>)) -> Options<S> { Options {
-        schema: Some (val.0)
-    }}
+    fn from(val: (S, Options<O>)) -> Options<S> {
+        Options {
+            schema: Some(val.0),
+        }
+    }
 }
-
-
 
 #[macro_export]
 macro_rules! yamlette {
@@ -106,7 +105,7 @@ macro_rules! yamlette {
         }
     }};
 
-    ( write ; warm ; $orchestra:expr ; $rules:tt ) => {{ 
+    ( write ; warm ; $orchestra:expr ; $rules:tt ) => {{
         yamlette_compose! ( orchestra ; $orchestra ; $rules );
 
         match $orchestra.listen () {

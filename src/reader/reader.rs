@@ -1,13 +1,8 @@
 extern crate skimmer;
 
-// extern crate gauger;
-// use self::gauger::sample::{ Sample, Timer };
+use self::skimmer::{ Data, Datum, Marker, Read };
 
-use self::skimmer::{ Data, Datum, Marker, Read /*, Rune*/ };
-// use self::skimmer::symbol::{ Combo, CopySymbol };
-
-
-use reader::tokenizer::{ self, Token };
+use crate::reader::tokenizer::{ self, Token };
 
 use std::borrow::Cow;
 use std::error::Error;
@@ -15,10 +10,7 @@ use std::fmt;
 
 use std::ops::BitAnd;
 use std::ops::BitOr;
-// use std::ops::BitXor;
 use std::ops::Not;
-
-// use std::sync::Arc;
 
 
 
@@ -32,7 +24,6 @@ fn not<T: BitAnd<Output=T> + Eq + Copy> (state: T, val: T) -> bool { !is (state,
 fn on<T: BitOr<Output=T> + Copy> (state: &mut T, val: T) { *state = *state | val; }
 
 #[inline (always)]
-// fn off<T: BitAnd<Output=T> + Eq + BitXor<Output=T> + Copy> (state: &mut T, val: T) { *state = *state ^ (val & *state) }
 fn off<T: BitAnd<Output=T> + Not<Output=T> + Eq + Copy> (state: &mut T, val: T) { *state = *state & !val }
 
 
@@ -239,8 +230,6 @@ pub struct Reader {
     line: usize,
     cursor: usize,
     position: usize,
-    // data: Data<D>,
-    // pub timer: Timer
 }
 
 
@@ -252,36 +241,26 @@ impl Reader {
             line: 0,
             cursor: 0,
             position: 0,
-            // data: Data::with_capacity (4)
-
-            // timer: Timer::new ()
         }
     }
 
 
     #[inline (always)]
-    fn yield_block<D: Datum + 'static> (&mut self, block: Block<D>, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
-        // self.timer.stamp ("reader->yblock");
+    fn yield_block<D: Datum + 'static> (&mut self, block: Block<D>, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         if let Err (error) = callback (block) {
-            // self.timer.stamp ("reader->yblock");
             Err (ReadError::new (error))
         } else {
-            // self.timer.stamp ("reader->yblock");
             Ok ( () )
         }
     }
 
 
-    pub fn read<D: Datum + 'static, R: Read<Datum=D>> (&mut self, mut reader: R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
-        // self.timer.stamp ("reader");
-
+    pub fn read<D: Datum + 'static, R: Read<Datum=D>> (&mut self, mut reader: R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         let mut ctx: Context<D> = Context::zero ();
 
         let mut cur_idx = self.index;
         let result = self.read_layer (&mut reader, callback, &mut ctx, 0, 0, &mut cur_idx, 0, &mut None, &mut None);
         self.yield_stream_end (callback).ok ();
-
-        // self.timer.stamp ("reader");
 
         result
     }
@@ -309,7 +288,7 @@ impl Reader {
     }
 
 
-    fn consume<D, R> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, len: usize, chars: usize) -> Result<Marker, ReadError>
+    fn consume<D, R> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, len: usize, chars: usize) -> Result<Marker, ReadError>
       where
         D: Datum + 'static,
         R: Read<Datum=D>
@@ -338,7 +317,7 @@ impl Reader {
     }
 
 
-    fn yield_stream_end<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
+        fn yield_stream_end<D: Datum + 'static> (&mut self, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>) -> Result<(), ReadError> {
         self.index = 0;
         self.line = 0;
         self.cursor = 0;
@@ -348,7 +327,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_null<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn yield_null<D: Datum + 'static> (&mut self, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
             anchor: None,
@@ -359,7 +338,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_error<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
+    fn yield_error<D: Datum + 'static> (&mut self, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Error (message.clone (), pos)), callback) ?;
 
@@ -368,14 +347,14 @@ impl Reader {
 
 
     #[inline (always)]
-    fn yield_warning<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
+    fn yield_warning<D: Datum + 'static> (&mut self, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, id: Id, message: Cow<'static, str>) -> Result<(), ReadError> {
         let pos = self.position;
         self.yield_block (Block::new (id, BlockType::Warning (message.clone (), pos)), callback)
     }
 
 
     #[inline (always)]
-    fn read_layer_propagated<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
+    fn read_layer_propagated<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, anchor: &mut Option<Marker>, tag: &mut Option<Marker>) -> Result<(), ReadError> {
         let mut cur_idx = self.index;
         self.read_layer (reader, callback, ctx, level, parent_idx, &mut cur_idx, 15, anchor, tag) // INDENT_PASSED + INDENT_DEFINED + DIRS_PASSED
     }
@@ -385,7 +364,7 @@ impl Reader {
     fn read_layer_expected<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -400,7 +379,7 @@ impl Reader {
     fn read_layer<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -427,10 +406,7 @@ impl Reader {
 
 
         'top: loop {
-            // self.timer.stamp ("reader->get_token");
             if let Some ( (token, len, chars) ) = tokenizer::get_token (reader) {
-
-                // self.timer.stamp ("reader->get_token");
                 loop {
                     match token {
                         /*
@@ -440,14 +416,13 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
 
                         Token::DirectiveYaml if is (state, YAML_PASSED) => {
                             if document_issued {
-                                try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
+                                self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd)?;
                                 self.index = 0; // reset the counter!
                                 off (&mut state, DIRS_PASSED | NODE_PASSED);
                                 continue;
@@ -464,14 +439,14 @@ impl Reader {
 
                         Token::DirectiveYaml if not (state, YAML_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_directive_yaml (&mut ctx, reader, callback, level, parent_idx));
+                            self.read_directive_yaml (&mut ctx, reader, callback, level, parent_idx)?;
                             on (&mut state, YAML_PASSED);
                         }
 
 
                         Token::DirectiveTag if not (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_directive_tag (&mut ctx, reader, callback, level, parent_idx));
+                            self.read_directive_tag (&mut ctx, reader, callback, level, parent_idx)?;
                         }
 
 
@@ -479,11 +454,11 @@ impl Reader {
                             let idx = self.get_idx ();
                             let line = self.line;
 
-                            try! (self.yield_warning (
+                            self.yield_warning (
                                 callback,
-                                Id { level: level, parent: parent_idx, index: idx },
+                                Id { level, parent: parent_idx, index: idx },
                                 Cow::from (format! ("Unknown directive at the line {}", line))
-                            ));
+                            )?;
 
                             self.skip (reader, len, chars);
                         }
@@ -491,7 +466,7 @@ impl Reader {
 
                         Token::DocumentStart if not (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (callback, level, parent_idx, token));
+                            self.emit_doc_border (callback, level, parent_idx, token)?;
                             document_issued = true;
                             on (&mut state, DIRS_PASSED | INDENT_PASSED);
                             prev_indent = self.cursor;
@@ -502,11 +477,11 @@ impl Reader {
                         Token::DocumentStart if not (state, INDENT_PASSED) => {
                             if indent > 0 { break 'top; }
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
+                            self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd)?;
                             document_issued = true;
 
                             self.index = 0; // reset the counter!
-                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
+                            self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart)?;
                             prev_indent = self.cursor;
                             *cur_idx = self.index;
                         }
@@ -526,7 +501,7 @@ impl Reader {
 
 
                         _ if not (state, DIRS_PASSED) => {
-                            try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
+                            self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart)?;
                             document_issued = true;
                             on (&mut state, DIRS_PASSED);
                             *cur_idx = self.index;
@@ -535,7 +510,7 @@ impl Reader {
 
                         Token::DocumentEnd if is (state, DIRS_PASSED) => {
                             self.skip (reader, len, chars);
-                            try! (self.emit_doc_border (callback, level, parent_idx, token));
+                            self.emit_doc_border (callback, level, parent_idx, token)?;
                             self.index = 0; // reset the counter!
                             document_issued = true;
                             state = 0;
@@ -554,17 +529,13 @@ impl Reader {
 
 
                         Token::Indent /*if not (state, INDENT_PASSED)*/ => {
-                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &tokenizer::line_breakers) {
                             let ilen = tokenizer::scan_one_line_breaker (reader, len);
                             if ilen > 0 {
-                                // let bchrs = tokenizer::line_breakers[idx].len_chars ();
                                 self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            // if let Some (_) = tokenizer::cset.hashtag.read_at (len, reader) {
-                            // if reader.contains_copy_at (tokenizer::cset.hashtag, len) {
                             if reader.byte_at (b'#', len) {
                                 self.skip (reader, len, chars);
                                 break;
@@ -583,7 +554,7 @@ impl Reader {
                             } else if chars > indent {
                                 self.skip (reader, len, chars);
                                 // TODO: assess this propagation (in what cases should it work)
-                                // try! (self.read_layer (&mut id.child (), len, State::new_indent_propagation ())); // propagate
+                                // self.read_layer (&mut id.child (), len, State::new_indent_propagation ())?; // propagate
                             } else {
                                 self.skip (reader, len, chars);
                                 on (&mut state, INDENT_PASSED);
@@ -616,11 +587,11 @@ impl Reader {
                             let idx = self.get_idx ();
                             *cur_idx = idx;
 
-                            try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                            self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                 anchor: anchor.take (),
                                 tag: tag.take (),
                                 content: NodeKind::Sequence
-                            })), callback));
+                            })), callback)?;
 
                             self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) )) ?;
 
@@ -633,16 +604,16 @@ impl Reader {
 
                             let idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::BlockMap (
                                     Id { level: level, parent: parent_idx, index: *cur_idx },
                                     anchor.take (),
                                     tag.take ()
                                 )
-                            ), callback));
+                            ), callback)?;
 
-                            try! (self.read_map_block_implicit (reader, callback, &mut ctx, level + 1, idx, prev_indent, None));
+                            self.read_map_block_implicit (reader, callback, &mut ctx, level + 1, idx, prev_indent, None)?;
 
                             *cur_idx = self.index;
 
@@ -654,16 +625,16 @@ impl Reader {
                         Token::Question if not (state, NODE_PASSED) => {
                             let idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Node (Node {
                                     anchor: anchor.take (),
                                     tag: tag.take (),
                                     content: NodeKind::Mapping
                                 })
-                            ), callback));
+                            ), callback)?;
 
-                            try! (self.read_map_block_explicit (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) )));
+                            self.read_map_block_explicit (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) ))?;
 
                             *cur_idx = self.index;
 
@@ -674,7 +645,7 @@ impl Reader {
                         _ if not (state, NODE_PASSED) => {
                             let indent = if is (state, INDENT_DEFINED) { self.cursor } else { 0 };
 
-                            try! (self.read_node (
+                            self.read_node (
                                 reader,
                                 callback,
                                 &mut ctx,
@@ -685,7 +656,7 @@ impl Reader {
                                 Some ( (token, len, chars) ),
                                 anchor,
                                 tag
-                            ));
+                            )?;
 
                             on (&mut state, NODE_PASSED);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
@@ -699,13 +670,12 @@ impl Reader {
                     break;
                 }
             } else {
-                // self.timer.stamp ("reader->get_token");
                 if level == 0 && parent_idx == 0 && self.index > 0 && is (state, DIRS_PASSED) {
-                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
+                    self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd)?;
                     self.index = 0;
                 } else if !propagated && !document_issued {
-                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart));
-                    try! (self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd));
+                    self.emit_doc_border (callback, level, parent_idx, Token::DocumentStart)?;
+                    self.emit_doc_border (callback, level, parent_idx, Token::DocumentEnd)?;
                     self.index = 0;
                 }
 
@@ -720,7 +690,7 @@ impl Reader {
     fn read_scalar_block_literal<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -752,7 +722,7 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // self.check_bom (reader, callback, level, parent_idx, len)?;
                             self.skip (reader, len, chars);
                         }
 
@@ -769,10 +739,10 @@ impl Reader {
                             if lazy_tail.is_some () {
                                 let (chunk, _) = lazy_tail.take ().unwrap ();
                                 let idx = self.get_idx ();
-                                try! (self.yield_block (Block::new (
+                                self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
                                     BlockType::Literal (chunk)
-                                ), callback));
+                                ), callback)?;
                             }
 
                             lazy_tail = Some ( (self.consume (ctx, reader, callback, len, chars) ?, chars) );
@@ -800,7 +770,6 @@ impl Reader {
                             if chars < indent { break 'top; }
 
                             /* Do not skip more than indent in here! */
-                            // let slen = tokenizer::cset.space.len ();
                             self.skip (reader, indent, indent);
 
                             on (&mut state, INDENT_PASSED);
@@ -828,10 +797,10 @@ impl Reader {
                             let chunk = lazy_nl.take ().unwrap ();
 
                             let idx = self.get_idx ();
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Literal (chunk)
-                            ), callback));
+                            ), callback)?;
                             off (&mut state, HUNGRY | KEEPER);
 
                             continue;
@@ -840,16 +809,12 @@ impl Reader {
 
                         _ if lazy_tail.is_some () => {
                             let (_, nls) = lazy_tail.take ().unwrap ();
-                            // let mut chunk = Chunk::with_capacity (tokenizer::cset.line_feed.len () * nls);
-                            // for _ in 0 .. nls { chunk.push_slice (tokenizer::cset.line_feed.as_slice ()); }
-                            
+
                             let idx = self.get_idx ();
-                            // let rune: Rune = tokenizer::cset.line_feed.into ();
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Byte (b'\n', nls)
-                                // BlockType::Literal (chunk)
-                            ), callback));
+                            ), callback)?;
                             off (&mut state, HUNGRY | KEEPER);
                             continue;
                         }
@@ -858,42 +823,28 @@ impl Reader {
                         _ if is (state, HUNGRY) => {
                             // TODO: try to take a part of the indentation instead of making a new chunk
 
-                            // let mut chunk: Chunk;
                             let byte: u8;
 
                             if is (state, KEEPER) {
-                                // chunk = Chunk::with_capacity (tokenizer::cset.line_feed.len ());
-                                // chunk.push_slice (tokenizer::cset.line_feed.as_slice ());
-                                // rune = tokenizer::cset.line_feed.into ();
                                 byte = b'\n';
                             } else {
-                                // chunk = Chunk::with_capacity (tokenizer::spaces[0].len ());
-                                // chunk.push_slice (tokenizer::spaces[0].as_slice ());
-                                // rune = tokenizer::cset.space.into ();
                                 byte = b' ';
                             }
 
                             let idx = self.get_idx ();
-                            try! (self.yield_block (Block::new (
-                                Id { level: level, parent: parent_idx, index: idx },
+                            self.yield_block (Block::new (
+                                Id { level, parent: parent_idx, index: idx },
                                 BlockType::Byte (byte, 1)
-                                // BlockType::Literal (chunk)
-                            ), callback));
+                            ), callback)?;
 
                             off (&mut state, HUNGRY | KEEPER);
 
                             continue;
                         }
 
-
                         _ => {
                             let len = tokenizer::line (reader);
                             let nl = tokenizer::scan_one_line_breaker (reader, len);
-                            /*
-                            let nl = if let Some ( (_, len) ) = scan_one_at (len, reader, &tokenizer::line_breakers) {
-                                len
-                            } else { 0 };
-                            */
 
                             let mut tail: usize = 0;
                             let mut tail_nls: usize = 0;
@@ -905,15 +856,12 @@ impl Reader {
                                 let mut spaces_add_chars: usize = 0;
 
                                 loop {
-                                    // if let Some ( (idx, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &[tokenizer::cset.space]) {
-                                    // if reader.contains_copy_at (tokenizer::cset.space, len + nl + tail + spaces_add_bytes) {
                                     if reader.byte_at (b' ', len + nl + tail + spaces_add_bytes) {
                                         spaces_add_bytes += 1;
                                         spaces_add_chars += 1;
                                         continue;
                                     }
 
-                                    // if let Some ( (_, len) ) = scan_one_at (len + nl + tail + spaces_add_bytes, reader, &tokenizer::line_breakers) {
                                     let len = tokenizer::scan_one_line_breaker (reader, len + nl + tail + spaces_add_bytes);
                                     if len > 0 {
                                         if spaces_add_chars > indent {
@@ -932,14 +880,13 @@ impl Reader {
                                 }
                             }
 
-
                             if len > 0 {
                                 let marker = self.consume (ctx, reader, callback, len, 0) ?;
                                 let idx = self.get_idx ();
-                                try! (self.yield_block (Block::new (
+                                self.yield_block (Block::new (
                                     Id { level: level, parent: parent_idx, index: idx },
                                     BlockType::Literal (marker)
-                                ), callback));
+                                ), callback)?;
                             }
 
 
@@ -976,32 +923,27 @@ impl Reader {
             if lazy_nl.is_some () {
                 let idx = self.get_idx ();
 
-                try! (self.yield_block (Block::new (
+                self.yield_block (Block::new (
                     Id { level: level, parent: parent_idx, index: idx },
                     BlockType::Literal (lazy_nl.take ().unwrap ())
-                ), callback));
+                ), callback)?;
 
                 if is (state, CHOMP_KEEP) && lazy_tail.is_some () {
                     let idx = self.get_idx ();
-                    try! (self.yield_block (Block::new (
+                    self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
                         BlockType::Literal (lazy_tail.take ().unwrap ().0)
-                    ), callback));
+                    ), callback)?;
                 }
             } else if lazy_tail.is_some () {
                 let (_, chars) = lazy_tail.take ().unwrap ();
 
                 if is (state, CHOMP_KEEP) && chars > 0 {
-                    // let mut chunk = Chunk::with_capacity (tokenizer::cset.line_feed.len () * chars);
-                    // for _ in 0..chars { chunk.push_slice (tokenizer::cset.line_feed.as_slice ()); }
-
                     let idx = self.get_idx ();
-                    // let rune: Rune = tokenizer::cset.line_feed.into ();
-                    try! (self.yield_block (Block::new (
+                    self.yield_block (Block::new (
                         Id { level: level, parent: parent_idx, index: idx },
                         BlockType::Byte (b'\n', chars)
-                        // BlockType::Literal (chunk)
-                    ), callback));
+                    ), callback)?;
                 }
             }
         }
@@ -1013,7 +955,7 @@ impl Reader {
     fn read_scalar_block<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         level: usize,
         parent_idx: usize,
@@ -1052,7 +994,7 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // self.check_bom (reader, callback, level, parent_idx, len)?;
                             self.skip (reader, len, chars);
                         }
 
@@ -1067,7 +1009,6 @@ impl Reader {
                         Token::Indent if not (state, HEAD_PASSED) => self.skip (reader, len, chars),
 
                         Token::Newline if not (state, HEAD_PASSED) => {
-                            // if let Some ((_, ilen)) = scan_one_at (0, reader, &tokenizer::line_breakers) {
                             let ilen = tokenizer::scan_one_line_breaker (reader, 0);
                             if ilen > 0 { self.skip (reader, ilen, 1); }
 
@@ -1077,11 +1018,11 @@ impl Reader {
 
                             *cur_idx = idx;
 
-                            try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                            self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                 anchor: None,
                                 tag: None,
                                 content: NodeKind::LiteralBlockOpen
-                            })), callback));
+                            })), callback)?;
 
                             on (&mut state, HEAD_PASSED);
                         }
@@ -1100,7 +1041,6 @@ impl Reader {
 
                             loop {
                                 if not (state, CHOMP_DEFINED) {
-                                    // if tokenizer::cset.hyphen_minus.contained_at (chunk_slice, pos) {
                                     match chunk_slice.get (pos).map (|b| *b) {
                                         Some (b'-') => {
                                             pos += 1;
@@ -1114,23 +1054,10 @@ impl Reader {
                                         }
                                         _ => ()
                                     };
-                                    /*
-                                    if let Some (b'-') = chunk_slice.get (pos) {
-                                        pos += tokenizer::cset.hyphen_minus.len ();
-                                        on (&mut state, CHOMP_DEFINED | CHOMP_STRIP);
-                                        if indent > 0 { on (&mut state, INDENT_DEFINED) }
-                                    // } else if tokenizer::cset.plus.contained_at (chunk_slice, pos) {
-                                    } else if let Some (b'+') = chunk_slice.get (pos) {
-                                        pos += tokenizer::cset.plus.len ();
-                                        on (&mut state, CHOMP_DEFINED | CHOMP_KEEP);
-                                        if indent > 0 { on (&mut state, INDENT_DEFINED) }
-                                    }
-                                    */
                                 }
 
                                 if not (state, INDENT_DEFINED) {
-                                    // if let Some ( (n, p) ) = tokenizer::cset.extract_dec_at (chunk_slice, pos) {
-                                    if let Some (val @ b'0' ... b'9') = chunk_slice.get (pos).map (|b| *b) {
+                                    if let Some (val @ b'0' ..= b'9') = chunk_slice.get (pos).map (|b| *b) {
                                         pos += 1;
                                         indent = indent * 10 + ((val - b'0') as usize);
 
@@ -1141,15 +1068,6 @@ impl Reader {
                                 }
 
                                 if not (state, CHOMP_DEFINED) {
-                                    /*
-                                    if tokenizer::cset.hyphen_minus.contained_at (chunk_slice, pos) {
-                                        on (&mut state, CHOMP_DEFINED | CHOMP_STRIP);
-                                        if indent > 0 { on (&mut state, INDENT_DEFINED) }
-                                    } else if tokenizer::cset.plus.contained_at (chunk_slice, pos) {
-                                        on (&mut state, CHOMP_DEFINED | CHOMP_KEEP);
-                                        if indent > 0 { on (&mut state, INDENT_DEFINED) }
-                                    }
-                                    */
                                     match chunk_slice.get (pos).map (|b| *b) {
                                         Some (b'-') => {
                                             on (&mut state, CHOMP_DEFINED | CHOMP_STRIP);
@@ -1187,8 +1105,6 @@ impl Reader {
                             } else { 0 } | 128,
                             if is (state, INDENT_DEFINED) { indent } else { default_indent }
                         ).and_then (| () | {
-                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                            // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                             let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                 (anchor, tag)
                             } else {
@@ -1220,8 +1136,6 @@ impl Reader {
                             } else { 0 },
                             if is (state, INDENT_DEFINED) { indent } else { default_indent }
                         ).and_then (| () | {
-                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                            // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                             let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                 (anchor, tag)
                             } else {
@@ -1247,7 +1161,7 @@ impl Reader {
     }
 
 
-    fn read_seq_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_seq_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         let mut ctx = Context::new (ctx, ContextKind::SequenceBlock, self.cursor, level);
 
         const INDENT_PASSED: u8 = 1; // Indentation has been passed for the line
@@ -1269,7 +1183,6 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
                             self.skip (reader, len, chars);
                         }
 
@@ -1286,18 +1199,13 @@ impl Reader {
                             // TODO: check for a newline right after the indent and continue in that case
                             // scan_one_at
 
-                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &tokenizer::line_breakers) {
                             let ilen = tokenizer::scan_one_line_breaker (reader, len);
                             if ilen > 0 {
-                                // let bchrs = tokenizer::line_breakers[idx].len_chars ();
-                                // let bchrs = 1;
                                 self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            // if let Some (_) = tokenizer::cset.hashtag.read_at (len, reader) {
-                            // if reader.contains_copy_at (tokenizer::cset.hashtag, len) {
                             if reader.byte_at (b'#', len) {
                                 self.skip (reader, len, chars);
                                 break;
@@ -1309,7 +1217,7 @@ impl Reader {
                             } else if chars > indent {
                                 self.skip (reader, len, chars);
                                 // TODO: assess this propagation (in what cases should it work)
-                                // try! (self.read_layer (&mut id.child (), len, State::new_indent_propagation ())); // propagate
+                                // self.read_layer (&mut id.child (), len, State::new_indent_propagation ())?; // propagate
                             } else {
                                 self.skip (reader, len, chars);
                                 on (&mut state, INDENT_PASSED);
@@ -1340,12 +1248,12 @@ impl Reader {
                             let cur_idx = self.index;
                             let idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::BlockMap (Id { level: level, parent: parent_idx, index: cur_idx }, None, None)
-                            ), callback));
+                            ), callback)?;
 
-                            try! (self.read_map_block_implicit (reader, callback, &mut ctx, level + 1, idx, prev_indent, None));
+                            self.read_map_block_implicit (reader, callback, &mut ctx, level + 1, idx, prev_indent, None)?;
 
                             off (&mut state, NODE_READ);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
@@ -1366,7 +1274,7 @@ impl Reader {
     fn read_seq_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         idx: usize,
         level: usize,
@@ -1397,7 +1305,7 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level + 1, idx, len));
+                            // self.check_bom (reader, callback, level + 1, idx, len)?;
                             self.skip (reader, len, chars);
                         }
 
@@ -1405,8 +1313,6 @@ impl Reader {
                         Token::SequenceEnd => {
                             self.skip (reader, len, chars);
 
-                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                            // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                             let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                 (anchor, tag)
                             } else {
@@ -1416,11 +1322,11 @@ impl Reader {
                                 )
                             };
 
-                            try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                            self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                 anchor: anchor,
                                 tag: tag,
                                 content: NodeKind::Sequence
-                            })), callback));
+                            })), callback)?;
 
                             break 'top;
                         }
@@ -1438,7 +1344,7 @@ impl Reader {
 
 
                         Token::Comma if is (state, MAP_KEY_PASSED) => {
-                            try! (self.yield_null (callback, level + 2, cur_idx));
+                            self.yield_null (callback, level + 2, cur_idx)?;
                             off (&mut state, MAP_KEY_PASSED | NODE_PASSED);
                         }
 
@@ -1454,18 +1360,18 @@ impl Reader {
 
                             let new_idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level + 1, parent: idx, index: new_idx },
                                 BlockType::Node (Node {
                                     anchor: None,
                                     tag: None,
                                     content: NodeKind::Mapping
                                 })
-                            ), callback));
+                            ), callback)?;
 
                             cur_idx = new_idx;
                             let mut cur_idx_tmp = cur_idx;
-                            try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx_tmp, None, &mut None, &mut None));
+                            self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx_tmp, None, &mut None, &mut None)?;
 
                             on (&mut state, MAP_KEY_PASSED);
                         }
@@ -1476,30 +1382,29 @@ impl Reader {
 
                             let new_idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level + 1, parent: idx, index: new_idx },
                                 BlockType::BlockMap (
                                     Id { level: level + 1, parent: idx, index: cur_idx },
                                     None,
                                     None
                                 )
-                            ), callback));
+                            ), callback)?;
 
                             cur_idx = new_idx;
-                            try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
+                            self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None)?;
                         }
 
 
                         Token::Colon if is (state, MAP_KEY_PASSED) && not (state, COLON_IS_RAW) => {
                             self.skip (reader, len, chars);
-                            try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, cur_idx, &mut cur_idx, None, &mut None, &mut None));
+                            self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, cur_idx, &mut cur_idx, None, &mut None, &mut None)?;
                             off (&mut state, MAP_KEY_PASSED | COLON_IS_RAW);
                             on (&mut state, NODE_PASSED);
                         }
 
 
                         Token::Colon if not (state, MAP_KEY_PASSED) && not (state, NODE_PASSED) && not (state, COLON_IS_RAW) => {
-                            // if let None = scan_one_at (len, reader, &tokenizer::spaces_and_line_breakers) {
                             if tokenizer::scan_one_spaces_and_line_breakers (reader, len) == 0 {
                                 on (&mut state, COLON_IS_RAW);
                                 continue;
@@ -1509,17 +1414,17 @@ impl Reader {
 
                             let new_idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level + 1, parent: idx, index: new_idx },
                                 BlockType::Node (Node {
                                     anchor: None,
                                     tag: None,
                                     content: NodeKind::Mapping
                                 })
-                            ), callback));
+                            ), callback)?;
 
-                            try! (self.yield_null (callback, level + 2, new_idx));
-                            try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None));
+                            self.yield_null (callback, level + 2, new_idx)?;
+                            self.read_node_flow (reader, callback, &mut ctx, indent, level + 2, new_idx, &mut cur_idx, None, &mut None, &mut None)?;
 
                             cur_idx = new_idx;
 
@@ -1529,7 +1434,7 @@ impl Reader {
 
                         _ => {
                             let indent = self.cursor;
-                            try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                             on (&mut state, NODE_PASSED);
                             off (&mut state, COLON_IS_RAW);
                         }
@@ -1543,17 +1448,17 @@ impl Reader {
     }
 
     #[inline (always)]
-    fn read_map_block_explicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_map_block_explicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 1, accel, None)
     }
 
     #[inline (always)]
-    fn read_map_block_implicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
+    fn read_map_block_implicit<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: usize, accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         self.read_map_block (reader, callback, ctx, level, parent_idx, 15, accel, Some (indent))
     }
 
 
-    fn read_map_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
+    fn read_map_block<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, mut state: u8, mut accel: Option<(Token, usize, usize)>, indent: Option<usize>) -> Result<(), ReadError> {
         let mut ctx = Context::new (ctx, ContextKind::MappingBlock, if indent.is_some () { *indent.as_ref ().unwrap () } else { self.cursor }, level);
         const INDENT_PASSED: u8 = 1;
         const QST_PASSED: u8 = 2;
@@ -1579,7 +1484,7 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // self.check_bom (reader, callback, level, parent_idx, len)?;
                             self.skip (reader, len, chars);
                         }
 
@@ -1594,17 +1499,13 @@ impl Reader {
 
                         Token::Indent if not (state, INDENT_PASSED) => {
                             // TODO: check for a newline right after the indent and continue in that case
-                            // if let Some ((idx, ilen)) = scan_one_at (len, reader, &tokenizer::line_breakers) {
                             let ilen = tokenizer::scan_one_line_breaker (reader, len);
                             if ilen > 0 {
-                                // let bchrs = tokenizer::line_breakers[idx].len_chars ();
                                 self.skip (reader, len + ilen, chars + 1);
                                 self.nl ();
                                 break;
                             }
 
-                            // if let Some (_) = tokenizer::cset.hashtag.read_at (len, reader) {
-                            // if reader.contains_copy_at (tokenizer::cset.hashtag, len) {
                             if reader.byte_at (b'#', len) {
                                 self.skip (reader, len, chars);
                                 break;
@@ -1615,14 +1516,14 @@ impl Reader {
 
                             } else if chars > indent {
                                 self.skip (reader, len, chars);
-                                try! (self.read_layer_propagated (reader, callback, &mut ctx, level, parent_idx, &mut None, &mut None));
+                                self.read_layer_propagated (reader, callback, &mut ctx, level, parent_idx, &mut None, &mut None)?;
                                 if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                 if is (state, SEP_PASSED) { off (&mut state, SEP_PASSED); }
 
                             } else {
                                 self.skip (reader, len, chars);
                                 if is (state, SEP_PASSED) {
-                                    try! (self.yield_null (callback, level, parent_idx));
+                                    self.yield_null (callback, level, parent_idx)?;
                                     off (&mut state, VAL_PASSED);
                                 }
                                 on (&mut state, INDENT_PASSED);
@@ -1638,42 +1539,31 @@ impl Reader {
 
                         Token::Colon if is (state, KEY_PASSED) && not (state, SEP_PASSED) => {
                             if is (state, QST_EXPLICIT) && qst_explicit_line == self.line {
-                                // let (len_, _) = scan_while_at (len, reader, &tokenizer::spaces_and_tabs);
                                 
                                 let len_ = tokenizer::scan_while_spaces_and_tabs (reader, len);
                                 
-                                // let (len__, idx) = scan_until_at (len + len_, reader, &tokenizer::colon_and_line_breakers);
                                 let len__ = tokenizer::scan_until_colon_and_line_breakers (reader, len + len_);
 
-                                // println! ("LEN IS: {}, idx is {:?}", len__, idx);
-                                // println! ("len_ is {}", len_);
-                                // println! ("len__ is {}", len__);
-                                // if let Some ( (idx, _) ) = idx {
                                 if reader.has_long (len + len_ + len__ + 1) {
-                                    // if idx > 0 {
-                                    // if !reader.contains_copy_at (tokenizer::cset.colon, len + len_ + len__) {
                                     if !reader.byte_at (b':', len + len_ + len__) {
-                                        // let (len___, _) = scan_while_at (len + len_ + len__, reader, &tokenizer::spaces_and_line_breakers);
                                         let len___ = tokenizer::scan_while_spaces_and_line_breakers (reader, len + len_ + len__);
-                                        // if let Some ( (0, _) ) = scan_one_at (len + len_ + len__ + len___, reader, &tokenizer::colon_and_line_breakers) {
-                                        // if reader.contains_copy_at (tokenizer::cset.colon, len + len_ + len__ + len___) {
                                         if reader.byte_at (b':', len + len_ + len__ + len___) {
                                             self.skip (reader, len + len_, chars);
 
                                             let idx = self.get_idx ();
 
-                                            try! (self.yield_block (Block::new (
+                                            self.yield_block (Block::new (
                                                 Id { level: level, parent: parent_idx, index: idx },
                                                 BlockType::BlockMap (
                                                     Id { level: level, parent: parent_idx, index: last_key_idx },
                                                     None,
                                                     None
                                                 )
-                                            ), callback));
+                                            ), callback)?;
 
                                             let mut cur_idx = self.index;
 
-                                            try! (self.read_node_mblockval (reader, callback, &mut ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
+                                            self.read_node_mblockval (reader, callback, &mut ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None)?;
                                             off (&mut state, VAL_PASSED | QST_EXPLICIT);
                                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                             break;
@@ -1691,7 +1581,7 @@ impl Reader {
                         Token::Dash if is (state, SEP_PASSED) && self.cursor >= indent => {
                             let indent = self.cursor;
                             let mut cur_idx = self.index;
-                            try! (self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                             off (&mut state, VAL_PASSED);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -1702,7 +1592,7 @@ impl Reader {
 
                             } else {
                                 if is (state, SEP_PASSED)  || is (state, QST_PASSED) {
-                                    try! (self.yield_null (callback, level, parent_idx));
+                                    self.yield_null (callback, level, parent_idx)?;
                                     off (&mut state, VAL_PASSED);
                                 }
                                 on (&mut state, INDENT_PASSED);
@@ -1720,7 +1610,7 @@ impl Reader {
                         }
 
                         Token::Question if not (state, SEP_PASSED) => {
-                            try! (self.yield_null (callback, level, parent_idx));
+                            self.yield_null (callback, level, parent_idx)?;
                             self.skip (reader, len, chars);
                             qst_explicit_line = self.line;
                             off (&mut state, VAL_PASSED);
@@ -1731,7 +1621,7 @@ impl Reader {
                             let indent = self.cursor;
                             let mut cur_idx = self.index;
                             last_key_idx = cur_idx + 1;
-                            try! (self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                             on (&mut state, KEY_PASSED);
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                         }
@@ -1742,50 +1632,36 @@ impl Reader {
                             let lid = self.line;
                             last_val_idx = cur_idx + 1;
 
-                            try! (self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                            self.read_node_mblockval (reader, callback, &mut ctx, indent, level, parent_idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                             off (&mut state, VAL_PASSED);
-                            // if tokenizer::cset.colon.read (reader).is_some () { on (&mut state, QST_PASSED); }
-                            // if reader.contains_copy_at_start (tokenizer::cset.colon) { on (&mut state, QST_PASSED); }
                             if reader.byte_at_start (b':') { on (&mut state, QST_PASSED); }
                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
 
                             if lid < self.line { break; }
 
-                            'inliner: loop {
-                                // if let Some (len1_colon) = tokenizer::cset.colon.read (reader) {
-                                // if reader.contains_copy_at_start (tokenizer::cset.colon) {
+                            loop {
                                 if reader.byte_at_start (b':') {
-                                    // let (len2_space, _) = scan_while_at (tokenizer::cset.colon.len (), reader, &tokenizer::spaces_and_tabs);
-                                    // let len2_space = tokenizer::scan_while_spaces_and_tabs (reader, tokenizer::cset.colon.len ());
                                     let len2_space = tokenizer::scan_while_spaces_and_tabs (reader, 1);
-                                    // let (_, idx) = scan_until_at (tokenizer::cset.colon.len () + len2_space, reader, &tokenizer::question_and_line_breakers);
-                                    // let len2_question = tokenizer::scan_until_question_and_line_breakers (reader, tokenizer::cset.colon.len () + len2_space);
                                     let len2_question = tokenizer::scan_until_question_and_line_breakers (reader, 1 + len2_space);
 
-                                    // if let Some ( (idx, _) ) = idx {
-                                    // if reader.has (tokenizer::cset.colon.len () + len2_space + len2_question + 1) {
                                     if reader.has_long (2 + len2_space + len2_question) {
-                                        // if idx > 0 {
-                                        // if !reader.contains_copy_at (tokenizer::cset.question, tokenizer::cset.colon.len () + len2_space + len2_question) {
                                         if !reader.byte_at (b'?', 1 + len2_space + len2_question) {
-                                            // let slen = tokenizer::cset.colon.len () + len2_space;
-                                            // let slen = 1 + len2_space;
                                             self.skip (reader, len2_space + 1, 0);
 
                                             let idx = self.get_idx ();
 
-                                            try! (self.yield_block (Block::new (
+                                            self.yield_block (Block::new (
                                                 Id { level: level, parent: parent_idx, index: idx },
                                                 BlockType::BlockMap (
                                                     Id { level: level, parent: parent_idx, index: last_val_idx },
                                                     None,
                                                     None
                                                 )
-                                            ), callback));
+                                            ), callback)?;
 
                                             let mut cur_idx = self.index;
 
-                                            try! (self.read_node_mblockval (reader, callback, &mut ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None));
+                                            self.read_node_mblockval (reader, callback, &mut ctx, indent + 1, level + 1, idx, &mut cur_idx, None, &mut None, &mut None)?;
                                             off (&mut state, VAL_PASSED | QST_EXPLICIT);
                                             if self.cursor == 0 { off (&mut state, INDENT_PASSED); }
                                         }
@@ -1813,7 +1689,7 @@ impl Reader {
     fn read_map_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         idx: usize,
         level: usize,
@@ -1843,7 +1719,6 @@ impl Reader {
                     Token::BOM16LE |
                     */
                     Token::BOM8 => {
-                        // try! (self.check_bom (reader, callback, level + 1, idx, len));
                         self.skip (reader, len, chars);
                     }
 
@@ -1851,15 +1726,13 @@ impl Reader {
                         self.skip (reader, len, chars);
 
                         if is (state, QST_PASSED) && not (state, KEY_PASSED) {
-                            try! (self.yield_null (callback, level + 1, idx));
+                            self.yield_null (callback, level + 1, idx)?;
                         }
 
                         if is (state, QST_PASSED) && not (state, VAL_PASSED) {
-                            try! (self.yield_null (callback, level + 1, idx));
+                            self.yield_null (callback, level + 1, idx)?;
                         }
 
-                        // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                        // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                         let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                             (anchor, tag)
                         } else {
@@ -1869,11 +1742,11 @@ impl Reader {
                             )
                         };
 
-                        try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                        self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                             anchor: anchor,
                             tag: tag,
                             content: NodeKind::Mapping
-                        })), callback));
+                        })), callback)?;
 
                         break;
                     }
@@ -1904,13 +1777,13 @@ impl Reader {
 
                     Token::Comma if is (state, KEY_PASSED) /*&& not (state, SEP_PASSED)*/ => {
                         self.skip (reader, len, chars);
-                        try! (self.yield_null (callback, level + 1, idx));
+                        self.yield_null (callback, level + 1, idx)?;
                         off (&mut state, VAL_PASSED);
                     }
 
                     Token::Colon if not (state, KEY_PASSED) && not (state, SEP_PASSED) => {
                         self.skip (reader, len, chars);
-                        try! (self.yield_null (callback, level + 1, idx));
+                        self.yield_null (callback, level + 1, idx)?;
                         on (&mut state, KEY_PASSED);
                         on (&mut state, SEP_PASSED);
                     }
@@ -1918,14 +1791,14 @@ impl Reader {
                     _ if not (state, KEY_PASSED) => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                        self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                         on (&mut state, KEY_PASSED);
                     }
 
                     _ if is (state, SEP_PASSED) && not (state, VAL_PASSED) => {
                         let indent = self.cursor;
                         let mut cur_idx = self.index;
-                        try! (self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None));
+                        self.read_node_flow (reader, callback, &mut ctx, indent, level + 1, idx, &mut cur_idx, Some ( (token, len, chars) ), &mut None, &mut None)?;
                         on (&mut state, VAL_PASSED);
                     }
 
@@ -1939,7 +1812,7 @@ impl Reader {
 
 
 
-    fn read_directive_yaml<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_yaml<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         tokenizer::get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
@@ -1975,82 +1848,24 @@ impl Reader {
     }
 
 
-/*
-    fn check_bom<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, len: usize) -> Result<(), ReadError> {
-        let is_my_bom = {
-            let bom = reader.slice (len).unwrap ();
-            tokenizer::cset.encoding.check_bom (bom)
-        };
-
-        if !is_my_bom {
-            let idx = self.get_idx ();
-            return self.yield_error (
-                callback,
-                Id { level: level, parent: parent_idx, index: idx },
-                Cow::from ("Found a BOM of another encoding")
-            )
-        }
-
-        Ok ( () )
-    }
-*/
-
-
-    fn check_yaml_version<D: Datum + 'static> (&mut self, ctx: &mut Context<D>, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
+    fn check_yaml_version<D: Datum + 'static> (&mut self, ctx: &mut Context<D>, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, marker: &Marker) -> Result<(u8, u8), ReadError> {
         enum R {
             Err (Cow<'static, str>),
             Warn (Cow<'static, str>, (u8, u8))
-        };
+        }
 
         let result = {
             let chunk = ctx.get_data ().chunk (&marker);
             let chunk_slice = chunk.as_slice ();
 
-            // if tokenizer::directive_yaml_version.same_as_slice (chunk_slice) { return Ok ( (1, 2) ) }
-            /*
-            if chunk_slice.len () == tokenizer::cset.digit_1.len () + tokenizer::cset.full_stop.len () + tokenizer::cset.digit_2.len () &&
-               tokenizer::cset.digit_1.contained_at (chunk_slice, 0) &&
-               tokenizer::cset.full_stop.contained_at (chunk_slice, tokenizer::cset.digit_1.len ()) &&
-               tokenizer::cset.digit_2.contained_at (chunk_slice, tokenizer::cset.digit_1.len () + tokenizer::cset.full_stop.len ())
-            {
-                return Ok ( (1, 2) )
-            }
-            */
             if chunk_slice == &[b'1', b'.', b'2'] { return Ok ( (1, 2) ) }
 
-            /*
-            if let Some ( (digit_first, digit_first_len) ) = tokenizer::cset.extract_dec (chunk_slice) {
-                if digit_first != 1 || !tokenizer::cset.full_stop.contained_at (chunk_slice, digit_first_len) {
-                    R::Err (Cow::from ("%YAML major version is not supported"))
-                } else {
-                    if let Some ( (digit_second, digit_second_len) ) = tokenizer::cset.extract_dec_at (chunk_slice, digit_first_len + tokenizer::cset.full_stop.len ()) {
-                        if chunk_slice.len () > digit_first_len + digit_second_len + tokenizer::cset.full_stop.len () {
-                            R::Warn (Cow::from ("%YAML minor version is not fully supported"), (digit_first, 3))
-                        } else {
-                            if digit_second == 1 {
-                                R::Warn ( Cow::from (format! (
-                                    "{}. {}.",
-                                    "%YAML version 1.1 is supported accordingly to the YAML 1.2 specification, paragraph 5.4",
-                                    "This means that non-ASCII line-breaks are considered to be non-break characters"
-                                )), (digit_first, digit_second) )
-                            } else {
-                                R::Err (Cow::from ("%YAML minor version is not supported"))
-                            }
-                        }
-                    } else {
-                        R::Err ( Cow::from ("%YAML version is malformed") )
-                    }
-                }
-            } else {
-                R::Err ( Cow::from ("%YAML version is malformed") )
-            }
-            */
-            if let Some (val @ b'0' ... b'9') = chunk_slice.get (0).map (|b| *b) {
+            if let Some (val @ b'0' ..= b'9') = chunk_slice.get (0).map (|b| *b) {
                 let digit_first = val - b'0';
                 if digit_first != 1 || chunk_slice.get (1).map (|b| *b) != Some (b'.') {
                     R::Err (Cow::from ("%YAML major version is not supported"))
                 } else {
-                    if let Some (val @ b'0' ... b'9') = chunk_slice.get (2).map (|b| *b) {
+                    if let Some (val @ b'0' ..= b'9') = chunk_slice.get (2).map (|b| *b) {
                         if chunk_slice.len () > 3 {
                             R::Warn (Cow::from ("%YAML minor version is not fully supported"), (digit_first, 3))
                         } else {
@@ -2086,7 +1901,7 @@ impl Reader {
     }
 
 
-    fn read_directive_tag<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
+    fn read_directive_tag<D: Datum + 'static, R: Read<Datum=D>> (&mut self, ctx: &mut Context<D>, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize) -> Result<(), ReadError> {
         tokenizer::get_token (reader)
             .ok_or_else (|| {
                 let idx = self.get_idx ();
@@ -2129,7 +1944,6 @@ impl Reader {
                     }
                 };
 
-                // let (more, _) = scan_until_at (len, reader, &tokenizer::anchor_stops);
                 let more = tokenizer::anchor_stops (reader, len);
                 let handle = self.consume (ctx, reader, callback, len + more, chars) ?;
 
@@ -2170,7 +1984,6 @@ impl Reader {
                                 match token {
                                     Token::TagHandle => (),
                                     Token::Raw => {
-                                        // let (more, _) = scan_until_at (len, reader, &tokenizer::anchor_stops);
                                         let more = tokenizer::anchor_stops (reader, len);
                                         read += more;
                                     },
@@ -2199,7 +2012,7 @@ impl Reader {
 
 
     #[inline (always)]
-    fn emit_doc_border<D: Datum + 'static> (&mut self, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
+    fn emit_doc_border<D: Datum + 'static> (&mut self, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, level: usize, parent_idx: usize, token: Token) -> Result<(), ReadError> {
         let idx = self.get_idx ();
         self.yield_block (Block::new (
             Id { level: level, parent: parent_idx, index: idx },
@@ -2208,9 +2021,7 @@ impl Reader {
     }
 
 
-    fn read_seq_block_item<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
-        // let prev_indent: usize = *indent;
-
+    fn read_seq_block_item<D: Datum + 'static, R: Read<Datum=D>> (&mut self, reader: &mut R, callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>, ctx: &mut Context<D>, level: usize, parent_idx: usize, indent: &mut usize, mut accel: Option<(Token, usize, usize)>) -> Result<(), ReadError> {
         if let Some ( (token, len, chars) ) = if accel.is_none () { tokenizer::get_token (reader) } else { accel.take () } {
             match token {
                 Token::Dash => {
@@ -2241,7 +2052,7 @@ impl Reader {
                     Token::BOM16LE |
                     */
                     Token::BOM8 => {
-                        // try! (self.check_bom (reader, callback, level, parent_idx, len));
+                        // self.check_bom (reader, callback, level, parent_idx, len)?;
                         self.skip (reader, len, chars);
                     }
 
@@ -2272,7 +2083,7 @@ impl Reader {
     fn read_node_flow<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2290,7 +2101,7 @@ impl Reader {
     fn read_node_mblockval<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2308,7 +2119,7 @@ impl Reader {
     fn read_node_sblockval<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2326,7 +2137,7 @@ impl Reader {
     fn read_node<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2343,7 +2154,7 @@ impl Reader {
     fn read_node_<D: Datum + 'static, R: Read<Datum=D>> (
         &mut self,
         reader: &mut R,
-        callback: &mut FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
+        callback: &mut dyn FnMut (Block<D>) -> Result<(), Cow<'static, str>>,
         ctx: &mut Context<D>,
         indent: usize,
         level: usize,
@@ -2354,15 +2165,8 @@ impl Reader {
         overtag: &mut Option<Marker>,
         flow: bool,
         map_block_val: bool,
-        // _seq_block_indent: Option<usize>
     ) -> Result<(), ReadError> {
-        // self.timer.stamp ("rn");
-        // self.timer.stamp ("rn->context");
         let mut ctx = &mut Context::new (ctx, ContextKind::Node, self.cursor, level);
-
-        // let ctx = &mut ctx;
-        // self.timer.stamp ("rn->context");
-        // self.timer.stamp ("rn->vars");
 
         const ALIAS_READ: u8 = 4;
 
@@ -2390,9 +2194,6 @@ impl Reader {
             }
         } else { false };
 
-        // self.timer.stamp ("rn->vars");
-        // self.timer.stamp ("rn->loop");
-
         'top: loop {
             if let Some ( (token, len, chars) ) = if accel.is_none () { tokenizer::get_token (reader) } else { accel.take () } {
                 loop {
@@ -2404,7 +2205,7 @@ impl Reader {
                         Token::BOM16LE |
                         */
                         Token::BOM8 => {
-                            // try! (self.check_bom (reader, callback, level, parent_idx, len));
+                            // self.check_bom (reader, callback, level, parent_idx, len)?;
                             self.skip (reader, len, chars);
                         }
 
@@ -2435,11 +2236,9 @@ impl Reader {
 
 
                         Token::Colon if flow_idx > 0 => {
-                            // if scan_one_at (len, reader, &tokenizer::spaces_and_line_breakers).is_some () {
                             if tokenizer::scan_one_spaces_and_line_breakers (reader, len) > 0 {
                                 break 'top;
-                            // } else if flow && tokenizer::cset.comma.read_at (len, reader).is_some () {
-                            } else if flow && /* reader.contains_copy_at (tokenizer::cset.comma, len)*/ reader.byte_at (b',', len) {
+                            } else if flow && reader.byte_at (b',', len) {
                                 break 'top;
                             } else {
                                 match flow_opt {
@@ -2448,11 +2247,11 @@ impl Reader {
                                         tag: _,
                                         content: NodeKind::Scalar (mut chunk)
                                     }) }) => {
-                                        try! (self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
+                                        self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
                                             anchor: None,
                                             tag: None,
                                             content: NodeKind::LiteralBlockOpen
-                                        })), callback));
+                                        })), callback)?;
 
                                         *cur_idx = id.index;
                                         flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2464,20 +2263,20 @@ impl Reader {
                                         self.rtrim (ctx, &mut chunk);
 
                                         let idx = self.get_idx ();
-                                        try! (self.yield_block (Block::new (
+                                        self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Literal (chunk)
-                                        ), callback));
+                                        ), callback)?;
                                     },
                                     _ => ()
                                 };
 
                                 let marker = self.consume (ctx, reader, callback, len, chars) ?;
                                 let idx = self.get_idx ();
-                                try! (self.yield_block (Block::new (
+                                self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
                                     BlockType::Literal (marker)
-                                ), callback));
+                                ), callback)?;
                                 *cur_idx = idx;
                             };
                         }
@@ -2524,21 +2323,17 @@ impl Reader {
                             self.skip (reader, len, chars);
 
                             if indent == 0 && not (state, INDENT_PASSED) {
-                                // let mut chunk: Chunk = Chunk::with_capacity (tokenizer::cset.space.len ());
-                                // chunk.push_slice (tokenizer::spaces[0].as_slice ());
-                                // let rune: Rune = tokenizer::cset.space.into ();
-
                                 match flow_opt {
                                     Some (Block { id, cargo: BlockType::Node (Node {
                                         anchor: _,
                                         tag: _,
                                         content: NodeKind::Scalar (mut chunk)
                                     }) }) => {
-                                        try! (self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
+                                        self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
                                             anchor: None,
                                             tag: None,
                                             content: NodeKind::LiteralBlockOpen
-                                        })), callback));
+                                        })), callback)?;
 
                                         *cur_idx = id.index;
                                         flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2550,20 +2345,19 @@ impl Reader {
                                         self.rtrim (ctx, &mut chunk);
 
                                         let idx = self.get_idx ();
-                                        try! (self.yield_block (Block::new (
+                                        self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Literal (chunk)
-                                        ), callback));
+                                        ), callback)?;
                                     },
                                     _ => ()
                                 };
 
                                 let idx = self.get_idx ();
-                                try! (self.yield_block (Block::new (
+                                self.yield_block (Block::new (
                                     Id { level: level + 1, parent: flow_idx, index: idx },
                                     BlockType::Byte (b' ', 1)
-                                    // BlockType::Literal (chunk)
-                                ), callback));
+                                ), callback)?;
                                 *cur_idx = idx;
                             }
 
@@ -2600,22 +2394,6 @@ impl Reader {
                                 _ => len
                             };
 
-                            /*
-                            let len_ =
-                                // if len >= tokenizer::cset.crlf.len () && tokenizer::cset.crlf.read (reader).is_some () {
-                                if len >= tokenizer::cset.crlf.len () && reader.contains_copy_at_start (tokenizer::cset.crlf) {
-                                    tokenizer::cset.crlf.len ()
-                                }
-                                // else if len >= tokenizer::cset.line_feed.len () && tokenizer::cset.line_feed.read (reader).is_some () {
-                                else if len >= tokenizer::cset.line_feed.len () && reader.contains_copy_at_start (tokenizer::cset.line_feed) {
-                                    tokenizer::cset.line_feed.len ()
-                                }
-                                // else if len >= tokenizer::cset.carriage_return.len () && tokenizer::cset.carriage_return.read (reader).is_some () {
-                                else if len >= tokenizer::cset.carriage_return.len () && reader.contains_copy_at_start (tokenizer::cset.carriage_return) {
-                                    tokenizer::cset.carriage_return.len ()
-                                } else { len };
-                            */
-
                             let chars_ = if chars > 0 { 1 } else { 0 };
 
                             self.skip (reader, len_, chars_);
@@ -2632,20 +2410,14 @@ impl Reader {
                             {
                                 let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                 loop {
-                                    // if ctxptr.parent.is_none () { break; }
-                                    // ctxptr = ctxptr.parent.as_ref ().unwrap ();
                                     if ctxptr.is_none () { break; }
                                     let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
                                     match parent.kind {
                                         ContextKind::SequenceFlow => {
-                                            // skip = self.check_next_is_right_square (reader, 0, false);
-                                            // skip = self.check_next_is_char (tokenizer::cset.bracket_square_right, reader, 0, false);
                                             skip = self.check_next_is_byte (b']', reader, 0, false);
                                         }
                                         ContextKind::MappingFlow => {
-                                            // skip = self.check_next_is_right_curly (reader, 0, false);
-                                            // skip = self.check_next_is_char (tokenizer::cset.bracket_curly_right, reader, 0, false);
                                             skip = self.check_next_is_byte (b'}', reader, 0, false);
                                         }
                                         _ => { ctxptr = Some (parent); continue }
@@ -2666,11 +2438,11 @@ impl Reader {
                                     tag: _,
                                     content: NodeKind::Scalar (mut chunk)
                                 }) }) => {
-                                    try! (self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
+                                    self.yield_block (Block::new (id.clone (), BlockType::Node (Node {
                                         anchor: None,
                                         tag: None,
                                         content: NodeKind::LiteralBlockOpen
-                                    })), callback));
+                                    })), callback)?;
 
                                     *cur_idx = id.index;
                                     flow_opt = Some (Block::new (id, BlockType::Node (Node {
@@ -2682,10 +2454,10 @@ impl Reader {
                                     self.rtrim (ctx, &mut chunk);
 
                                     let idx = self.get_idx ();
-                                    try! (self.yield_block (Block::new (
+                                    self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    ), callback));
+                                    ), callback)?;
                                 },
                                 _ => ()
                             };
@@ -2695,10 +2467,10 @@ impl Reader {
                                 Token::Indent => {
                                     let marker = self.consume (ctx, reader, callback, len, chars) ?;
                                     let idx = self.get_idx ();
-                                    try! (self.yield_block (Block::new (
+                                    self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (marker)
-                                    ), callback));
+                                    ), callback)?;
                                     *cur_idx = idx;
 
                                     on (&mut state, AFTER_SPACE | INDENT_PASSED);
@@ -2707,10 +2479,10 @@ impl Reader {
                                 Token::Newline => {
                                     let marker = self.consume (ctx, reader, callback, len, chars) ?;
                                     let idx = self.get_idx ();
-                                    try! (self.yield_block (Block::new (
+                                    self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (marker)
-                                    ), callback));
+                                    ), callback)?;
                                     *cur_idx = idx;
 
                                     off (&mut state, INDENT_PASSED);
@@ -2718,14 +2490,13 @@ impl Reader {
                                 }
 
                                 Token::Comment => {
-                                    // let len = tokenizer::cset.hashtag.len ();
                                     let marker = self.consume (ctx, reader, callback, 1, 1) ?;
 
                                     let idx = self.get_idx ();
-                                    try! (self.yield_block (Block::new (
+                                    self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (marker)
-                                    ), callback));
+                                    ), callback)?;
                                     *cur_idx = idx;
 
                                     off (&mut state, AFTER_SPACE | NEWLINE_PASSED);
@@ -2734,22 +2505,16 @@ impl Reader {
 
                                 _ => {
                                     if self.cursor == 0 { // 9.03 - we couldn't spare a space
-                                        // let mut chunk: Chunk = Chunk::with_capacity (tokenizer::cset.space.len ());
-                                        // chunk.push_slice (tokenizer::cset.space.as_slice ());
-
                                         let idx = self.get_idx ();
-                                        // let rune: Rune = tokenizer::cset.space.into ();
-                                        try! (self.yield_block (Block::new (
+                                        self.yield_block (Block::new (
                                             Id { level: level + 1, parent: flow_idx, index: idx },
                                             BlockType::Byte (b' ', 1)
-                                            // BlockType::Literal (chunk)
-                                        ), callback));
+                                        ), callback)?;
                                         *cur_idx = idx;
                                     }
 
                                     let mut chunk = match token {
                                         Token::Directive => {
-                                            // let (len, _) = scan_until_at (0, reader, &tokenizer::raw_stops);
                                             let len = tokenizer::raw_stops (reader);
                                             self.consume (ctx, reader, callback, len, 1) ?
                                         }
@@ -2759,10 +2524,10 @@ impl Reader {
                                     self.rtrim (ctx, &mut chunk);
 
                                     let idx = self.get_idx ();
-                                    try! (self.yield_block (Block::new (
+                                    self.yield_block (Block::new (
                                         Id { level: level + 1, parent: flow_idx, index: idx },
                                         BlockType::Literal (chunk)
-                                    ), callback));
+                                    ), callback)?;
                                     *cur_idx = idx;
 
                                     off (&mut state, NEWLINE_PASSED | AFTER_SPACE /*| INDENT_PASSED*/);
@@ -2776,27 +2541,25 @@ impl Reader {
 
                         Token::ReservedCommercialAt => {
                             let idx = self.get_idx ();
-                            try! (self.yield_error (
+                            self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Cow::from ("@ character is reserved and may not be used to start a plain scalar")
-                            ));
+                            )?;
                         }
 
 
                         Token::ReservedGraveAccent => {
                             let idx = self.get_idx ();
-                            try! (self.yield_error (
+                            self.yield_error (
                                 callback,
                                 Id { level: level, parent: parent_idx, index: idx },
                                 Cow::from ("` character is reserved and may not be used to start a plain scalar")
-                            ));
+                            )?;
                         }
 
 
                         Token::Indent if is (state, LINE_BREAK) => {
-                            // let is_hyphen = tokenizer::cset.hyphen_minus.read_at (len, reader).is_some ();
-                            // let is_hyphen = reader.contains_copy_at (tokenizer::cset.hyphen_minus, len);
                             let is_hyphen = reader.byte_at (b'-', len);
                             let yes = if float_start {
                                 if is_hyphen {
@@ -2805,8 +2568,6 @@ impl Reader {
                                         {
                                             let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                             loop {
-                                                // if ctxptr.parent.is_none () { break; }
-                                                // ctxptr = ctxptr.parent.as_ref ().unwrap ();
                                                 if ctxptr.is_none () { break; }
                                                 let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
@@ -2822,21 +2583,15 @@ impl Reader {
                                         }
                                         result
                                     }
-                                // } else if tokenizer::cset.vertical_bar.read_at (len, reader).is_some () {
                                 } else if /* reader.contains_copy_at (tokenizer::cset.vertical_bar, len) */ reader.byte_at (b'|', len) {
                                     true 
-                                // } else if tokenizer::cset.greater_than.read_at (len, reader).is_some () {
                                 } else if /* reader.contains_copy_at (tokenizer::cset.greater_than, len) */ reader.byte_at (b'>', len) {
                                     true
                                 } else {
-                                    // if ctx.parent.is_some () {
                                     if let Some (par) = ctx.get_parent () {
-                                        // let par = ctx.parent.as_ref ().unwrap ();
                                         match par.kind {
                                             ContextKind::MappingBlock => {
-                                                // if par.parent.is_some () {
                                                 if let Some (par) = par.get_parent () {
-                                                    // let par = par.parent.as_ref ().unwrap ();
                                                     chars > par.indent
                                                 } else { false }
                                             }
@@ -2854,15 +2609,15 @@ impl Reader {
                                     let idx = self.get_idx ();
                                     *cur_idx = idx;
 
-                                    try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                                    self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                         anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                         tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                         content: NodeKind::Sequence
-                                    })), callback));
+                                    })), callback)?;
 
-                                    try! (self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, None));
+                                    self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, None)?;
                                 } else {
-                                    try! (self.read_layer_expected (
+                                    self.read_layer_expected (
                                         reader,
                                         callback,
                                         &mut ctx,
@@ -2871,7 +2626,7 @@ impl Reader {
                                         cur_idx,
                                         if anchor.is_none () { overanchor } else { &mut anchor },
                                         if tag.is_none () { overtag } else { &mut tag }
-                                    ))
+                                    )?
                                 };
 
                                 if cidx == *cur_idx {
@@ -2879,8 +2634,6 @@ impl Reader {
 
                                     *cur_idx = idx;
 
-                                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                                    // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                                     let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                         (anchor, tag)
                                     } else {
@@ -2904,8 +2657,6 @@ impl Reader {
 
                                 *cur_idx = idx;
 
-                                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                                // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                                 let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                     (anchor, tag)
                                 } else {
@@ -2931,9 +2682,6 @@ impl Reader {
                                         let mut result = true;
                                         let mut ctxptr: Option<&mut Context<D>> = Some (&mut ctx);
                                         loop {
-                                            // if ctxptr.parent.is_none () { break; }
-                                            // ctxptr = ctxptr.parent.as_ref ().unwrap ();
-
                                             if ctxptr.is_none () { break; }
                                             let parent = if let Some (parent) = ctxptr.take ().unwrap ().get_parent () { parent } else { break; };
 
@@ -2975,15 +2723,15 @@ impl Reader {
                                         let idx = self.get_idx ();
                                         *cur_idx = idx;
 
-                                        try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                                        self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                             anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                             tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                             content: NodeKind::Sequence
-                                        })), callback));
+                                        })), callback)?;
 
-                                        try! (self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) )));
+                                        self.read_seq_block (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) ))?;
                                     },
-                                    _ => try! (self.read_layer_expected (
+                                    _ => self.read_layer_expected (
                                         reader,
                                         callback,
                                         &mut ctx,
@@ -2992,7 +2740,7 @@ impl Reader {
                                         cur_idx,
                                         if anchor.is_none () { overanchor } else { &mut anchor },
                                         if tag.is_none () { overtag } else { &mut tag }
-                                    ))
+                                    )?
                                 };
 
                                 if cidx == *cur_idx {
@@ -3000,8 +2748,6 @@ impl Reader {
 
                                     *cur_idx = idx;
 
-                                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                                    // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                                     let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                         (anchor, tag)
                                     } else {
@@ -3025,8 +2771,6 @@ impl Reader {
 
                                 *cur_idx = idx;
 
-                                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                                // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                                 let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                     (anchor, tag)
                                 } else {
@@ -3046,15 +2790,14 @@ impl Reader {
 
 
                         Token::Alias if anchor.is_none () && tag.is_none () => {
-                            // let ast_len = tokenizer::cset.asterisk.len ();
                             self.skip (reader, 1, 0);
                             let marker = self.consume (ctx, reader, callback, len - 1, chars) ?;
 
                             let idx = self.get_idx ();
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Alias (marker)
-                            ), callback));
+                            ), callback)?;
 
                             *cur_idx = idx;
 
@@ -3063,7 +2806,6 @@ impl Reader {
 
 
                         Token::Anchor if anchor.is_none () => {
-                            // let amp_len = tokenizer::cset.ampersand.len ();
                             self.skip (reader, 1, 0);
                             anchor = Some ( self.consume (ctx, reader, callback, len - 1, chars) ? );
                         }
@@ -3077,11 +2819,11 @@ impl Reader {
                         Token::Dash => {
                             let idx = self.get_idx ();
 
-                            try! (self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
+                            self.yield_block (Block::new (Id { level: level, parent: parent_idx, index: idx }, BlockType::Node (Node {
                                 anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                 tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                 content: NodeKind::Sequence
-                            })), callback));
+                            })), callback)?;
 
                             *cur_idx = idx;
 
@@ -3093,14 +2835,14 @@ impl Reader {
                             let idx = self.get_idx ();
                             *cur_idx = self.index;
 
-                            try! (self.yield_block (Block::new (
+                            self.yield_block (Block::new (
                                 Id { level: level, parent: parent_idx, index: idx },
                                 BlockType::Node (Node {
                                     anchor: if anchor.is_none () { overanchor.take () } else { anchor.take () },
                                     tag: if tag.is_none () { overtag.take () } else { tag.take () },
                                     content: NodeKind::Mapping
                                 })
-                            ), callback));
+                            ), callback)?;
 
                             return self.read_map_block_explicit (reader, callback, &mut ctx, level + 1, idx, Some ( (token, len, chars) ))
                         }
@@ -3128,8 +2870,6 @@ impl Reader {
 
                             *cur_idx = idx;
 
-                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                            // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                             let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                 (anchor, tag)
                             } else {
@@ -3181,7 +2921,6 @@ impl Reader {
 
 
                         Token::Colon if map_block_val && !map_block_val_pass => {
-                            // if scan_one_at (len, reader, &tokenizer::spaces_and_line_breakers).is_some () {
                             if tokenizer::scan_one_spaces_and_line_breakers (reader, len) > 0 {
                                 break 'top;
                             }
@@ -3197,8 +2936,6 @@ impl Reader {
                             *cur_idx = flow_idx;
 
                             let mut marker = self.consume (ctx, reader, callback, len, chars) ?;
-
-                            // let data = ctx.get_data ();
 
                             let blen = ctx.get_data ().marker_len (&marker);
                             self.rtrim (ctx, &mut marker);
@@ -3223,8 +2960,6 @@ impl Reader {
 
                             let mut marker = self.consume (ctx, reader, callback, len, chars) ?;
 
-                            // let data = ctx.get_data ();
-
                             let blen = ctx.get_data ().marker_len (&marker);
                             self.rtrim (ctx, &mut marker);
                             let alen = ctx.get_data ().marker_len (&marker);
@@ -3247,8 +2982,6 @@ impl Reader {
 
                             *cur_idx = idx;
 
-                            // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                            // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                             let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                                 (anchor, tag)
                             } else {
@@ -3283,8 +3016,6 @@ impl Reader {
 
                     *cur_idx = idx;
 
-                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                    // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                     let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                         (anchor, tag)
                     } else {
@@ -3304,23 +3035,15 @@ impl Reader {
                 break;
             }
         }
-        // self.timer.stamp ("rn->loop");
 
-        // self.timer.stamp ("rn->flopt");
         match flow_opt {
             Some (Block { id, cargo: BlockType::Node (Node {
                 anchor: _,
                 tag: _,
                 content: NodeKind::Scalar (mut chunk)
             }) }) => {
-                // self.timer.stamp ("rn->flopt<-scalar");
-                // self.timer.stamp ("rn->flopt<-scalar->rtrim");
                 self.rtrim (ctx, &mut chunk);
-                // self.timer.stamp ("rn->flopt<-scalar->rtrim");
 
-                // self.timer.stamp ("rn->flopt<-scalar->cnis");
-                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                 let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                     (anchor, tag)
                 } else {
@@ -3329,7 +3052,6 @@ impl Reader {
                         if tag.is_none () { overtag.take () } else { tag }
                     )
                 };
-                // self.timer.stamp ("rn->flopt<-scalar->cnis");
 
                 *cur_idx = id.index;
 
@@ -3338,7 +3060,6 @@ impl Reader {
                     tag: tag,
                     content: NodeKind::Scalar (chunk)
                 })), callback) ?;
-                // self.timer.stamp ("rn->flopt<-scalar");
             }
 
             Some (Block { id, cargo: BlockType::Node (Node {
@@ -3346,9 +3067,6 @@ impl Reader {
                 tag: _,
                 content: NodeKind::LiteralBlockClose
             }) }) => {
-                // self.timer.stamp ("rn->flopt<-block");
-                // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                 let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                     (anchor, tag)
                 } else {
@@ -3360,25 +3078,21 @@ impl Reader {
 
                 *cur_idx = id.index;
 
-                try! (self.yield_block (Block::new (id, BlockType::Node (Node {
+                self.yield_block (Block::new (id, BlockType::Node (Node {
                     anchor: anchor,
                     tag: tag,
                     content: NodeKind::LiteralBlockClose
-                })), callback));
-                // self.timer.stamp ("rn->flopt<-block");
+                })), callback)?;
             }
 
             Some (_) => unreachable! (),
 
             None => {
-                // self.timer.stamp ("rn->flopt<-none");
                 if tag.is_some () || anchor.is_some () {
                     let idx = self.get_idx ();
 
                     *cur_idx = idx;
 
-                    // let (anchor, tag) = if self.check_next_is_colon (reader, indent, false) {
-                    // let (anchor, tag) = if self.check_next_is_char (tokenizer::cset.colon, reader, indent, false) {
                     let (anchor, tag) = if self.check_next_is_byte (b':', reader, indent, false) {
                         (anchor, tag)
                     } else {
@@ -3394,12 +3108,8 @@ impl Reader {
                         content: NodeKind::Null
                     })), callback);
                 }
-                // self.timer.stamp ("rn->flopt<-none");
             }
         };
-        // self.timer.stamp ("rn->flopt");
-
-        // self.timer.stamp ("rn");
 
         Ok ( () )
     }
@@ -3408,7 +3118,7 @@ impl Reader {
     fn rtrim<D: Datum + 'static> (&self, ctx: &mut Context<D>, marker: &mut Marker) {
         let data = ctx.get_data ();
         let rtrimsize: usize = {
-            let chunk = data.chunk (marker);;
+            let chunk = data.chunk (marker);
             let chunk_slice = chunk.as_slice ();
             let mut ptr = chunk_slice.len ();
 
@@ -3475,10 +3185,6 @@ mod tests {
 
     use super::skimmer::reader::SliceReader;
 
-    // use tokenizer::Tokenizer;
-
-    // use txt::get_charset_utf8;
-
     use std::sync::mpsc::channel;
 
 
@@ -3488,13 +3194,13 @@ mod tests {
         let src = "%YAML 1.2\n%TAG !e! tag://example.com,2015:testapp/\n---\n...";
 
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
+        let mut reader = Reader::new ();
         let mut data = Data::with_capacity (16);
 
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
-        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        ).unwrap_or_else (|err| { assert!(false, "Unexpected result: {}", err); });
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3563,8 +3269,7 @@ mod tests {
         let src = "%YAML";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3595,8 +3300,7 @@ mod tests {
         let src = "%YAML/1.2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3627,8 +3331,7 @@ mod tests {
         let src = "%YAML ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3659,8 +3362,7 @@ mod tests {
         let src = "%YAML -";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3699,8 +3401,7 @@ mod tests {
         let src = "%YAML 2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3739,8 +3440,7 @@ mod tests {
         let src = "%YAML 10.2";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3780,8 +3480,7 @@ mod tests {
         let src = "%YAML 1.a";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3821,8 +3520,7 @@ mod tests {
         let src = "%YAML 1.0";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3862,13 +3560,13 @@ mod tests {
         let src = "%YAML 1.21";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
-        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        ).unwrap_or_else (|err| { assert! (false, "Unexpected result: {}", err); });
 
+        format!("Unexpected result: {}", "yoba");
 
         if let Ok (block) = receiver.try_recv () {
             assert_eq! (0, block.id.level);
@@ -3914,12 +3612,11 @@ mod tests {
         let src = "%YAML 1.1";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
-        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {}", err)); });
+        ).unwrap_or_else (|err| { assert! (false, "Unexpected result: {}", err); });
 
 
         if let Ok (block) = receiver.try_recv () {
@@ -3962,8 +3659,7 @@ mod tests {
         let src = "%TAG";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -3995,8 +3691,7 @@ mod tests {
         let src = "%TAG/";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4028,8 +3723,7 @@ mod tests {
         let src = "%TAG ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4061,8 +3755,7 @@ mod tests {
         let src = "%TAG testo";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4094,8 +3787,7 @@ mod tests {
         let src = "%TAG !tag!";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4136,8 +3828,7 @@ mod tests {
         let src = "%TAG !tag! ";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4178,8 +3869,7 @@ mod tests {
         let src = "%TAG !tag! - testo";
         let (sender, receiver) = channel ();
 
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
@@ -4219,12 +3909,11 @@ mod tests {
 
         let mut data = Data::with_capacity (16);
         let (sender, receiver) = channel ();
-        let mut reader = Reader::new (); // ::new (Tokenizer::new (get_charset_utf8 ()));
-
+        let mut reader = Reader::new ();
         reader.read (
             SliceReader::new (src.as_bytes ()),
             &mut |block| { if let Err (_) = sender.send (block) { Err (Cow::from ("Cannot yield a block")) } else { Ok ( () ) } }
-        ).unwrap_or_else (|err| { assert! (false, format! ("Unexpected result: {:?}", err)); });
+        ).unwrap_or_else (|err| { assert! (false, "Unexpected result: {:?}", err); });
 
 
         if let Ok (block) = receiver.try_recv () {

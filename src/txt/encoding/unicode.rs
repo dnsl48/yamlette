@@ -13,13 +13,13 @@ pub trait Unicode {
 
     fn check_is_flo_num (self, stream: &[u8]) -> bool;
 
-    fn extract_bin_digit (self, &[u8]) -> Option<(u8, u8)>;
+    fn extract_bin_digit (self, stream: &[u8]) -> Option<(u8, u8)>;
 
-    fn extract_dec_digit (self, &[u8]) -> Option<(u8, u8)>;
+    fn extract_dec_digit (self, stream: &[u8]) -> Option<(u8, u8)>;
 
-    fn extract_oct_digit (self, &[u8]) -> Option<(u8, u8)>;
+    fn extract_oct_digit (self, stream: &[u8]) -> Option<(u8, u8)>;
 
-    fn extract_hex_digit (self, &[u8]) -> Option<(u8, u8)>;
+    fn extract_hex_digit (self, stream: &[u8]) -> Option<(u8, u8)>;
 
     fn str_to_bytes<'a> (self, string: &'a str) -> Result<&'a [u8], Vec<u8>>;
 
