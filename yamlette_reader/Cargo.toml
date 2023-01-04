@@ -7,4 +7,7 @@ edition = "2021"
 
 [dependencies]
 
-skimmer = "0.0.3"
+nom = "7"
+nom_locate = "4"
+nom-supreme = "0.8"
+thiserror = "1"
